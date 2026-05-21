@@ -38,3 +38,14 @@ export const apiClient = {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }),
 };
+
+// Multipart helper for CSV import endpoints. `formData` is constructed by the
+// caller (browser-side only — these endpoints are never hit during SSR).
+export async function apiMultipart<T>(path: string, formData: FormData): Promise<T> {
+  const res = await fetch(`${apiBase()}${path}`, { method: 'POST', body: formData, cache: 'no-store' });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`${res.status} ${path}: ${body}`);
+  }
+  return res.json() as Promise<T>;
+}

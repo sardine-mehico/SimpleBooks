@@ -276,3 +276,135 @@ export type InvoiceSendContext = {
   html: string;
   templateName: string | null;
 };
+
+// ── Banking ─────────────────────────────────────────────────────────────────
+
+export type AccountType = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Account = {
+  id: string;
+  name: string;
+  bank: string;
+  accountNumber?: string | null;
+  accountTypeId: string;
+  accountType?: AccountType;
+  openingBalance: string;
+  openingDate: string;
+  notes?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // Computed (list + detail include these).
+  currentBalance?: string;
+  _count?: { transactions: number; imports?: number };
+  latestImport?: { id: string; importedAt: string; rowsImported: number } | null;
+};
+
+export type Transaction = {
+  id: string;
+  accountId: string;
+  account?: { id: string; name: string };
+  date: string;
+  amount: string;
+  description: string;
+  runningBalance?: string | null;
+  importHash: string;
+  importId?: string | null;
+  categoryId?: string | null;
+  vendorCustomerId?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TransactionListResponse = {
+  items: Transaction[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+};
+
+export type DateFormat = 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+export type ColumnRole =
+  | 'date' | 'description' | 'amount' | 'debit' | 'credit' | 'balance' | 'ignore';
+export const COLUMN_ROLES: { value: ColumnRole; label: string }[] = [
+  { value: 'date', label: 'Date' },
+  { value: 'description', label: 'Description' },
+  { value: 'amount', label: 'Amount (signed)' },
+  { value: 'debit', label: 'Debit' },
+  { value: 'credit', label: 'Credit' },
+  { value: 'balance', label: 'Balance' },
+  { value: 'ignore', label: 'Ignore' },
+];
+export const DATE_FORMATS: { value: DateFormat; label: string }[] = [
+  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (AU)' },
+  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (US)' },
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (ISO)' },
+];
+
+export type ColumnMapping = {
+  hasHeader: boolean;
+  dateFormat: DateFormat;
+  columns: ColumnRole[];
+};
+
+export type MappingSuggestion = {
+  mapping: ColumnMapping;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string[];
+};
+
+export type SniffResponse = {
+  previewRows: string[][];
+  suggestedMapping: MappingSuggestion;
+  fileSha256: string;
+  alreadyImportedAs?: string;
+  fileSize: number;
+  filename: string;
+};
+
+export type ImportReport = {
+  importId: string;
+  accountId: string;
+  accountName: string;
+  filename: string;
+  fileSize: number;
+  fileSha256: string;
+  importedAt: string;
+  mapping: ColumnMapping;
+  counts: { total: number; imported: number; duplicates: number; failed: number };
+  imported: Array<{ date: string; amount: string; description: string }>;
+  duplicates: Array<{
+    date: string;
+    amount: string;
+    description: string;
+    existingTransactionId: string;
+  }>;
+  failed: Array<{ rowIndex: number; reason: string; raw: string[] }>;
+  warnings: string[];
+};
+
+export type ImportLogSummary = {
+  id: string;
+  accountId: string;
+  account: { id: string; name: string };
+  filename: string;
+  fileSize: number;
+  importedAt: string;
+  rowsTotal: number;
+  rowsImported: number;
+  rowsSkippedDup: number;
+  rowsFailed: number;
+};
+
+export type ImportLogFull = ImportLogSummary & {
+  reportJson: ImportReport;
+  mappingJson: ColumnMapping;
+  fileSha256: string;
+};
