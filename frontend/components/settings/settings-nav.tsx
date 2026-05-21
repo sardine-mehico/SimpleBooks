@@ -11,6 +11,7 @@ import {
   PaperPlaneTilt,
   BracketsCurly,
   Repeat,
+  Bank,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ export type SettingsSection = {
 export const sections: SettingsSection[] = [
   { href: "/settings/preferences", label: "Preferences", icon: GearSix },
   { href: "/settings/roles", label: "Roles", icon: ShieldCheck },
+  { href: "/settings/account-types", label: "Account Types", icon: Bank },
   { href: "/settings/tax-types", label: "Tax Types", icon: Percent },
   { href: "/settings/recurring-schedules", label: "Recurring Schedules", icon: Repeat },
   { href: "/settings/dynamic-fields", label: "Dynamic Fields", icon: BracketsCurly },
