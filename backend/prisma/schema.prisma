@@ -1,0 +1,364 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks         Task[]
+  telegramChats TelegramChat[]
+}
+
+enum PaymentTerms {
+  IN_28_DAYS
+  IN_15_DAYS
+  IN_7_DAYS
+  DUE_ON_RECEIPT
+}
+
+model Customer {
+  id               String        @id @default(uuid())
+  customerNumber   Int           @unique
+  name             String
+  billingEmail1    String?
+  billingEmail2    String?
+  billingCompanyId String?
+  paymentTerms     PaymentTerms  @default(IN_28_DAYS)
+  address          String?
+  notes            String?
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  billingCompany BillingCompany? @relation(fields: [billingCompanyId], references: [id], onDelete: SetNull)
+  invoices       Invoice[]
+  recurringRules RecurringRule[]
+}
+
+enum SendVia {
+  GENERAL_SMTP
+  CUSTOM_SMTP
+}
+
+model BillingCompany {
+  id             String    @id @default(uuid())
+  name           String
+  abn            String?
+  address        String?
+  paymentDetails String?
+  accountsEmail  String?
+  invoiceBcc     String    @default("")
+  notes          String?
+  isActive       Boolean   @default(true)
+  deactivatedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Outbound mail routing for invoices issued by this company.
+  // GENERAL_SMTP (default): use the system's MailConfiguration.
+  // CUSTOM_SMTP: use this company's own credentials below.
+  sendVia              SendVia          @default(GENERAL_SMTP)
+  customSmtpServer     String?
+  customSmtpPort       Int?
+  customSmtpEncryption EmailEncryption?
+  customSmtpUser       String?
+  customSmtpPassword   String?
+
+  // Permanent rotation-based template assignment. `creationOrder` is the 1-based
+  // ordinal of this company within the BillingCompany table; the assigned
+  // template displayOrders are `((creationOrder - 1) % templateCount) + 1`.
+  // Computed once at create-time and never changed thereafter; FKs are
+  // `Restrict` so a referenced template can't be deleted while still in use.
+  creationOrder      Int?    @unique
+  invoiceTemplateId  String?
+  emailTemplateId    String?
+  invoiceTemplate    InvoiceTemplate? @relation(fields: [invoiceTemplateId], references: [id], onDelete: Restrict)
+  emailTemplate      EmailTemplate?   @relation(fields: [emailTemplateId], references: [id], onDelete: Restrict)
+
+  customers       Customer[]
+  invoices        Invoice[]
+  recurringRules  RecurringRule[]
+}
+
+model Item {
+  id          String   @id @default(uuid())
+  name        String
+  unitPrice   Decimal  @db.Decimal(12, 2)
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invoiceItems        InvoiceItem[]
+  recurringLineItems  RecurringRuleLineItem[]
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PARTIAL_PAID
+  PAID
+  VOID
+  FAILED_TO_SEND
+}
+
+model Invoice {
+  id               String        @id @default(uuid())
+  invoiceNumber    Int           @unique
+  invoiceDate      DateTime      @default(now())
+  dueDate          DateTime?
+  customerId       String?
+  billingCompanyId String?
+  status           InvoiceStatus @default(DRAFT)
+  subtotal         Decimal       @db.Decimal(12, 2) @default(0)
+  taxAmount        Decimal       @db.Decimal(12, 2) @default(0)
+  totalAmount      Decimal       @db.Decimal(12, 2) @default(0)
+  poNumber         String?
+  paymentDetails   String?
+  internalNotes    String?
+  terms            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  customer        Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  billingCompany  BillingCompany? @relation(fields: [billingCompanyId], references: [id], onDelete: SetNull)
+  lineItems       InvoiceItem[]
+  recurringRuleId String?
+  recurringRule   RecurringRule?  @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+
+  // Template snapshots, copied from the parent BillingCompany at invoice
+  // creation. Frozen for the lifetime of the invoice so historical renders are
+  // reproducible even if the company's live assignment ever changed.
+  invoiceTemplateId String?
+  emailTemplateId   String?
+  invoiceTemplate   InvoiceTemplate? @relation(fields: [invoiceTemplateId], references: [id], onDelete: Restrict)
+  emailTemplate     EmailTemplate?   @relation(fields: [emailTemplateId], references: [id], onDelete: Restrict)
+
+  // Send-attempt tracking. Populated by the manual-send flow and by the
+  // recurring processor's SEND_DIRECTLY path. `sendAttempts` counts the total
+  // number of SMTP attempts made for this invoice (the first synchronous
+  // attempt + up to 3 BullMQ-retried attempts = 4 max). `sendError` holds the
+  // most recent SMTP error verbatim so the UI can show why it failed.
+  sendAttempts Int       @default(0)
+  sendError    String?
+  lastSendAt   DateTime?
+
+  // Public-link surface. `publicToken` is a 32-byte URL-safe random string
+  // minted lazily the first time the invoice is sent; it backs the customer-
+  // facing /i/:token page. `viewedAt` stamps the first GET on that page, and
+  // the SENT → VIEWED status transition fires alongside it (idempotent).
+  publicToken         String?   @unique
+  publicTokenIssuedAt DateTime?
+  viewedAt            DateTime?
+
+  // Void audit. `voidReason` is captured from the operator at void time
+  // (free-text). `voidedAt` is stamped on the same transaction that flips
+  // status to VOID. Both stay readable on the invoice forever so the audit
+  // trail survives even though the dashboard excludes VOIDs from aggregates.
+  voidReason String?
+  voidedAt   DateTime?
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  itemId      String?
+  description String
+  quantity    Decimal @db.Decimal(12, 2)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  lineAmount  Decimal @db.Decimal(12, 2)
+  taxTypeId   String?
+  taxName     String?
+  taxRate     Decimal? @db.Decimal(6, 3)
+  taxAmount   Decimal @db.Decimal(12, 2) @default(0)
+  position    Int      @default(0)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  item    Item?   @relation(fields: [itemId], references: [id], onDelete: SetNull)
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(PENDING)
+  dueDate     DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+enum RecurringIntervalUnit {
+  DAYS
+  WEEKS
+  MONTHS
+  YEARS
+}
+
+enum SendingOption {
+  REVIEW_BEFORE_SENDING
+  SEND_DIRECTLY
+}
+
+model RecurringSchedule {
+  id            String                @id @default(uuid())
+  name          String                @unique
+  intervalUnit  RecurringIntervalUnit
+  intervalCount Int
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  recurringRules RecurringRule[]
+}
+
+model RecurringRule {
+  id                  String         @id @default(uuid())
+  scheduleName        String
+  startDate           DateTime
+  recurringScheduleId String?
+  sendingOption       SendingOption  @default(REVIEW_BEFORE_SENDING)
+  active              Boolean        @default(true)
+  nextRunAt           DateTime
+  customerId          String?
+  billingCompanyId   String?
+  poNumber            String?
+  paymentDetails      String?
+  internalNotes       String?
+  terms               String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  recurringSchedule RecurringSchedule? @relation(fields: [recurringScheduleId], references: [id], onDelete: SetNull)
+  customer          Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  billingCompany    BillingCompany?    @relation(fields: [billingCompanyId], references: [id], onDelete: SetNull)
+  lineItems         RecurringRuleLineItem[]
+  invoices          Invoice[]
+}
+
+model RecurringRuleLineItem {
+  id              String   @id @default(uuid())
+  recurringRuleId String
+  itemId          String?
+  description     String
+  unitPrice       Decimal  @db.Decimal(12, 2)
+  taxTypeId       String?
+  taxName         String?
+  taxRate         Decimal? @db.Decimal(6, 3)
+  position        Int      @default(0)
+
+  recurringRule RecurringRule @relation(fields: [recurringRuleId], references: [id], onDelete: Cascade)
+  item          Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
+}
+
+model TelegramChat {
+  id        String   @id @default(cuid())
+  chatId    String   @unique
+  username  String?
+  createdAt DateTime @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+enum EmailEncryption {
+  NONE
+  SSL
+  TLS
+  STARTTLS
+}
+
+model TaxType {
+  id          String   @id @default(uuid())
+  name        String
+  rate        Decimal  @db.Decimal(6, 3)
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model InvoiceTemplate {
+  id           String   @id @default(uuid())
+  name         String
+  templateKey  String   @unique
+  // 1..10 — the rotation slot a BillingCompany maps onto. Each templateKey
+  // also maps to a React-PDF .tsx module under `src/pdf/templates/`; until the
+  // user provides all 10 real designs, every key renders via the default
+  // template (see `src/pdf/templates/index.ts`).
+  displayOrder Int      @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  billingCompanies BillingCompany[]
+  invoices         Invoice[]
+}
+
+model EmailTemplate {
+  id           String   @id @default(uuid())
+  name         String
+  // Subject + body are stored verbatim and may contain dynamic-fields tokens
+  // (e.g. `{{billing company}}`). Substituted at send time by MailService
+  // against the host invoice's context. Body is HTML; there is no plain-text
+  // alternative — every customer-facing email is HTML.
+  subject      String
+  body         String   @default("")
+  templateKey  String   @unique
+  displayOrder Int      @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  billingCompanies BillingCompany[]
+  invoices         Invoice[]
+}
+
+model Preferences {
+  id                  String   @id @default(uuid())
+  timezone            String   @default("Australia/Perth")
+  financialYearStart  Int      @default(7)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model MailConfiguration {
+  id         String          @id @default(uuid())
+  smtpServer String          @default("")
+  port       Int             @default(587)
+  encryption EmailEncryption @default(STARTTLS)
+  user       String          @default("")
+  password   String          @default("")
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+}
+
+model TelegramAllowlist {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  user      String?
+  botName   String?
+  botToken  String?
+  note      String?
+  createdAt DateTime @default(now())
+}
