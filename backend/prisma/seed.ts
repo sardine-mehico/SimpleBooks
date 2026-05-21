@@ -486,7 +486,8 @@ async function main() {
   // Two sample accounts so empty-state isn't the first impression.
   const everyday = await prisma.accountType.findUniqueOrThrow({ where: { name: 'Everyday' } });
   const savings = await prisma.accountType.findUniqueOrThrow({ where: { name: 'Savings' } });
-  const today = new Date();
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
   await prisma.account.create({
     data: {
       name: 'CBA Smart Access',
