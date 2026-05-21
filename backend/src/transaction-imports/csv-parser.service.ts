@@ -56,6 +56,12 @@ function parseDateOrThrow(raw: string, fmt: DateFormat): string {
   if (month < 1 || month > 12 || day < 1 || day > 31) {
     throw new Error(`Date "${raw}" has invalid month/day`);
   }
+  // Validate that the date is a real calendar date (e.g., reject Apr 31, Feb 29 in non-leap years).
+  // Use local calendar constructor — no UTC drift.
+  const probe = new Date(year, month - 1, day);
+  if (probe.getFullYear() !== year || probe.getMonth() !== month - 1 || probe.getDate() !== day) {
+    throw new Error(`Date "${raw}" is not a real calendar date`);
+  }
   // Build YYYY-MM-DD directly from parts — no `new Date()` round-trip
   // (CLAUDE.md gotcha: +08:00 timezone would shift the calendar day back).
   return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;

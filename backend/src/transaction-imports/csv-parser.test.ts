@@ -102,3 +102,22 @@ run('Mapping with no date column is rejected', () => {
   };
   assert.throws(() => parseCsv(Buffer.from('a,1.00,x\n'), bad), /date/i);
 });
+
+run('Invalid calendar date (Apr 31) is rejected', () => {
+  const buf = Buffer.from('31/04/2026,"+1.00","bad","+1.00"\n');
+  const result = parseCsv(buf, styleAMapping());
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.parseErrors.length, 1);
+  assert.match(result.parseErrors[0].reason, /calendar|real/i);
+});
+
+run('Leap-year boundary: 29 Feb 2024 is valid, 29 Feb 2025 is rejected', () => {
+  const buf = Buffer.from(
+    '29/02/2024,"+1.00","leap","+1.00"\n' +
+    '29/02/2025,"+1.00","not-leap","+1.00"\n'
+  );
+  const result = parseCsv(buf, styleAMapping());
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].date, '2024-02-29');
+  assert.equal(result.parseErrors.length, 1);
+});
