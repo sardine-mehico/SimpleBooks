@@ -75,26 +75,7 @@ export class TransactionImportsService {
       importHash: rowImportHash(r.date, r.amount, r.description, r.runningBalance),
     }));
 
-    // Running-balance self-consistency check across consecutive pairs in the
-    // file (sort by date asc + file order so the math lines up regardless of
-    // whether the CSV is oldest-first or newest-first).
     const warnings: string[] = [];
-    const dateSorted = [...hashed]
-      .map((r, i) => ({ r, i }))
-      .sort((a, b) => a.r.date.localeCompare(b.r.date) || a.i - b.i);
-    for (let k = 1; k < dateSorted.length; k++) {
-      const prev = dateSorted[k - 1].r;
-      const curr = dateSorted[k].r;
-      if (prev.runningBalance && curr.runningBalance) {
-        const expected = Number(prev.runningBalance) + Number(curr.amount);
-        const actual = Number(curr.runningBalance);
-        if (Math.abs(expected - actual) > 0.01) {
-          warnings.push(
-            `Rows around ${curr.date}: balance jump $${actual.toFixed(2)} does not match expected $${expected.toFixed(2)} (diff $${(actual - expected).toFixed(2)})`,
-          );
-        }
-      }
-    }
 
     // Detect file-already-imported for the warnings list.
     const prior = await this.prisma.transactionImport.findFirst({
