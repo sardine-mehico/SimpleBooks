@@ -466,6 +466,46 @@ async function main() {
     },
   });
 
+  // ── AccountType lookup (Banking Phase A) ─────────────────────────────────
+  const accountTypes = [
+    'Everyday',
+    'Savings',
+    'Credit Card',
+    'Loan',
+    'Cash',
+    'Offset',
+  ];
+  for (const name of accountTypes) {
+    await prisma.accountType.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  }
+
+  // Two sample accounts so empty-state isn't the first impression.
+  const everyday = await prisma.accountType.findUniqueOrThrow({ where: { name: 'Everyday' } });
+  const savings = await prisma.accountType.findUniqueOrThrow({ where: { name: 'Savings' } });
+  const today = new Date();
+  await prisma.account.create({
+    data: {
+      name: 'CBA Smart Access',
+      bank: 'Commonwealth Bank',
+      accountTypeId: everyday.id,
+      openingBalance: 0,
+      openingDate: today,
+    },
+  });
+  await prisma.account.create({
+    data: {
+      name: 'CBA Goal Saver',
+      bank: 'Commonwealth Bank',
+      accountTypeId: savings.id,
+      openingBalance: 0,
+      openingDate: today,
+    },
+  });
+
   console.log('seed: done');
 }
 

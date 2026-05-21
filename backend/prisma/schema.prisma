@@ -362,3 +362,98 @@ model TelegramAllowlist {
   note      String?
   createdAt DateTime @default(now())
 }
+
+// ── Banking ─────────────────────────────────────────────────────────────────
+
+// Lookup of account types. Seeded with the six common AU personal types; the
+// user can add/rename/deactivate from /settings/account-types. FK Restrict on
+// Account.accountTypeId means a type can't be deleted while in use (mirrors
+// BillingCompany → InvoiceTemplate).
+model AccountType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts Account[]
+}
+
+// A bank account the user tracks. `openingBalance` + `openingDate` anchor the
+// running-balance computation; current balance = openingBalance + SUM(amount)
+// across all transactions. Soft-delete only (isActive).
+model Account {
+  id             String      @id @default(uuid())
+  name           String
+  bank           String
+  accountNumber  String?
+  accountTypeId  String
+  accountType    AccountType @relation(fields: [accountTypeId], references: [id], onDelete: Restrict)
+  openingBalance Decimal     @db.Decimal(14, 2) @default(0)
+  openingDate    DateTime    @db.Date
+  notes          String?
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  transactions Transaction[]
+  imports      TransactionImport[]
+}
+
+// A single bank-statement line. `amount` is SIGNED (negative=debit,
+// positive=credit). `runningBalance` is the bank-supplied figure for the
+// row when the CSV exposes it; nullable so manual entries and bank formats
+// without a balance column still fit. `importHash` is the dedupe key —
+// sha256 of date|amount.toFixed(2)|normaliseDesc(description)|runningBalance,
+// uniqued per account.
+//
+// `categoryId`, `vendorCustomerId`, `notes` are Phase-B forward-compat and
+// neither read nor written by Phase A code.
+model Transaction {
+  id             String   @id @default(uuid())
+  accountId      String
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  date           DateTime @db.Date
+  amount         Decimal  @db.Decimal(14, 2)
+  description    String
+  runningBalance Decimal? @db.Decimal(14, 2)
+
+  categoryId       String?
+  vendorCustomerId String?
+  notes            String?
+
+  importHash String
+  importId   String?
+  import     TransactionImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, importHash])
+  @@index([accountId, date])
+  @@index([date])
+}
+
+// One row per CSV import attempt — always created, even on zero-import or
+// all-failed outcomes, so the audit trail is complete. `reportJson` holds
+// the full ImportReport shape consumed by <ImportReportPopup>.
+model TransactionImport {
+  id         String   @id @default(uuid())
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  filename   String
+  fileSize   Int
+  fileSha256 String
+  importedAt DateTime @default(now())
+
+  mappingJson    Json
+  rowsTotal      Int
+  rowsImported   Int
+  rowsSkippedDup Int
+  rowsFailed     Int
+  reportJson     Json
+
+  transactions Transaction[]
+}
