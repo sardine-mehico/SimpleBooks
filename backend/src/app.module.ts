@@ -23,6 +23,7 @@ import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { PreferencesModule } from './preferences/preferences.module';
 import { PdfModule } from './pdf/pdf.module';
 import { PublicInvoicesModule } from './public-invoices/public-invoices.module';
+import { TransactionImportsModule } from './transaction-imports/transaction-imports.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
 
@@ -57,6 +58,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
     PreferencesModule,
     PdfModule,
     PublicInvoicesModule,
+    TransactionImportsModule,
   ],
 })
 export class AppModule {}
