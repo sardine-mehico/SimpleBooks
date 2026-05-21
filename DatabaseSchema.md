@@ -7,7 +7,7 @@ For per-module *field semantics, required flags, UI surface, and business logic*
 ## Conventions
 
 - IDs are `UUID v4` (`@default(uuid())`) **except** `User`, `Task`, and `TelegramChat`, which use `cuid` (`@default(cuid())`) for legacy reasons.
-- Money columns are `Decimal(12, 2)`. Tax rates are `Decimal(6, 3)` (percent, 0–100 with three decimal places).
+- Money columns are `Decimal(12, 2)` for invoice values. Banking money columns use `Decimal(14, 2)` — account balances accumulated over years can exceed the 10-digit integer cap of `(12, 2)`. Tax rates are `Decimal(6, 3)` (percent, 0–100 with three decimal places).
 - Decimals serialize to **strings** over JSON — always wrap with `Number(...)` on the frontend before arithmetic.
 - All "active/inactive" flags are stored as `Boolean isActive @default(true)`.
 - `createdAt` is `DateTime @default(now())`. `updatedAt` is `DateTime @updatedAt` (Prisma auto-touches it on every write).
@@ -328,6 +328,91 @@ Lazily created on first GET when absent.
 | `password` | string | `""` | **Stored as plain text — not encrypted at rest. Boilerplate trade-off; revisit before production.** |
 | `createdAt` / `updatedAt` | datetime | | |
 
+---
+
+## Banking
+
+### AccountType
+Lookup catalog for account types. Seeded with 6 rows: Everyday, Savings, Credit Card, Loan, Cash, Offset. User-editable via `/settings/account-types`.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `name` | string | UNIQUE |
+| `isActive` | bool | default `true` |
+| `createdAt` / `updatedAt` | datetime | |
+
+Relations: `accounts Account[]`. FK from `Account.accountTypeId` is `ON DELETE RESTRICT` — an account type cannot be deleted while any account references it (mirrors `BillingCompany → InvoiceTemplate`).
+
+---
+
+### Account
+A bank account the user tracks. Opening balance + opening date anchor the running-balance computation: current balance = `openingBalance + SUM(Transaction.amount)`. Soft-delete only (`isActive`).
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `name` | string | |
+| `bank` | string | |
+| `accountNumber` | string? | |
+| `accountTypeId` | UUID | FK → `AccountType.id` (ON DELETE **RESTRICT**) |
+| `openingBalance` | decimal(14,2) | default `0` |
+| `openingDate` | date | |
+| `notes` | string? | |
+| `isActive` | bool | default `true` |
+| `createdAt` / `updatedAt` | datetime | |
+
+Relations: `transactions Transaction[]`, `imports TransactionImport[]`.
+
+---
+
+### Transaction
+A single bank-statement line. `amount` is SIGNED (negative = debit, positive = credit). `runningBalance` is the bank-supplied figure when the CSV exposes it; nullable so formats without a balance column still fit. `categoryId`, `vendorCustomerId`, and `notes` are Phase-B forward-compat columns — neither read nor written by Phase A.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `accountId` | UUID | FK → `Account.id` (ON DELETE **CASCADE**) |
+| `date` | date | |
+| `amount` | decimal(14,2) | SIGNED — negative = debit, positive = credit |
+| `description` | string | |
+| `runningBalance` | decimal(14,2)? | bank-supplied; nullable |
+| `categoryId` | string? | Phase-B forward-compat |
+| `vendorCustomerId` | string? | Phase-B forward-compat |
+| `notes` | string? | Phase-B forward-compat |
+| `importHash` | string | dedupe key — sha256 of `date\|amount.toFixed(2)\|normaliseDesc(description)\|runningBalance` |
+| `importId` | UUID? | FK → `TransactionImport.id` (ON DELETE **SET NULL**) |
+| `createdAt` / `updatedAt` | datetime | |
+
+Indexes / unique constraints:
+- `@@unique([accountId, importHash])` — prevents duplicate import rows per account.
+- `@@index([accountId, date])` — primary query pattern for account transaction lists.
+- `@@index([date])` — supports global date-range filters.
+
+---
+
+### TransactionImport
+Audit record for every CSV import attempt — created even on zero-import or all-failed outcomes. `reportJson` holds the full `ImportReport` shape consumed by `<ImportReportPopup>`.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `accountId` | UUID | FK → `Account.id` (ON DELETE **CASCADE**) |
+| `filename` | string | |
+| `fileSize` | int | bytes |
+| `fileSha256` | string | |
+| `importedAt` | datetime | default `now()` |
+| `mappingJson` | Json | CSV column → field mapping chosen at import time |
+| `rowsTotal` | int | |
+| `rowsImported` | int | |
+| `rowsSkippedDup` | int | rows skipped because `(accountId, importHash)` already existed |
+| `rowsFailed` | int | |
+| `reportJson` | Json | full `ImportReport` for display in `<ImportReportPopup>` |
+
+Relations: `transactions Transaction[]`.
+
+---
+
 ## Relationship diagram (text)
 
 ```
@@ -348,6 +433,9 @@ EmailTemplate   ─< Invoice
 User ─< Task
 User ─< TelegramChat
 
+AccountType ─< Account ─< Transaction
+             Account   ─< TransactionImport ─< Transaction
+
 (TaxType, Preferences, MailConfiguration, TelegramAllowlist are standalone —
 no FKs to or from other tables.)
 ```
@@ -355,4 +443,4 @@ no FKs to or from other tables.)
 Edge labels:
 - `>─` = many-to-one (the side with `>` is the "many")
 - `─<` = one-to-many (the side with `<` is the "many")
-- Most FKs use `ON DELETE SET NULL`. Exceptions: `InvoiceItem.invoiceId` and `RecurringRuleLineItem.recurringRuleId` are `ON DELETE CASCADE`; the four template FKs (`BillingCompany.invoiceTemplateId`, `BillingCompany.emailTemplateId`, `Invoice.invoiceTemplateId`, `Invoice.emailTemplateId`) are `ON DELETE RESTRICT` — a referenced template cannot be deleted.
+- Most FKs use `ON DELETE SET NULL`. Exceptions: `InvoiceItem.invoiceId` and `RecurringRuleLineItem.recurringRuleId` are `ON DELETE CASCADE`; the four template FKs (`BillingCompany.invoiceTemplateId`, `BillingCompany.emailTemplateId`, `Invoice.invoiceTemplateId`, `Invoice.emailTemplateId`) and `Account.accountTypeId` are `ON DELETE RESTRICT` — a referenced row cannot be deleted while in use. Banking cascade: deleting an `Account` cascades to its `Transaction` and `TransactionImport` rows; deleting a `TransactionImport` sets `Transaction.importId` to NULL (preserving the transaction).

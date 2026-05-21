@@ -63,6 +63,7 @@ Routing pattern (per module):
 | Validation | **`class-validator` + `class-transformer`** | DTOs are the single source of truth; the Telegram bot reuses the same `CreateTaskDto` |
 | Queues | **BullMQ 5** via `@nestjs/bullmq` | `ioredis` driver. Two queues: `recurring-invoices` (1-minute repeat sweep) and `invoice-mail` (retry queue for failed sends). |
 | Bot | **Telegraf 4** | injects `TasksService` directly to mirror HTTP behavior; long-poll unless `TELEGRAM_WEBHOOK_DOMAIN` is set |
+| CSV parsing | **`papaparse` 5** (+ `@types/papaparse` devDep) | used by `transaction-imports` for sniff + commit |
 | PDF | **`@react-pdf/renderer` 4** + `react` 18 | Renders React components to PDF in Node — no headless browser. Templates live at [backend/src/pdf/templates/](backend/src/pdf/templates/), one TSX per `InvoiceTemplate.templateKey`; the registry at [backend/src/pdf/templates/index.ts](backend/src/pdf/templates/index.ts) maps each key to its component. All 10 production templates (`design-1` … `design-10`) are wired — `default.tsx` is kept as a fallback for unknown keys. Soft size target ≤ 180 KB/page — `PdfService.renderInvoice` logs a warning when exceeded. No raster images; fonts are subsetted Latin WOFFs from `@fontsource/*`. TSX support: `jsx: "react"` in `backend/tsconfig.json` with `src/**/*.tsx` in `include`. |
 | Invoice typography | **Subsetted Google Fonts** via `@fontsource/*` | Each template registers only the families it uses. Today: **Inter** (design-1/2/3/4/6), **Oswald + Source Sans 3** (design-5), **DM Sans** (design-7), **Manrope** (design-8), **Lora** (design-9), **Plus Jakarta Sans** (design-10). 1–3 weights per family, ~25 KB per weight WOFF — stays comfortably within the 180 KB/page budget even with all fonts loaded in one render session. |
 
@@ -72,9 +73,25 @@ NestJS module layout (one per backend domain):
 - `tax-types`, `mail-configuration`, `invoice-templates`, `email-templates`, `preferences` — settings.
 - `pdf` — React-PDF render service, used by `invoices` (for `GET /invoices/:id/pdf`), by `mail` (when the Send dialog's "Attach PDF invoice" checkbox is ticked), and by `public-invoices` (for the customer-facing PDF download).
 - `public-invoices` — unauthenticated customer-facing endpoints `GET /public/invoices/:token` (JSON for the HTML view) and `GET /public/invoices/:token/pdf` (force-download). Handles the SENT → VIEWED status transition on first open.
+- `accounts` — CRUD for bank accounts. Route prefix `/accounts`. Includes current-balance computation (`openingBalance + SUM(Transaction.amount)`) and transaction count.
+- `account-types` — settings catalog. Route prefix `/account-types`. Seeded; user-editable.
+- `transactions` — read + server-side filter/sort/pagination. Route prefix `/transactions`. Supports account-scoped queries (`?accountId=`) and global queries. No create/update endpoint — transactions enter only via CSV import.
+- `transaction-imports` — CSV import flow. Two multipart endpoints: `POST /transaction-imports/sniff` (column detection, 10 MB limit) and `POST /transaction-imports/commit` (insert rows, 10 MB limit). Both use `FileInterceptor`. Parses CSV via `papaparse`; deduplicates by `@@unique([accountId, importHash])`.
+- `import-logs` — read-only. Route prefix `/import-logs`. Exposes list and detail for `TransactionImport` rows. No delete or write endpoints — records are immutable.
 - `prisma` — shared global module exposing `PrismaService`.
 
 All wired in [backend/src/app.module.ts](backend/src/app.module.ts).
+
+#### Banking — shared types
+`backend/src/transaction-imports/types.ts` defines the `ImportReport`, `ImportReportRow`, and column-mapping interfaces shared across the sniff/commit/log pipeline. The frontend counterpart lives at `frontend/lib/types.ts` (Banking section). Both files must stay in sync — the shape is serialised into `TransactionImport.reportJson` and read back by `<ImportReportPopup>`.
+
+#### Banking — ts-node tests
+CSV parser and column-sniffer have standalone ts-node test scripts (no Jest). Run with:
+```
+docker compose exec backend npx ts-node src/transaction-imports/test-csv-parser.ts
+docker compose exec backend npx ts-node src/transaction-imports/test-csv-sniffer.ts
+```
+`backend/tsconfig.json` has `"types": ["node"]` (added Task 5) for ts-node compatibility. A `package-lock.json` was also added to the backend directory at that point (it didn't exist before).
 
 #### Production invoice templates
 Ten React-PDF templates ship under [backend/src/pdf/templates/](backend/src/pdf/templates/), one per `InvoiceTemplate.templateKey`:

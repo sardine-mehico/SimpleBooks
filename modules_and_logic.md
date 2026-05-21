@@ -469,6 +469,118 @@ To change template content: edit the seed (and, for invoice designs, the matchin
 ### Roles · Users
 Backend models for Roles and Users do not exist yet — those tabs render a "coming soon" placeholder. Add the models + endpoints + UI following the patterns from Tax Types / Mail Configuration when ready.
 
+### Account Types — `/settings/account-types`
+Catalog of account types used by the Accounts module. Seeded with 6 rows: Everyday, Savings, Credit Card, Loan, Cash, Offset.
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string (unique) | yes | |
+| `isActive` | boolean | no | |
+
+- **List columns:** Name · Status · edit + delete actions.
+- **Default sort:** Status asc (Active first), tie-breaker Name asc.
+- **Create / edit:** Dialog with Name · Active switch (tax-types-manager pattern).
+- FK is `RESTRICT` — an account type cannot be deleted while any account references it.
+
+### Import Logs — `/settings/import-logs`
+Read-only list of every CSV import attempt. Sidebar entry under Settings.
+- **List columns:** Account · Filename · Date · Rows Total · Imported · Skipped (dup) · Failed · link to detail.
+- **Default sort:** `importedAt` desc.
+- **Detail page** `/settings/import-logs/[id]`: re-renders the same `<ImportReportPopup>` component shown immediately after import. Single source of truth — both views read the `ImportReport` JSON shape stored in `TransactionImport.reportJson`.
+- No delete endpoint. Records are immutable once created.
+
+---
+
+## Banking
+
+### Accounts
+
+Bank accounts the user tracks. Backend module: `accounts`. Route prefix: `/accounts`.
+
+#### Fields
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | UUID | auto | |
+| `name` | string | **yes** | |
+| `bank` | string | **yes** | |
+| `accountNumber` | string | no | |
+| `accountTypeId` | FK → AccountType | **yes** | |
+| `openingBalance` | decimal(14,2) | no | default `0` |
+| `openingDate` | date | **yes** | default today (local calendar — use `localIsoDate()`) |
+| `notes` | text | no | |
+| `isActive` | boolean | no | default `true` |
+| `createdAt` / `updatedAt` | datetime | auto | |
+
+#### List page — `/accounts`
+- **Columns:** Account · Bank · Type · Current balance · Transactions count · Status.
+- **Default sort:** `isActive` desc (Active first), tie-breaker `name` asc.
+
+#### Edit page — `/accounts/[id]` (and `/accounts/new`)
+Uses `EditPageChrome`.
+- **Row 1:** Name (required) · Bank (required)
+- **Row 2:** Account Number · Account Type (required, select)
+- **Row 3:** Opening Balance · Opening Date (required)
+- **Row 4:** Notes (full-width textarea)
+- **Right action:** Archive / Restore button (toggles `isActive`). Renders as an outline button in the header's `rightActions` slot.
+
+#### Detail page — `/accounts/[id]`
+A separate read-oriented view (not the edit page). Contains:
+- `<AccountHeaderCard>` — shows name, bank, account type, current balance, last import link, and an Edit button.
+- `<ImportCsvButton>` — launches the sniff → confirm-mapping → commit CSV import flow.
+- `<TransactionsTable mode="account">` — server-side paginated list scoped to this account.
+
+#### Logic
+- Current balance = `openingBalance + SUM(Transaction.amount)`. Computed server-side; not stored.
+- Deleting an account cascades to all its `Transaction` and `TransactionImport` rows.
+
+---
+
+### Transactions
+
+Read-only list of bank-statement lines. Backend module: `transactions`. Route prefix: `/transactions`.
+
+**This is the first module in the app with server-side filter, sort, and pagination.** State is URL-driven: `?accountIds=&dateFrom=&dateTo=&sortBy=&sortDir=&page=`. The frontend reads searchParams and passes them to the API; no client-side filter pass.
+
+#### Fields (per row)
+| Field | Notes |
+|---|---|
+| `date` | Transaction date (not import date) |
+| `description` | As imported from the CSV |
+| `amount` | SIGNED decimal — negative = debit, positive = credit |
+| `runningBalance` | Bank-supplied balance after this row; may be null |
+| `accountId` | Parent account |
+| `importHash` | Dedupe key; not shown in UI |
+
+#### List columns
+- **Account mode** (rendered within `/accounts/[id]` via `<TransactionsTable mode="account">`): Date · Description · Amount · Balance.
+- **Global mode** (at `/transactions`): adds Account column before Date.
+
+#### Pagination & sorting
+- **Page size: 200 rows** (overrides the project default of 100).
+- **Default sort:** `date desc`, `id desc` (stable tie-breaker within one day).
+- Sort and page are URL parameters — navigating back preserves position.
+
+#### Filters
+- Date range (`dateFrom` / `dateTo`), both optional.
+- In global mode: Account multi-select (`accountIds`).
+- No client-side filter pass — all filtering goes through the backend query.
+
+#### Amount rendering
+- Positive (credit): `text-green-700`.
+- Negative (debit): `text-red-700`.
+- Always `font-mono tabular-nums` for column alignment.
+
+---
+
+### CSV Import flow (via `<ImportCsvButton>`)
+Two-step flow launched from the account detail page:
+
+1. **Sniff** — `POST /transaction-imports/sniff` (multipart, 10 MB limit). Returns detected columns, a sample of rows, and a suggested field mapping.
+2. **Confirm mapping modal** — user reviews and adjusts the column → field mapping.
+3. **Commit** — `POST /transaction-imports/commit` (multipart, 10 MB limit). Inserts rows, deduplicates by `@@unique([accountId, importHash])`, creates a `TransactionImport` record, returns an `ImportReport`.
+4. **`<ImportReportPopup>`** — displays the import summary (rows total / imported / skipped / failed). The same component renders on the persisted log detail page at `/settings/import-logs/[id]`.
+
+Duplicate detection hash: sha256 of `date|amount.toFixed(2)|normaliseDesc(description)|runningBalance ?? ''`, uniqued per account.
+
 ---
 
 ## Cross-module conventions

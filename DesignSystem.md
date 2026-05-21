@@ -165,3 +165,28 @@ The Settings → Dynamic Fields page reads straight from `DYNAMIC_FIELDS` — ad
 - Trigger: a hamburger (`lucide-react`'s `List`) on the left of the CommandBar, `md:hidden`, slate-600 idle / slate-100 hover.
 - Sheet: 240px wide, `#323D59`, slides in from the left, scrim is `bg-slate-900/40` + `backdrop-blur-sm`. Auto-closes on link click via `onNavigate` callback passed into `SidebarBody`.
 - The same `SidebarBody` component renders inside the desktop `<aside>` and the mobile sheet — single source of truth for nav items, styling, and active states.
+
+## Banking — exceptions and conventions
+
+### Transactions table page size
+The transactions table uses **page size 200** (project default is 100). This is intentional — bank statements are row-dense and users expect to see a full month without paginating. `DEFAULT_PAGE_SIZE` from `list-table.tsx` does **not** apply here; the transactions list uses its own constant.
+
+### Signed-amount colours
+Render transaction amounts with:
+- Positive (credit): `text-green-700`
+- Negative (debit): `text-red-700`
+- Always paired with `font-mono tabular-nums` for column alignment.
+
+Do not use `emerald` (the palette's positive tone) for transaction amounts — `green-700` is the standard for this surface.
+
+### `<ImportReportPopup>` — shared component
+`<ImportReportPopup>` is rendered in two places:
+1. The post-import dialog shown immediately after a successful (or partial) commit.
+2. The persisted log detail page at `/settings/import-logs/[id]`.
+
+Both views use the identical component reading from the same `ImportReport` JSON shape stored in `TransactionImport.reportJson`. Do not create a second layout for the log detail — route it through the same component.
+
+### Settings sub-nav additions
+Account Types and Import Logs each have their own entry in the Settings sub-nav, alongside Tax Types, Dynamic Fields, and Recurring Schedules:
+- **Account Types** — `/settings/account-types`
+- **Import Logs** — `/settings/import-logs`
