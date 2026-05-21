@@ -1,2 +1,7 @@
-import { ComingSoon } from "@/components/layout/coming-soon";
-export default function Page() { return <ComingSoon title="Accounts" />; }
+import { AccountsList } from "@/components/accounts/accounts-list";
+import { listAccounts } from "@/lib/banking";
+
+export default async function Page() {
+  const accounts = await listAccounts(true);
+  return <AccountsList initial={accounts} />;
+}
