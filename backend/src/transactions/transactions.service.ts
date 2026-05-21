@@ -25,8 +25,7 @@ export class TransactionsService {
     ];
     // Stable secondary sort on id desc so same-date rows always come back in
     // the same order (paginating across same-day rows would otherwise jitter).
-    if (sortBy !== 'date') orderBy.push({ id: 'desc' });
-    else orderBy.push({ id: 'desc' });
+    orderBy.push({ id: 'desc' });
 
     const page = q.page ?? 1;
     const pageSize = q.pageSize ?? 200;

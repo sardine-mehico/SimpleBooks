@@ -91,7 +91,7 @@ export class TransactionImportsService {
 
     const importedAt = new Date();
 
-    const { importRow, importedRows, duplicateRows } = await this.prisma.$transaction(async (tx) => {
+    const report: ImportReport = await this.prisma.$transaction(async (tx) => {
       const importRow = await tx.transactionImport.create({
         data: {
           accountId,
@@ -104,7 +104,7 @@ export class TransactionImportsService {
           rowsImported: 0,
           rowsSkippedDup: 0,
           rowsFailed: parseErrors.length,
-          reportJson: {} as unknown as Prisma.InputJsonValue, // filled in after insert
+          reportJson: {} as unknown as Prisma.InputJsonValue,
         },
       });
 
@@ -148,41 +148,37 @@ export class TransactionImportsService {
           existingTransactionId: existingByHash.get(r.importHash) ?? '',
         }));
 
+      const builtReport: ImportReport = {
+        importId: importRow.id,
+        accountId,
+        accountName: acct.name,
+        filename,
+        fileSize: buffer.length,
+        fileSha256: sha,
+        importedAt: importedAt.toISOString(),
+        mapping,
+        counts: {
+          total: rows.length + parseErrors.length,
+          imported: importedRows.length,
+          duplicates: duplicateRows.length,
+          failed: parseErrors.length,
+        },
+        imported: importedRows.map((r) => ({ date: r.date, amount: r.amount, description: r.description })),
+        duplicates: duplicateRows,
+        failed: parseErrors,
+        warnings,
+      };
+
       await tx.transactionImport.update({
         where: { id: importRow.id },
         data: {
           rowsImported: importedRows.length,
           rowsSkippedDup: duplicateRows.length,
+          reportJson: builtReport as unknown as Prisma.InputJsonValue,
         },
       });
 
-      return { importRow, importedRows, duplicateRows };
-    });
-
-    const report: ImportReport = {
-      importId: importRow.id,
-      accountId,
-      accountName: acct.name,
-      filename,
-      fileSize: buffer.length,
-      fileSha256: sha,
-      importedAt: importedAt.toISOString(),
-      mapping,
-      counts: {
-        total: rows.length + parseErrors.length,
-        imported: importedRows.length,
-        duplicates: duplicateRows.length,
-        failed: parseErrors.length,
-      },
-      imported: importedRows.map((r) => ({ date: r.date, amount: r.amount, description: r.description })),
-      duplicates: duplicateRows,
-      failed: parseErrors,
-      warnings,
-    };
-
-    await this.prisma.transactionImport.update({
-      where: { id: importRow.id },
-      data: { reportJson: report as unknown as Prisma.InputJsonValue },
+      return builtReport;
     });
 
     return report;

@@ -88,8 +88,8 @@ All wired in [backend/src/app.module.ts](backend/src/app.module.ts).
 #### Banking — ts-node tests
 CSV parser and column-sniffer have standalone ts-node test scripts (no Jest). Run with:
 ```
-docker compose exec backend npx ts-node src/transaction-imports/test-csv-parser.ts
-docker compose exec backend npx ts-node src/transaction-imports/test-csv-sniffer.ts
+docker compose exec backend npx ts-node src/transaction-imports/csv-parser.test.ts
+docker compose exec backend npx ts-node src/transaction-imports/csv-sniffer.test.ts
 ```
 `backend/tsconfig.json` has `"types": ["node"]` (added Task 5) for ts-node compatibility. A `package-lock.json` was also added to the backend directory at that point (it didn't exist before).
 
