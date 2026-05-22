@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Scissors } from "lucide-react";
+import { AlertTriangle, Clock, Scissors } from "lucide-react";
 import { setTransactionCategory } from "@/lib/banking-rules";
-import type { Category, Transaction, Vendor } from "@/lib/types";
+import { applyAiSuggestion } from "@/lib/ai";
+import type { AiDraftView, Category, Transaction, Vendor } from "@/lib/types";
+import { AiSuggestionBanner } from "./ai-suggestion-banner";
 
 function fmtAmount(amount: string | number): string {
   const n = Number(amount);
@@ -45,15 +47,35 @@ export function TransactionEditModal({
   const [vendorId, setVendorId] = useState<string>(transaction.vendorId ?? "");
   const [notes, setNotes] = useState<string>(transaction.notes ?? "");
   const [saving, setSaving] = useState(false);
+  const [activeDraft, setActiveDraft] = useState<AiDraftView | null>(null);
+  const [aiEditMode, setAiEditMode] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    if (!activeDraft || aiEditMode) return;
+    if (categoryId !== (activeDraft.categoryId ?? '') || vendorId !== (activeDraft.vendorId ?? '')) {
+      setAiEditMode(true);
+    }
+  }, [categoryId, vendorId, activeDraft, aiEditMode]);
 
   async function onSave() {
     setSaving(true);
     try {
-      await setTransactionCategory(transaction.id, {
-        categoryId: categoryId || undefined,
-        vendorId: vendorId || undefined,
-        notes,
-      });
+      if (aiEditMode && activeDraft) {
+        // Server-side resolves accept-vs-edit based on whether chosen values
+        // match the AI's pick (decided server-side per spec).
+        await applyAiSuggestion(transaction.id, {
+          action: 'edit',
+          chosenCategoryId: categoryId,
+          chosenVendorId: vendorId || null,
+        });
+      } else {
+        await setTransactionCategory(transaction.id, {
+          categoryId: categoryId || undefined,
+          vendorId: vendorId || undefined,
+          notes,
+        });
+      }
       router.refresh();
       onClose();
     } finally {
@@ -64,8 +86,15 @@ export function TransactionEditModal({
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>Edit transaction</DialogTitle>
+          <button
+            type="button"
+            className="text-xs text-slate-500 hover:text-slate-800"
+            onClick={() => setHistoryOpen(true)}
+          >
+            <Clock className="inline h-3 w-3" /> History
+          </button>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -102,6 +131,20 @@ export function TransactionEditModal({
               <div className="text-slate-800">{transaction.account?.name ?? "—"}</div>
             </div>
           </div>
+
+          <AiSuggestionBanner
+            transactionId={transaction.id}
+            auto={!transaction.categoryId}
+            onAccepted={() => { router.refresh(); onClose(); }}
+            onRejected={() => { setActiveDraft(null); setAiEditMode(false); }}
+            onEditMode={(draft) => {
+              setActiveDraft(draft);
+              setAiEditMode(true);
+              if (draft.categoryId) setCategoryId(draft.categoryId);
+              if (draft.vendorId)   setVendorId(draft.vendorId);
+            }}
+            onDraftLoaded={setActiveDraft}
+          />
 
           {/* Editable block */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
