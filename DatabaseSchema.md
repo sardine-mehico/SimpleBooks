@@ -24,6 +24,12 @@ For per-module *field semantics, required flags, UI surface, and business logic*
 | `SendingOption` | `REVIEW_BEFORE_SENDING`, `SEND_DIRECTLY` |
 | `SendVia` | `GENERAL_SMTP`, `CUSTOM_SMTP` |
 | `EmailEncryption` | `NONE`, `SSL`, `TLS`, `STARTTLS` |
+| `CategoryKind` | `INCOME`, `EXPENSE`, `TRANSFER`, `OTHER` |
+| `VendorKind` | `VENDOR_MATCH` (Phase B; further values scaffolded for Phase C) |
+| `RuleState` | `USER`, `AI_DRAFTED`, `APPROVED`, `DENIED` |
+| `RuleField` | Fields a rule condition can match against (e.g. `DESCRIPTION`, `AMOUNT`, `DATE`) |
+| `RuleOperator` | Comparison operators for rule conditions (e.g. `CONTAINS`, `EQUALS`, `GT`, `LT`, `BETWEEN`, `IN_LIST`) |
+| `EventSource` | `MANUAL`, `RULE`, `AI_SUGGESTION`, `IMPORT` — records what triggered a `CategorisationEvent` |
 
 ## Models
 
@@ -367,7 +373,9 @@ Relations: `transactions Transaction[]`, `imports TransactionImport[]`.
 ---
 
 ### Transaction
-A single bank-statement line. `amount` is SIGNED (negative = debit, positive = credit). `runningBalance` is the bank-supplied figure when the CSV exposes it; nullable so formats without a balance column still fit. `categoryId`, `vendorCustomerId`, and `notes` are Phase-B forward-compat columns — neither read nor written by Phase A.
+A single bank-statement line. `amount` is SIGNED (negative = debit, positive = credit). `runningBalance` is the bank-supplied figure when the CSV exposes it; nullable so formats without a balance column still fit.
+
+Phase B promoted several forward-compat columns to real FKs and added new columns. The `vendorCustomerId` rename to `vendorId` is non-additive — see Known Operational Caveats.
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -377,9 +385,11 @@ A single bank-statement line. `amount` is SIGNED (negative = debit, positive = c
 | `amount` | decimal(14,2) | SIGNED — negative = debit, positive = credit |
 | `description` | string | |
 | `runningBalance` | decimal(14,2)? | bank-supplied; nullable |
-| `categoryId` | string? | Phase-B forward-compat |
-| `vendorCustomerId` | string? | Phase-B forward-compat |
-| `notes` | string? | Phase-B forward-compat |
+| `categoryId` | UUID? | FK → `Category.id` (ON DELETE **RESTRICT**) — Phase B |
+| `vendorId` | UUID? | FK → `Vendor.id` (ON DELETE **SET NULL**) — renamed from `vendorCustomerId` in Phase B |
+| `ruleId` | UUID? | FK → `Rule.id` (ON DELETE **SET NULL**) — the rule that last categorised this row |
+| `categorisedAt` | datetime? | stamped when categoryId is first set or changed by the engine |
+| `notes` | string? | |
 | `importHash` | string | dedupe key — sha256 of `date\|amount.toFixed(2)\|normaliseDesc(description)\|runningBalance` |
 | `importId` | UUID? | FK → `TransactionImport.id` (ON DELETE **SET NULL**) |
 | `createdAt` / `updatedAt` | datetime | |
@@ -388,6 +398,8 @@ Indexes / unique constraints:
 - `@@unique([accountId, importHash])` — prevents duplicate import rows per account.
 - `@@index([accountId, date])` — primary query pattern for account transaction lists.
 - `@@index([date])` — supports global date-range filters.
+
+Inverse relations added in Phase B: `splits TransactionSplit[]`, `events CategorisationEvent[]`.
 
 ---
 
@@ -433,8 +445,20 @@ EmailTemplate   ─< Invoice
 User ─< Task
 User ─< TelegramChat
 
-AccountType ─< Account ─< Transaction
+AccountType ─< Account ─< Transaction ─< TransactionSplit
              Account   ─< TransactionImport ─< Transaction
+             Transaction ─< CategorisationEvent
+
+Category ─< Transaction
+Category ─< TransactionSplit
+Category ─< Rule
+
+Vendor ─< Transaction
+Vendor ─< Rule
+
+Rule ─< RuleCondition
+Rule ─< Transaction
+Rule ─< CategorisationEvent
 
 (TaxType, Preferences, MailConfiguration, TelegramAllowlist are standalone —
 no FKs to or from other tables.)
@@ -443,4 +467,118 @@ no FKs to or from other tables.)
 Edge labels:
 - `>─` = many-to-one (the side with `>` is the "many")
 - `─<` = one-to-many (the side with `<` is the "many")
-- Most FKs use `ON DELETE SET NULL`. Exceptions: `InvoiceItem.invoiceId` and `RecurringRuleLineItem.recurringRuleId` are `ON DELETE CASCADE`; the four template FKs (`BillingCompany.invoiceTemplateId`, `BillingCompany.emailTemplateId`, `Invoice.invoiceTemplateId`, `Invoice.emailTemplateId`) and `Account.accountTypeId` are `ON DELETE RESTRICT` — a referenced row cannot be deleted while in use. Banking cascade: deleting an `Account` cascades to its `Transaction` and `TransactionImport` rows; deleting a `TransactionImport` sets `Transaction.importId` to NULL (preserving the transaction).
+- Most FKs use `ON DELETE SET NULL`. Exceptions: `InvoiceItem.invoiceId`, `RecurringRuleLineItem.recurringRuleId`, `RuleCondition.ruleId`, `TransactionSplit.transactionId`, and `CategorisationEvent.transactionId` are `ON DELETE CASCADE`; the four template FKs (`BillingCompany.invoiceTemplateId`, `BillingCompany.emailTemplateId`, `Invoice.invoiceTemplateId`, `Invoice.emailTemplateId`), `Account.accountTypeId`, `Transaction.categoryId`, `TransactionSplit.categoryId`, and `Rule.categoryId` are `ON DELETE RESTRICT` — a referenced row cannot be deleted while in use. Banking cascade: deleting an `Account` cascades to its `Transaction` and `TransactionImport` rows; deleting a `TransactionImport` sets `Transaction.importId` to NULL (preserving the transaction).
+
+---
+
+## Banking — Phase B
+
+### Category
+Lookup catalog for transaction categories. Seeded with 15 rows.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `name` | string | UNIQUE |
+| `kind` | enum `CategoryKind` | `INCOME`, `EXPENSE`, `TRANSFER`, `OTHER` |
+| `isActive` | bool | default `true` |
+| `sortOrder` | int | default `100`; controls dropdown ordering (lower = first) |
+| `createdAt` / `updatedAt` | datetime | |
+
+Relations: `transactions Transaction[]`, `splits TransactionSplit[]`, `rules Rule[]`.
+
+Delete blocked with 409 if any `Transaction`, `TransactionSplit`, or `Rule` references the row (FK `RESTRICT`).
+
+---
+
+### Vendor
+Lookup catalog for payees / merchants. Seeded with 39 rows.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `name` | string | UNIQUE |
+| `kind` | enum `VendorKind` | `VENDOR_MATCH` |
+| `aliases` | string[] | lowercase substrings; matching is case-insensitive whitespace-collapsed |
+| `notes` | string? | |
+| `isActive` | bool | default `true` |
+| `createdAt` / `updatedAt` | datetime | |
+
+Relations: `transactions Transaction[]`, `rules Rule[]`.
+
+---
+
+### Rule
+Categorisation rule. Evaluated priority-order (lower INT = higher precedence).
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `name` | string | |
+| `state` | enum `RuleState` | default `USER` |
+| `isActive` | bool | default `true` |
+| `priority` | int | default `1000`; spaced by 10 in practice |
+| `categoryId` | UUID | FK → `Category.id` (ON DELETE **RESTRICT**) |
+| `vendorId` | UUID? | FK → `Vendor.id` (ON DELETE **SET NULL**) — optional; applied to matched transactions |
+| `noteOnApply` | string? | text appended to `Transaction.notes` when the rule fires |
+| `hitCount` | int | default `0`; incremented by the engine on each pass |
+| `lastFiredAt` | datetime? | stamped by the engine on each pass |
+| `createdAt` / `updatedAt` | datetime | |
+
+Indexes: `@@index([priority])`, `@@index([state, isActive])`.
+
+Relations: `conditions RuleCondition[]`, `transactions Transaction[]`, `events CategorisationEvent[]`.
+
+---
+
+### RuleCondition
+One condition in a rule's AND-chain.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `ruleId` | UUID | FK → `Rule.id` (ON DELETE **CASCADE**) |
+| `field` | enum `RuleField` | the transaction field to test |
+| `operator` | enum `RuleOperator` | comparison operator |
+| `value` | string | primary comparison value |
+| `value2` | string? | upper bound for `BETWEEN` operator |
+| `valueList` | string[] | values for `IN_LIST` operator |
+| `position` | int | default `0`; display order within the rule |
+
+Index: `@@index([ruleId])`.
+
+---
+
+### TransactionSplit
+Splits a transaction across multiple categories. A transaction has either `categoryId` set (single-category) OR 1+ splits — never both. `SUM(split.amount)` must equal `Transaction.amount` (server-enforced).
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `transactionId` | UUID | FK → `Transaction.id` (ON DELETE **CASCADE**) |
+| `categoryId` | UUID | FK → `Category.id` (ON DELETE **RESTRICT**) |
+| `amount` | decimal(14,2) | the portion of the transaction assigned to this category |
+| `notes` | string? | |
+| `position` | int | default `0`; display order |
+
+Index: `@@index([transactionId])`.
+
+---
+
+### CategorisationEvent
+Append-only audit log. One row per change to a transaction's category, vendor, or accepted AI suggestion. Never updated after insert.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `transactionId` | UUID | FK → `Transaction.id` (ON DELETE **CASCADE**) |
+| `source` | enum `EventSource` | `MANUAL`, `RULE`, `AI_SUGGESTION`, `IMPORT` |
+| `ruleId` | UUID? | FK → `Rule.id` (ON DELETE **SET NULL**) — set when `source = RULE` |
+| `oldCategoryId` | UUID? | category before the change |
+| `newCategoryId` | UUID? | category after the change |
+| `oldVendorId` | UUID? | vendor before the change |
+| `newVendorId` | UUID? | vendor after the change |
+| `acceptedAiSuggestion` | bool? | set when `source = AI_SUGGESTION`; Phase C reads these rows as few-shot examples |
+| `createdAt` | datetime | default `now()` — no `updatedAt`; rows are immutable |
+
+Indexes: `@@index([transactionId])`, `@@index([source, createdAt])`, `@@index([ruleId])`.

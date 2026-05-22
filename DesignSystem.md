@@ -190,3 +190,48 @@ Both views use the identical component reading from the same `ImportReport` JSON
 Account Types and Import Logs each have their own entry in the Settings sub-nav, alongside Tax Types, Dynamic Fields, and Recurring Schedules:
 - **Account Types** — `/settings/account-types`
 - **Import Logs** — `/settings/import-logs`
+
+---
+
+## Banking — Phase B additions
+
+### Category kind badges
+Use the standard badge shape (11px / 500 uppercase, 4px Y / 8px X, rounded-full) with these per-kind colours:
+
+| Kind | Classes |
+|---|---|
+| `INCOME` | `bg-emerald-100 text-emerald-900` |
+| `EXPENSE` | `bg-red-100 text-red-900` |
+| `TRANSFER` | `bg-blue-100 text-blue-900` |
+| `OTHER` | `bg-slate-100 text-slate-800` |
+
+### Vendor chip
+Small inline pill used wherever a vendor name appears in-line (transaction rows, rule list, etc.):
+
+```
+bg-slate-100 text-slate-700 rounded-[0.3rem] px-2 py-0.5 text-xs
+```
+
+### Rules list priority rank prefix
+Each row in the rules list shows a rank number prefix (`#1`, `#2`, …):
+
+```
+font-mono text-lg tabular-nums text-slate-400
+```
+
+### "Rules Test Ground" warning banner
+Mandatory on the `/rules/test` sandbox page. Implemented as a `Card` with:
+
+```
+border-amber-200 bg-amber-50 p-4
+```
+
+Contains a `lucide-react` `AlertTriangle` icon and the exact text: **"This is a sandbox. Nothing on this page changes any transaction."**
+
+### Split modal — Allocated / Remaining badges
+The split modal shows running totals below the split rows:
+
+- **Remaining = $0.00** (fully allocated): `text-emerald-700`
+- **Remaining ≠ $0.00** (under- or over-allocated): `text-amber-700`
+
+The Save button is disabled until Remaining = $0.00.

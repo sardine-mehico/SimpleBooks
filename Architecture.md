@@ -75,10 +75,38 @@ NestJS module layout (one per backend domain):
 - `public-invoices` — unauthenticated customer-facing endpoints `GET /public/invoices/:token` (JSON for the HTML view) and `GET /public/invoices/:token/pdf` (force-download). Handles the SENT → VIEWED status transition on first open.
 - `accounts` — CRUD for bank accounts. Route prefix `/accounts`. Includes current-balance computation (`openingBalance + SUM(Transaction.amount)`) and transaction count.
 - `account-types` — settings catalog. Route prefix `/account-types`. Seeded; user-editable.
-- `transactions` — read + server-side filter/sort/pagination. Route prefix `/transactions`. Supports account-scoped queries (`?accountId=`) and global queries. No create/update endpoint — transactions enter only via CSV import.
-- `transaction-imports` — CSV import flow. Two multipart endpoints: `POST /transaction-imports/sniff` (column detection, 10 MB limit) and `POST /transaction-imports/commit` (insert rows, 10 MB limit). Both use `FileInterceptor`. Parses CSV via `papaparse`; deduplicates by `@@unique([accountId, importHash])`.
+- `transactions` — read + server-side filter/sort/pagination. Route prefix `/transactions`. Supports account-scoped queries (`?accountId=`) and global queries. Extended in Phase B with stats endpoint, splits endpoints, and manual category patch. No create endpoint — transactions enter only via CSV import.
+- `transaction-imports` — CSV import flow. Two multipart endpoints: `POST /transaction-imports/sniff` (column detection, 10 MB limit) and `POST /transaction-imports/commit` (insert rows, 10 MB limit). Both use `FileInterceptor`. Parses CSV via `papaparse`; deduplicates by `@@unique([accountId, importHash])`. Extended in Phase B: `commit` accepts an opt-in `categorise` boolean that runs the rule engine over just-inserted transactions after the import Prisma transaction commits.
 - `import-logs` — read-only. Route prefix `/import-logs`. Exposes list and detail for `TransactionImport` rows. No delete or write endpoints — records are immutable.
+- `categories` — **(Phase B)** CRUD for transaction categories. Route prefix `/categories`. 15-row seed. Delete blocked (409) when any Transaction, TransactionSplit, or Rule references the category.
+- `vendors` — **(Phase B)** CRUD for vendors/payees. Route prefix `/vendors`. 39-row seed. Includes `vendor-extractor.service` used by the extraction wizard (`POST /vendors/extract`, `POST /vendors/extract/commit`).
+- `rules` — **(Phase B)** CRUD for categorisation rules with conditions. Route prefix `/rules`. Exposes reorder (`PATCH /rules/:id/move`), state change (`PATCH /rules/:id/state`), and active toggle (`PATCH /rules/:id/toggle-active`).
+- `rule-engine` — **(Phase B)** Orchestrator module. No database table of its own. Two-pass engine: vendor-match pass (longest-alias tiebreak) then rule-match pass (first-match-wins, AND-only conditions). Exposes `POST /rule-engine/recategorise` (batch run over selected transactions) and `POST /rule-engine/test` (dry-run sandbox with no side effects). Engine writes are wrapped in a single Prisma `$transaction`; a `CategorisationEvent` row is written for every change. `Rule.hitCount` and `lastFiredAt` are incremented per pass.
+- `categorisation-events` — **(Phase B)** Read-only. Route prefix `/categorisation-events`. Exposes the `CategorisationEvent` audit log. No write endpoints — rows are append-only.
 - `prisma` — shared global module exposing `PrismaService`.
+
+#### Banking Phase B — endpoint summary
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET/POST` | `/categories` | list all / create |
+| `GET/PATCH/DELETE` | `/categories/:id` | read / update / delete (409 if referenced) |
+| `GET/POST` | `/vendors` | list all / create |
+| `GET/PATCH/DELETE` | `/vendors/:id` | read / update / delete |
+| `POST` | `/vendors/extract` | propose vendor rows from unrecognised transaction descriptions |
+| `POST` | `/vendors/extract/commit` | accept proposed vendors and save |
+| `GET/POST` | `/rules` | list all / create |
+| `GET/PATCH/DELETE` | `/rules/:id` | read / update / delete |
+| `PATCH` | `/rules/:id/move` | swap priority with neighbour (up or down) |
+| `PATCH` | `/rules/:id/state` | change `RuleState` (USER / AI_DRAFTED / APPROVED / DENIED) |
+| `PATCH` | `/rules/:id/toggle-active` | flip `isActive` |
+| `POST` | `/rule-engine/recategorise` | run engine over supplied transaction IDs (live write) |
+| `POST` | `/rule-engine/test` | dry-run engine against a sample set; returns matches with no side effects |
+| `GET` | `/transactions/stats` | aggregate stats (total in/out/net) for `?accountIds=` |
+| `POST` | `/transactions/:id/splits` | create or replace splits for a transaction |
+| `DELETE` | `/transactions/:id/splits` | remove all splits (revert to single-category) |
+| `PATCH` | `/transactions/:id/category` | manually set category (writes CategorisationEvent with `source=MANUAL`) |
+| `GET` | `/categorisation-events` | read-only audit log |
 
 All wired in [backend/src/app.module.ts](backend/src/app.module.ts).
 
@@ -167,6 +195,7 @@ There is currently no host-side `npm` workflow, no test suite, and no host linte
 ### Known operational caveats
 - Schema changes that aren't strictly additive (column drops, type changes, new required-without-default columns on populated tables) cause `prisma db push` to fail. Recovery: `docker compose down -v` (wipes data; seed repopulates).
 - **Non-additive `RecurringRule` replacement (May 2026):** migrating to the new recurring-invoices schema requires `docker compose down -v` once. The old `RecurringRule` shape (`name`, `amount`, `frequency`, `nextRunAt`) cannot be coerced into the new shape (`startDate`, `recurringScheduleId`, `sendingOption`, etc.) automatically — `prisma db push` will refuse the migration. Wipe the volume; the seed repopulates demo data including the six seeded `RecurringSchedule` rows and one sample `RecurringRule`.
+- **`vendorCustomerId` → `vendorId` rename (Phase B):** this rename is non-additive. Existing dev DBs with Phase A data must `docker compose down -v` before applying the Phase B schema. `prisma db push --accept-data-loss` will drop the old column.
 - Bot token in `.env` is read **once** at backend startup. Adding/changing the token requires `docker compose restart backend`.
 - Changing the timezone in Preferences requires a backend restart to re-register the BullMQ cron with the new tz.
 - The `screenshots/` folder is gitignored and is the only directory where automated UI captures should land — never the project root.

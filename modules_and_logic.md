@@ -575,11 +575,172 @@ Read-only list of bank-statement lines. Backend module: `transactions`. Route pr
 Two-step flow launched from the account detail page:
 
 1. **Sniff** — `POST /transaction-imports/sniff` (multipart, 10 MB limit). Returns detected columns, a sample of rows, and a suggested field mapping.
-2. **Confirm mapping modal** — user reviews and adjusts the column → field mapping.
+2. **Confirm mapping modal** — user reviews and adjusts the column → field mapping. Phase B adds a **"Categorise based on rules"** checkbox at this step. When ticked the rule engine runs over just-inserted transactions after the import's own Prisma transaction commits (engine needs the inserts visible). The `ImportReport` gains a `ruleCategorisation` section summarising how many transactions were categorised, how many already had a category, and how many the engine couldn't match.
 3. **Commit** — `POST /transaction-imports/commit` (multipart, 10 MB limit). Inserts rows, deduplicates by `@@unique([accountId, importHash])`, creates a `TransactionImport` record, returns an `ImportReport`.
-4. **`<ImportReportPopup>`** — displays the import summary (rows total / imported / skipped / failed). The same component renders on the persisted log detail page at `/settings/import-logs/[id]`.
+4. **`<ImportReportPopup>`** — displays the import summary (rows total / imported / skipped / failed, plus the optional `ruleCategorisation` section). The same component renders on the persisted log detail page at `/settings/import-logs/[id]`.
 
 Duplicate detection hash: sha256 of `date|amount.toFixed(2)|normaliseDesc(description)|runningBalance ?? ''`, uniqued per account.
+
+---
+
+---
+
+### Categories
+
+Lookup catalog for transaction categories. Backend module: `categories`. Route prefix: `/categories`.
+
+#### Fields
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | UUID | auto | |
+| `name` | string | **yes** | UNIQUE |
+| `kind` | enum `CategoryKind` | **yes** | `INCOME` / `EXPENSE` / `TRANSFER` / `OTHER` |
+| `isActive` | boolean | no | default `true` |
+| `sortOrder` | int | no | default `100`; lower = earlier in dropdowns |
+| `createdAt` / `updatedAt` | datetime | auto | |
+
+#### List page — `/categories`
+- **Columns:** Name · Kind · Sort Order · Status.
+- **Default sort:** `isActive` desc, tie-breaker `sortOrder` asc, then `name` asc.
+
+#### Edit page — `/categories/[id]` (and `/categories/new`)
+- **Row 1:** Name (required) · Kind (required, select)
+- **Row 2:** Sort Order · Active (switch)
+
+#### Logic
+- Delete blocked with 409 if any `Transaction`, `TransactionSplit`, or `Rule` references the category.
+- Kind controls badge colour in the UI — see DesignSystem.md for token values.
+- `sortOrder` controls the order categories appear in dropdowns throughout the app (transaction category picker, split modal, rule editor). Lower = first.
+
+---
+
+### Vendors
+
+Lookup catalog for payees/merchants. Backend module: `vendors`. Route prefix: `/vendors`.
+
+#### Fields
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | UUID | auto | |
+| `name` | string | **yes** | UNIQUE |
+| `kind` | enum `VendorKind` | **yes** | `VENDOR_MATCH` |
+| `aliases` | string[] | no | lowercase substrings; matching is case-insensitive whitespace-collapsed. Trailing spaces in an alias prevent false-positive partial matches on similar but distinct descriptions. |
+| `notes` | string | no | |
+| `isActive` | boolean | no | default `true` |
+| `createdAt` / `updatedAt` | datetime | auto | |
+
+#### List page — `/vendors`
+- **Columns:** Name · Kind · Aliases (count or preview) · Status.
+- **Default sort:** `isActive` desc, tie-breaker `name` asc.
+
+#### Edit page — `/vendors/[id]` (and `/vendors/new`)
+- **Row 1:** Name (required) · Kind (required, select)
+- **Row 2:** Aliases (tag input, each stored lowercase) · Active (switch)
+- **Row 3:** Notes (textarea, full width)
+
+#### Extraction wizard — `/vendors/extract`
+Two-step process for bulk-creating vendors from unrecognised transaction descriptions:
+1. `POST /vendors/extract` — analyses transaction descriptions not yet matched to a vendor, proposes name + aliases for each cluster.
+2. User reviews and edits proposals in a table.
+3. `POST /vendors/extract/commit` — saves accepted proposals as new `Vendor` rows.
+
+#### Logic
+- Vendor matching: the engine checks each transaction description against all active vendors' `aliases`. Matching is case-insensitive and whitespace-collapsed. When multiple vendors match, the one with the longest matching alias wins (most-specific tiebreak).
+
+---
+
+### Rules
+
+Categorisation rules. Backend module: `rules`. Route prefix: `/rules`.
+
+#### Fields
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | UUID | auto | |
+| `name` | string | **yes** | |
+| `state` | enum `RuleState` | auto | `USER` (default) / `AI_DRAFTED` / `APPROVED` / `DENIED`. Only `USER` is fully reachable in Phase B; the other values are scaffolded for Phase C AI integration. |
+| `isActive` | boolean | no | default `true` |
+| `priority` | int | no | default `1000`; spaced by 10 in practice. Lower = higher precedence. |
+| `categoryId` | FK → Category | **yes** | applied to matched transactions |
+| `vendorId` | FK → Vendor | no | optionally applied to matched transactions |
+| `noteOnApply` | string | no | appended to `Transaction.notes` when the rule fires |
+| `hitCount` | int | auto | incremented by the engine on each pass |
+| `lastFiredAt` | datetime | auto | stamped by the engine on each pass |
+| `conditions` | RuleCondition[] | ≥1 | AND-only — all conditions must match |
+| `createdAt` / `updatedAt` | datetime | auto | |
+
+#### List page — `/rules`
+- The rules list is **priority-ordered, not FilteredList**. Rows render in ascending priority order (rank 1 = lowest priority INT = fires first).
+- Each row shows a priority rank prefix in `font-mono text-lg tabular-nums text-slate-400` (e.g. `#1`, `#2`).
+- **Columns:** Rank · Name · State · Category · Vendor · Conditions count · Hit Count · Active.
+- **Actions per row:** `[↑]` / `[↓]` reorder buttons (swap with neighbour via `PATCH /rules/:id/move`). Edit. Toggle active.
+- **No sort or filter** — the order IS the feature.
+
+#### Edit page — `/rules/[id]` (and `/rules/new`)
+Uses `EditPageChrome`.
+- **Row 1:** Name (required) · State (select) · Active (switch)
+- **Row 2:** Category (required, select — sorted by `sortOrder`) · Vendor (optional, select)
+- **Conditions section:** a list of condition rows, each with Field / Operator / Value / Value2 / ValueList inputs appropriate to the operator. "+ Add Condition" below the list.
+- **Row (footer):** Note on Apply (textarea)
+
+#### Sample-matches preview
+The rule editor hits `POST /rule-engine/test` on debounce as the user edits conditions — a dry-run with no side effects. Results appear inline below the conditions section showing which transactions in a sample set would match this rule.
+
+#### Logic
+- Rules are evaluated priority-order (ascending INT). First matching rule wins — subsequent rules are skipped for that transaction.
+- All conditions within a rule are AND — every condition must be satisfied.
+- The move endpoint swaps the rule's `priority` with its immediate neighbour. Priority is spaced by 10; if consecutive rules collapse to a gap of 1, a future improvement should rebalance all priorities transactionally (not implemented in Phase B).
+
+---
+
+### Categorisation Engine
+
+Backend module: `rule-engine`. No database table of its own — pure orchestration.
+
+#### Two-pass evaluation
+1. **Vendor-match pass:** for each transaction, check all active vendors' `aliases`. If one or more match, assign the vendor with the longest matching alias (most-specific wins). This pass sets `Transaction.vendorId` but does not set `categoryId`.
+2. **Rule-match pass:** evaluate active, `isActive=true` rules in ascending `priority` order. For each transaction, the first rule whose AND-conditions all match wins. Assigns `categoryId`, optionally `vendorId` (if the rule specifies one), optionally appends `noteOnApply` to `Transaction.notes`, and stamps `categorisedAt`.
+
+#### Engine writes
+- All writes for a batch run are wrapped in a single Prisma `$transaction`.
+- A `CategorisationEvent` row (source=`RULE`) is written for every categorisation change.
+- `Rule.hitCount` is incremented and `Rule.lastFiredAt` is stamped for each rule that fires.
+
+#### Dry-run mode
+`POST /rule-engine/test` accepts `dryRun=true`. No rows are written. Returns a results table with the winning rule for each transaction plus any also-matched rules.
+
+---
+
+### Transaction Splits
+
+A transaction can be split across multiple categories. Accessed via `POST /transactions/:id/splits` and `DELETE /transactions/:id/splits`.
+
+#### Rules
+- A transaction has either `categoryId` set (single-category) OR 1+ `TransactionSplit` rows — never both simultaneously. Setting splits clears `categoryId`; deleting all splits restores single-category mode.
+- `SUM(split.amount)` must equal `Transaction.amount` (enforced server-side; returns 422 if not balanced).
+- The split modal tracks an **Allocated** running total and a **Remaining** figure. The Save button is disabled until Remaining = $0.00.
+
+---
+
+### Test Rules Sandbox — `/rules/test`
+
+Standalone page for testing rules against a sample of real transactions without making any changes.
+
+- **Amber warning banner** (mandatory): "This is a sandbox. Nothing on this page changes any transaction."
+- **Source picker:** choose existing transactions by date range and account, OR upload a CSV file.
+- **Rule selection:** choose one or more rules to test (or "all active rules").
+- **Results table:** for each transaction in the sample, shows the winning rule (if any) and all also-matched rules.
+- All hits go through `POST /rule-engine/test` with `dryRun=true`.
+
+---
+
+### Categorisation Events — `/categorisation-events`
+
+Read-only audit trail. Backend module: `categorisation-events`. Route prefix: `/categorisation-events`.
+
+- **Columns:** Date · Transaction · Source · Rule (if applicable) · Old Category · New Category · Old Vendor · New Vendor.
+- **Default sort:** `createdAt` desc.
+- No create, update, or delete endpoints. Rows are written only by the engine, the manual-patch endpoint, and the import opt-in path.
 
 ---
 
