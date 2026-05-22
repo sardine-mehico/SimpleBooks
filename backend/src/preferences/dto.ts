@@ -4,4 +4,5 @@ import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validato
 export class UpsertPreferencesDto {
   @IsString() @IsOptional() @MaxLength(64) timezone?: string;
   @Type(() => Number) @IsInt() @IsOptional() @Min(1) @Max(12) financialYearStart?: number;
+  @Type(() => Number) @IsInt() @IsOptional() @Min(1) @Max(50) aiMiningThreshold?: number;
 }
