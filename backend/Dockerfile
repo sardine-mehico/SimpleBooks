@@ -23,6 +23,8 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-seed ./dist-seed
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/src ./src
+COPY jest.config.cjs ./
 COPY --from=build /app/package.json ./
 COPY entrypoint.sh ./
 RUN chmod +x ./entrypoint.sh
