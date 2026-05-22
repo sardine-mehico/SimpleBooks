@@ -27,6 +27,7 @@ import { PdfModule } from './pdf/pdf.module';
 import { PublicInvoicesModule } from './public-invoices/public-invoices.module';
 import { TransactionImportsModule } from './transaction-imports/transaction-imports.module';
 import { ImportLogsModule } from './import-logs/import-logs.module';
+import { RulesModule } from './rules/rules.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
 
@@ -65,6 +66,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
     PublicInvoicesModule,
     TransactionImportsModule,
     ImportLogsModule,
+    RulesModule,
   ],
 })
 export class AppModule {}
