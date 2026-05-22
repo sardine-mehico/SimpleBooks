@@ -613,7 +613,7 @@ model AiProvider {
   name       String
   model      String
   apiBaseUrl String
-  apiKey     String
+  apiKey     String                          // stored plain (matches existing customSmtpPassword pattern)
   isPrimary  Boolean  @default(false)
   sortOrder  Int      @default(1000)
   createdAt  DateTime @default(now())
@@ -674,4 +674,5 @@ model AiCall {
   @@index([providerId, createdAt])
   @@index([status, createdAt])
   @@index([transactionId])
+  @@index([ruleId])
 }
