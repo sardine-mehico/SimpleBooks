@@ -7,6 +7,20 @@ import { ListTransactionsDto } from './dto';
 export class TransactionsService {
   constructor(private prisma: PrismaService) {}
 
+  async get(id: string) {
+    const tx = await this.prisma.transaction.findUnique({
+      where: { id },
+      include: {
+        account: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true, kind: true } },
+        vendor: { select: { id: true, name: true } },
+        splits: { select: { id: true, categoryId: true, amount: true, notes: true }, orderBy: { position: 'asc' } },
+      },
+    });
+    if (!tx) throw new NotFoundException();
+    return tx;
+  }
+
   async list(q: ListTransactionsDto) {
     const where: Prisma.TransactionWhereInput = {};
     if (q.accountIds && q.accountIds.length > 0) {

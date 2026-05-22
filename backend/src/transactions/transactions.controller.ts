@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { ListTransactionsDto, SetCategoryDto, SetSplitsDto } from './dto';
 
 @Controller('transactions')
 export class TransactionsController {
-  constructor(private service: TransactionsService) {}
+  constructor(private service: TransactionsService, private prisma: PrismaService) {}
 
   @Get() list(@Query() q: ListTransactionsDto) { return this.service.list(q); }
 
@@ -12,6 +13,13 @@ export class TransactionsController {
   stats(@Query('accountIds') accountIds?: string) {
     const ids = accountIds ? accountIds.split(',').filter(Boolean) : undefined;
     return this.service.stats(ids);
+  }
+
+  @Get('by-event/:eventId')
+  async byEvent(@Param('eventId') eventId: string) {
+    const event = await this.prisma.categorisationEvent.findUnique({ where: { id: eventId } });
+    if (!event) throw new NotFoundException();
+    return this.service.get(event.transactionId);
   }
 
   @Post(':id/splits') setSplits(@Param('id') id: string, @Body() dto: SetSplitsDto) {

@@ -12,6 +12,7 @@ import { setTransactionCategory } from "@/lib/banking-rules";
 import { applyAiSuggestion } from "@/lib/ai";
 import type { AiDraftView, Category, Transaction, Vendor } from "@/lib/types";
 import { AiSuggestionBanner } from "./ai-suggestion-banner";
+import { TransactionHistoryDrawer } from "./transaction-history-drawer";
 
 function fmtAmount(amount: string | number): string {
   const n = Number(amount);
@@ -186,6 +187,13 @@ export function TransactionEditModal({
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="button" onClick={onSave} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
         </DialogFooter>
+        <TransactionHistoryDrawer
+          transactionId={transaction.id}
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          categories={categories}
+          vendors={vendors}
+        />
       </DialogContent>
     </Dialog>
   );
