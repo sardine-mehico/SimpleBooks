@@ -37,7 +37,12 @@ export class TransactionsService {
         orderBy,
         skip,
         take: pageSize,
-        include: { account: { select: { id: true, name: true } } },
+        include: {
+          account: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true, kind: true } },
+          vendor: { select: { id: true, name: true } },
+          splits: { select: { id: true, categoryId: true, amount: true, notes: true }, orderBy: { position: 'asc' } },
+        },
       }),
       this.prisma.transaction.count({ where }),
     ]);

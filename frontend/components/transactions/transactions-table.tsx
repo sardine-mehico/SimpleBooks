@@ -11,7 +11,10 @@ import { Pagination } from "@/components/data/pagination";
 import { cn } from "@/lib/utils";
 import { TransactionAmountCell } from "./transaction-amount-cell";
 import { listTransactions } from "@/lib/banking";
-import type { Account, Transaction } from "@/lib/types";
+import { CATEGORY_KINDS } from "@/lib/types";
+import type { Account, Category, Transaction } from "@/lib/types";
+import { RecategoriseDialog } from "./recategorise-dialog";
+import { TransactionRowMenu } from "./transaction-row-menu";
 
 type SortKey = "date" | "amount" | "description" | "runningBalance";
 
@@ -19,11 +22,13 @@ export function TransactionsTable({
   mode,
   fixedAccountId,
   accounts,
+  categories,
   searchParams,
 }: {
   mode: "account" | "global";
   fixedAccountId?: string;
   accounts: Account[];
+  categories: Category[];
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const router = useRouter();
@@ -46,6 +51,7 @@ export function TransactionsTable({
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [showRecategorise, setShowRecategorise] = useState(false);
 
   // Local input mirrors for the filter panel before user clicks Apply.
   const [tempDateFrom, setTempDateFrom] = useState(dateFrom);
@@ -106,13 +112,18 @@ export function TransactionsTable({
     patchQuery({ dateFrom: null, dateTo: null, accountIds: null, page: "1" });
   }
 
-  const cols: Array<{ key: SortKey | "account"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
+  const cols: Array<{ key: SortKey | "account" | "category" | "vendor" | "actions"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
     { key: "date", label: "Date", sortable: true, width: "110px" },
     { key: "description", label: "Description", sortable: true, width: "2fr" },
+    { key: "category", label: "Category", sortable: false, width: "1fr" },
     { key: "amount", label: "Amount", align: "right", sortable: true, width: "1fr" },
     { key: "runningBalance", label: "Balance", align: "right", sortable: true, width: "1fr" },
   ];
-  if (mode === "global") cols.push({ key: "account", label: "Account", sortable: false, width: "1fr" });
+  if (mode === "global") {
+    cols.push({ key: "vendor", label: "Vendor", sortable: false, width: "1fr" });
+    cols.push({ key: "account", label: "Account", sortable: false, width: "1fr" });
+  }
+  cols.push({ key: "actions", label: "", sortable: false, width: "48px" });
 
   const gridTemplate = cols.map((c) => c.width).join(" ");
   const activeFilters = (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) + (mode === "global" && selectedAccountIds.length ? 1 : 0);
@@ -123,19 +134,24 @@ export function TransactionsTable({
         <div className="text-sm text-slate-500">
           {loading ? "Loading…" : `${totalCount.toLocaleString("en-AU")} transaction${totalCount === 1 ? "" : "s"}`}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => setFilterOpen((o) => !o)}
-          className={cn(filterOpen && "border-indigo-300 bg-indigo-50/40")}
-        >
-          <Filter className="h-4 w-4" /> Filter
-          {activeFilters > 0 && (
-            <span className="ml-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-indigo-600 px-1 text-[10px] font-semibold text-white">
-              {activeFilters}
-            </span>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setShowRecategorise(true)}>
+            Re-categorise
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setFilterOpen((o) => !o)}
+            className={cn(filterOpen && "border-indigo-300 bg-indigo-50/40")}
+          >
+            <Filter className="h-4 w-4" /> Filter
+            {activeFilters > 0 && (
+              <span className="ml-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-indigo-600 px-1 text-[10px] font-semibold text-white">
+                {activeFilters}
+              </span>
+            )}
+          </Button>
+        </div>
       </div>
 
       {filterOpen && (
@@ -221,6 +237,18 @@ export function TransactionsTable({
                 <div className="grid items-center gap-x-4 px-5 py-3 text-sm" style={{ gridTemplateColumns: gridTemplate }}>
                   <div className="text-slate-700">{t.date.slice(0, 10)}</div>
                   <div className="min-w-0 truncate text-slate-700">{t.description}</div>
+                  <div className="min-w-0 truncate">
+                    {t.category ? (
+                      <span className={`inline-block rounded-[0.3rem] px-2 py-0.5 text-xs ${CATEGORY_KINDS.find((k) => k.value === t.category?.kind)?.tone ?? "bg-slate-100"}`}>
+                        {t.category.name}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                    {mode === "account" && t.vendor && (
+                      <div className="mt-0.5 text-xs text-slate-500">{t.vendor.name}</div>
+                    )}
+                  </div>
                   <div className="text-right"><TransactionAmountCell amount={t.amount} /></div>
                   <div className="text-right font-mono tabular-nums text-slate-500">
                     {t.runningBalance != null
@@ -228,10 +256,16 @@ export function TransactionsTable({
                       : "—"}
                   </div>
                   {mode === "global" && (
+                    <div className="text-xs text-slate-500">{t.vendor?.name ?? "—"}</div>
+                  )}
+                  {mode === "global" && (
                     <div className="text-slate-500">
                       <Link href={`/accounts/${t.accountId}`} className="hover:underline">{t.account?.name}</Link>
                     </div>
                   )}
+                  <div className="flex justify-end">
+                    <TransactionRowMenu transaction={t} categories={categories} />
+                  </div>
                 </div>
               </li>
             );
@@ -244,6 +278,16 @@ export function TransactionsTable({
           onChange={(p) => patchQuery({ page: String(p + 1) })}
         />
       </Card>
+      {showRecategorise && (
+        <RecategoriseDialog
+          filter={{
+            accountIds: selectedAccountIds.length ? selectedAccountIds : undefined,
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined,
+          }}
+          onClose={() => setShowRecategorise(false)}
+        />
+      )}
     </div>
   );
 }

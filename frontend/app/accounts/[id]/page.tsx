@@ -2,6 +2,7 @@ import { AccountHeaderCard } from "@/components/accounts/account-header-card";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
 import { ImportCsvButton } from "@/components/transaction-imports/import-csv-button";
 import { getAccount, listAccounts } from "@/lib/banking";
+import { listCategories } from "@/lib/banking-rules";
 import { PageShell } from "@/components/layout/page-shell";
 
 export default async function Page({
@@ -13,7 +14,7 @@ export default async function Page({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const [account, allAccounts] = await Promise.all([getAccount(id), listAccounts(true)]);
+  const [account, allAccounts, categories] = await Promise.all([getAccount(id), listAccounts(true), listCategories()]);
   return (
     <PageShell title={account.name}>
       <AccountHeaderCard
@@ -24,6 +25,7 @@ export default async function Page({
         mode="account"
         fixedAccountId={account.id}
         accounts={allAccounts}
+        categories={categories}
         searchParams={sp}
       />
     </PageShell>
