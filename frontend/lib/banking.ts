@@ -55,6 +55,7 @@ export const commitImport = (
   accountId: string,
   fileSha256: string,
   mapping: ColumnMapping,
+  applyRules = false,
 ) => {
   const fd = new FormData();
   fd.append('file', file);
@@ -62,6 +63,7 @@ export const commitImport = (
   fd.append('fileSha256', fileSha256);
   fd.append('mapping', JSON.stringify(mapping));
   fd.append('filename', file.name);
+  fd.append('applyRules', applyRules ? 'true' : 'false');
   return apiMultipart<ImportReport>('/transaction-imports/commit', fd);
 };
 

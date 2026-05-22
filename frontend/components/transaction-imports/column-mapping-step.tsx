@@ -22,11 +22,15 @@ export function ColumnMappingStep({
   mapping,
   onChange,
   reasoning,
+  applyRules,
+  onApplyRulesChange,
 }: {
   previewRows: string[][];
   mapping: ColumnMapping;
   onChange: (m: ColumnMapping) => void;
   reasoning: string[];
+  applyRules: boolean;
+  onApplyRulesChange: (v: boolean) => void;
 }) {
   const ncols = mapping.columns.length;
 
@@ -97,6 +101,22 @@ export function ColumnMappingStep({
           </ul>
         </div>
       )}
+
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">After import</div>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={applyRules}
+            onChange={(e) => onApplyRulesChange(e.target.checked)}
+            className="mt-0.5 h-4 w-4"
+          />
+          <div>
+            <div className="font-medium text-slate-900">Categorise based on rules</div>
+            <div className="text-xs text-slate-600">Runs vendor matching + active rules over the just-imported transactions. Equivalent to clicking Re-categorise after import.</div>
+          </div>
+        </label>
+      </div>
     </div>
   );
 }

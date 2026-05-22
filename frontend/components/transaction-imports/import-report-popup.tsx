@@ -70,6 +70,30 @@ export function ImportReportPopup({ data, onClose }: { data: ImportReport; onClo
         </Card>
       )}
 
+      {data.ruleCategorisation && (
+        <Section title="Categorisation" count={data.ruleCategorisation.ruleMatched} defaultOpen={true}>
+          <div className="space-y-2 px-4 py-3 text-xs">
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div><div className="text-slate-500">Vendor matched</div><div className="font-semibold tabular-nums">{data.ruleCategorisation.vendorMatched}</div></div>
+              <div><div className="text-slate-500">Rule matched</div><div className="font-semibold tabular-nums text-emerald-700">{data.ruleCategorisation.ruleMatched}</div></div>
+              <div><div className="text-slate-500">Ambiguous vendor</div><div className="font-semibold tabular-nums text-amber-700">{data.ruleCategorisation.ambiguousVendor}</div></div>
+            </div>
+            {data.ruleCategorisation.perRule.length > 0 && (
+              <div className="border-t border-slate-100 pt-2">
+                <div className="mb-1 text-slate-500">Per rule:</div>
+                <ul className="ml-4 list-disc space-y-0.5">
+                  {data.ruleCategorisation.perRule.map((p) => (
+                    <li key={p.ruleId}>
+                      <span className="font-medium">{p.ruleName}</span> — {p.categoryName}: <span className="tabular-nums">{p.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Section>
+      )}
+
       <Section title="Imported" count={data.imported.length} defaultOpen={false}>
         <ul className="divide-y divide-slate-100 text-xs">
           {data.imported.map((r, i) => (

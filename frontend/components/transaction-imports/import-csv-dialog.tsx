@@ -21,6 +21,7 @@ export function ImportCsvDialog({ accountId, onClose }: { accountId: string; onC
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
+  const [applyRules, setApplyRules] = useState(false);
 
   async function onFileChosen(f: File) {
     setError(null);
@@ -52,7 +53,7 @@ export function ImportCsvDialog({ accountId, onClose }: { accountId: string; onC
     setError(null);
     setStage("importing");
     try {
-      const r = await commitImport(file, accountId, sniff.fileSha256, mapping);
+      const r = await commitImport(file, accountId, sniff.fileSha256, mapping, applyRules);
       setReport(r);
       setStage("report");
       router.refresh();
@@ -104,6 +105,8 @@ export function ImportCsvDialog({ accountId, onClose }: { accountId: string; onC
               mapping={mapping}
               onChange={setMapping}
               reasoning={sniff.suggestedMapping.reasoning}
+              applyRules={applyRules}
+              onApplyRulesChange={setApplyRules}
             />
             {error && <div className="text-sm text-red-700">{error}</div>}
             <DialogFooter>
