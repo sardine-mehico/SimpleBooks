@@ -15,6 +15,8 @@ import {
   Bank,
   ArrowsLeftRight,
   Scales,
+  Tag,
+  Storefront,
   ChartBar,
   FileText,
   GearSix,
@@ -51,6 +53,8 @@ const nav: Group[] = [
     items: [
       { label: "Accounts", href: "/accounts" },
       { label: "Transactions", href: "/transactions" },
+      { label: "Categories", href: "/categories" },
+      { label: "Vendors", href: "/vendors" },
       { label: "Rules", href: "/rules" },
     ],
   },
@@ -69,6 +73,8 @@ const subIcons: Record<string, any> = {
   "/items": Package,
   "/accounts": Wallet,
   "/transactions": ArrowsLeftRight,
+  "/categories": Tag,
+  "/vendors": Storefront,
   "/rules": Scales,
   "/statements": FileText,
 };
