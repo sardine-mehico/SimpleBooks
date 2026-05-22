@@ -321,6 +321,9 @@ export type Transaction = {
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
+  category?: { id: string; name: string; kind: CategoryKind } | null;
+  vendor?: { id: string; name: string } | null;
+  splits?: Array<{ id: string; categoryId: string; amount: string | number; notes?: string | null }>;
 };
 
 export type TransactionListResponse = {
@@ -388,6 +391,13 @@ export type ImportReport = {
   }>;
   failed: Array<{ rowIndex: number; reason: string; raw: string[] }>;
   warnings: string[];
+  ruleCategorisation?: {
+    enabled: boolean;
+    vendorMatched: number;
+    ruleMatched: number;
+    perRule: Array<{ ruleId: string; ruleName: string; categoryName: string; count: number }>;
+    ambiguousVendor: number;
+  } | null;
 };
 
 export type ImportLogSummary = {
@@ -407,4 +417,169 @@ export type ImportLogFull = ImportLogSummary & {
   reportJson: ImportReport;
   mappingJson: ColumnMapping;
   fileSha256: string;
+};
+
+// ── Banking Phase B ────────────────────────────────────────────────────
+
+export type CategoryKind = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'OTHER';
+export const CATEGORY_KINDS: { value: CategoryKind; label: string; tone: string }[] = [
+  { value: 'INCOME', label: 'Income', tone: 'bg-emerald-100 text-emerald-900' },
+  { value: 'EXPENSE', label: 'Expense', tone: 'bg-red-100 text-red-900' },
+  { value: 'TRANSFER', label: 'Transfer', tone: 'bg-blue-100 text-blue-900' },
+  { value: 'OTHER', label: 'Other', tone: 'bg-slate-100 text-slate-800' },
+];
+
+export type Category = {
+  id: string;
+  name: string;
+  kind: CategoryKind;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { transactions: number; transactionSplits?: number; rules?: number };
+};
+
+export type VendorKind = 'MERCHANT' | 'PERSON' | 'CUSTOMER' | 'BANK' | 'OTHER';
+export const VENDOR_KINDS: { value: VendorKind; label: string }[] = [
+  { value: 'MERCHANT', label: 'Merchant' },
+  { value: 'PERSON', label: 'Person' },
+  { value: 'CUSTOMER', label: 'Customer' },
+  { value: 'BANK', label: 'Bank' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+export type Vendor = {
+  id: string;
+  name: string;
+  kind: VendorKind;
+  aliases: string[];
+  notes?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { transactions: number };
+};
+
+export type RuleState = 'USER' | 'AI_DRAFTED' | 'APPROVED' | 'DENIED';
+export const RULE_STATES: { value: RuleState; label: string }[] = [
+  { value: 'USER', label: 'User' },
+  { value: 'AI_DRAFTED', label: 'AI Drafts' },
+  { value: 'APPROVED', label: 'Approved' },
+  { value: 'DENIED', label: 'Denied' },
+];
+
+export type RuleField = 'DESCRIPTION' | 'AMOUNT' | 'VENDOR' | 'ACCOUNT';
+export const RULE_FIELDS: { value: RuleField; label: string }[] = [
+  { value: 'DESCRIPTION', label: 'Description' },
+  { value: 'AMOUNT', label: 'Amount' },
+  { value: 'VENDOR', label: 'Vendor' },
+  { value: 'ACCOUNT', label: 'Account' },
+];
+
+export type RuleOperator = 'CONTAINS' | 'EQUALS' | 'STARTS_WITH' | 'ENDS_WITH' | 'GT' | 'LT' | 'BETWEEN' | 'IN';
+export const OPERATORS_BY_FIELD: Record<RuleField, { value: RuleOperator; label: string }[]> = {
+  DESCRIPTION: [
+    { value: 'CONTAINS', label: 'contains' },
+    { value: 'EQUALS', label: 'equals' },
+    { value: 'STARTS_WITH', label: 'starts with' },
+    { value: 'ENDS_WITH', label: 'ends with' },
+  ],
+  AMOUNT: [
+    { value: 'EQUALS', label: '=' },
+    { value: 'GT', label: '>' },
+    { value: 'LT', label: '<' },
+    { value: 'BETWEEN', label: 'between' },
+  ],
+  VENDOR: [
+    { value: 'EQUALS', label: 'is' },
+    { value: 'IN', label: 'is one of' },
+  ],
+  ACCOUNT: [
+    { value: 'EQUALS', label: 'is' },
+    { value: 'IN', label: 'is one of' },
+  ],
+};
+
+export type RuleCondition = {
+  field: RuleField;
+  operator: RuleOperator;
+  value: string;
+  value2?: string | null;
+  valueList?: string[];
+  position?: number;
+};
+
+export type Rule = {
+  id: string;
+  name: string;
+  state: RuleState;
+  isActive: boolean;
+  priority: number;
+  categoryId: string;
+  category?: { id: string; name: string; kind: CategoryKind };
+  vendorId?: string | null;
+  vendor?: { id: string; name: string } | null;
+  noteOnApply?: string | null;
+  hitCount: number;
+  lastFiredAt?: string | null;
+  conditions: RuleCondition[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type VendorExtractionCandidate = {
+  suggestedName: string;
+  aliases: string[];
+  matchCount: number;
+  sampleDescriptions: string[];
+  existsAs: string | null;
+  suggestedKind: VendorKind;
+};
+
+export type EngineRowResult = {
+  transactionId: string;
+  date: string;
+  amount: string;
+  description: string;
+  vendorMatch: { vendorId: string; vendorName: string } | null;
+  vendorMatchAmbiguous: boolean;
+  ruleMatch: { ruleId: string; ruleName: string; priority: number; categoryId: string; categoryName: string } | null;
+  allMatchingRules: Array<{ ruleId: string; ruleName: string; priority: number }>;
+  skipped: 'has-splits' | 'no-rule-match' | null;
+};
+
+export type EngineOutput = {
+  rows: EngineRowResult[];
+  stats: {
+    total: number;
+    vendorMatched: number;
+    ruleMatched: number;
+    preservedSplits: number;
+    unchanged: number;
+    perRule: Array<{ ruleId: string; ruleName: string; count: number }>;
+  };
+};
+
+export type TransactionSplit = {
+  id?: string;
+  categoryId: string;
+  category?: Category;
+  amount: string | number;
+  notes?: string | null;
+  position?: number;
+};
+
+export type CategorisationEvent = {
+  id: string;
+  transactionId: string;
+  source: 'USER' | 'RULE' | 'VENDOR_MATCH' | 'AI_DRAFT' | 'AI_APPLIED';
+  ruleId?: string | null;
+  rule?: { id: string; name: string } | null;
+  oldCategoryId?: string | null;
+  newCategoryId?: string | null;
+  oldVendorId?: string | null;
+  newVendorId?: string | null;
+  acceptedAiSuggestion?: boolean | null;
+  createdAt: string;
 };
