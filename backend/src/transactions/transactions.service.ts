@@ -50,6 +50,15 @@ export class TransactionsService {
     return { items, totalCount, page, pageSize };
   }
 
+  async stats(accountIds?: string[]) {
+    const where: any = accountIds?.length ? { accountId: { in: accountIds } } : {};
+    const [total, categorised] = await Promise.all([
+      this.prisma.transaction.count({ where }),
+      this.prisma.transaction.count({ where: { ...where, categoryId: { not: null } } }),
+    ]);
+    return { total, categorised, uncategorised: total - categorised };
+  }
+
   async setSplits(transactionId: string, splits: Array<{ categoryId: string; amount: number; notes?: string }>) {
     const tx = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
     if (!tx) throw new NotFoundException();

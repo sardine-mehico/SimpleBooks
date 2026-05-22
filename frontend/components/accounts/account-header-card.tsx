@@ -10,7 +10,17 @@ function fmt(amount: string | number | undefined) {
   return `$${Number(amount ?? 0).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function AccountHeaderCard({ account, rightAction }: { account: Account; rightAction?: React.ReactNode }) {
+export function AccountHeaderCard({
+  account, rightAction,
+  categorisedCount, totalCount,
+  recategoriseShortcut,
+}: {
+  account: Account;
+  rightAction?: React.ReactNode;
+  categorisedCount?: number;
+  totalCount?: number;
+  recategoriseShortcut?: React.ReactNode;
+}) {
   return (
     <Card className="mb-5 p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -31,6 +41,14 @@ export function AccountHeaderCard({ account, rightAction }: { account: Account; 
               </Link>
             </div>
           ) : null}
+          {totalCount !== undefined && totalCount > 0 && categorisedCount !== undefined && (
+            <div className="mt-2 text-xs text-slate-500">
+              Categorisation: {categorisedCount} of {totalCount} categorised
+              ({Math.round((categorisedCount / totalCount) * 100)}%) ·{" "}
+              {totalCount - categorisedCount} uncategorised
+              {recategoriseShortcut}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right">

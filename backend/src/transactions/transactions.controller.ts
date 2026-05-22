@@ -8,6 +8,12 @@ export class TransactionsController {
 
   @Get() list(@Query() q: ListTransactionsDto) { return this.service.list(q); }
 
+  @Get('stats')
+  stats(@Query('accountIds') accountIds?: string) {
+    const ids = accountIds ? accountIds.split(',').filter(Boolean) : undefined;
+    return this.service.stats(ids);
+  }
+
   @Post(':id/splits') setSplits(@Param('id') id: string, @Body() dto: SetSplitsDto) {
     return this.service.setSplits(id, dto.splits);
   }

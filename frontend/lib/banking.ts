@@ -43,6 +43,11 @@ export const listTransactions = (params: {
   return apiClient.get<TransactionListResponse>(`/transactions${qs ? '?' + qs : ''}`);
 };
 
+export const getTransactionStats = (accountIds?: string[]) => {
+  const qs = accountIds?.length ? `?accountIds=${accountIds.join(',')}` : '';
+  return apiClient.get<{ total: number; categorised: number; uncategorised: number }>(`/transactions/stats${qs}`);
+};
+
 // CSV import
 export const sniffCsv = (file: File, accountId: string) => {
   const fd = new FormData();
