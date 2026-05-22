@@ -488,6 +488,32 @@ Read-only list of every CSV import attempt. Sidebar entry under Settings.
 - **Detail page** `/settings/import-logs/[id]`: re-renders the same `<ImportReportPopup>` component shown immediately after import. Single source of truth — both views read the `ImportReport` JSON shape stored in `TransactionImport.reportJson`.
 - No delete endpoint. Records are immutable once created.
 
+### AI Setup — `/settings/ai-setup` (Phase C scaffolding)
+Configuration page for external LLM providers. Backend module: `ai-providers`. Sidebar entry after "Import Logs" using the `Robot` icon from `@phosphor-icons/react`.
+
+**No LLM is called anywhere yet.** This page persists provider records that Phase C will read.
+
+#### AiProvider fields
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | **yes** | Display name for the provider |
+| `model` | string | **yes** | e.g. "gpt-4o", "claude-3-5-sonnet" |
+| `apiBaseUrl` | string | **yes** | e.g. "https://api.openai.com/v1" |
+| `apiKey` | string | **yes** | Stored plain; eye-icon toggle to show/hide in the UI |
+| `isPrimary` | bool | auto | Exactly one provider (or none) is primary at a time |
+
+#### Page layout
+One card per provider. Each card contains Name / Model / API Base URL / API Key fields, with:
+- Per-card dirty tracking — Save button per card is enabled only when the card has unsaved changes.
+- Eye-icon button to reveal/hide the API key value.
+- Trash button to delete the provider.
+- **"Set Primary" link** on non-primary cards; replaced by a **PRIMARY** badge (`bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white`) on the primary card.
+- **"+ Add Provider"** button at the top of the page.
+
+#### Logic
+- Setting a provider primary via `PATCH /ai-providers/:id/set-primary` atomically clears `isPrimary` on all other rows.
+- Deleting the primary provider auto-promotes the oldest remaining provider (`createdAt` asc) as the new primary. If no providers remain, there is no primary.
+
 ---
 
 ## Banking
@@ -568,6 +594,12 @@ Read-only list of bank-statement lines. Backend module: `transactions`. Route pr
 - Positive (credit): `text-green-700`.
 - Negative (debit): `text-red-700`.
 - Always `font-mono tabular-nums` for column alignment.
+
+#### Row actions — three-dots menu
+Each transaction row has a three-dots (`MoreHorizontal`) actions menu with three items:
+1. **Edit** — opens `<TransactionEditModal>` (`frontend/components/transactions/transaction-edit-modal.tsx`). The modal shows a read-only grey panel with Date / Description / Amount / Balance / Account, then editable fields: Category (select), Vendor (select), Notes (textarea). A "Manage splits" button at the bottom opens the split modal from within the edit modal. Saving writes a `CategorisationEvent` row with `source=USER` (the Phase C AI learning signal).
+2. **Split** — opens the split modal directly.
+3. **Create rule** — opens the rule-creation flow pre-populated from this transaction.
 
 ---
 

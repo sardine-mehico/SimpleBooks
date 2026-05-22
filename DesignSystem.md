@@ -116,6 +116,14 @@ Every edit page (Invoices, Customers, Billing Companies, Items, Tasks, Recurring
 - **rightActions** — slot for per-form extras: invoice-form drops a hamburger menu here (`lucide-react` `Menu` icon, `h-9 w-[2.475rem]` = ~10% wider than the back button) holding Clone / PDF / Send / Void / Delete via a Radix `DropdownMenu`. Customer / Company / Item / Task / Recurring forms drop a single icon-only danger `Trash2` button.
 - **No bottom action bar.** The old `FormActions` row at the bottom of each form was removed across the board — every action surfaces in the header.
 
+### Back button on Banking detail / wizard pages
+Three Banking pages that are not edit forms also use the same square `h-9 w-9` outline `ArrowLeft` back button (from `lucide-react`) at the top of their content, matching the `EditPageChrome` back button style:
+- `/accounts/[id]` — back button inserted into `<AccountHeaderCard>`, navigates to `/accounts`.
+- `/vendors/extract` — back button at the top of the extraction wizard, navigates to `/vendors`.
+- `/rules/test` — back button at the top of the sandbox page, navigates to `/rules`.
+
+These pages do not use `EditPageChrome` (they are not forms), but the back button must be visually identical to the chrome variant.
+
 ### View mode (existing invoices only — for now)
 Existing invoices open in **view mode**: fields are wrapped in `<fieldset disabled>`, the rich-text editor gets a `disabled` prop, the Save button is disabled, and an **Edit** button sits to the left of Save. Clicking Edit flips local `viewMode = false`: the fieldset unlocks, RichTextEditor accepts input again, and Save becomes enabled. Saving navigates back to `/invoices`, dropping the local state.
 
@@ -235,3 +243,16 @@ The split modal shows running totals below the split rows:
 - **Remaining ≠ $0.00** (under- or over-allocated): `text-amber-700`
 
 The Save button is disabled until Remaining = $0.00.
+
+---
+
+## AI Setup
+
+### PRIMARY badge
+Used on the active (primary) provider card on `/settings/ai-setup`:
+
+```
+bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white
+```
+
+Non-primary cards show a "Set Primary" text link instead.

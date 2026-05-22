@@ -83,6 +83,7 @@ NestJS module layout (one per backend domain):
 - `rules` — **(Phase B)** CRUD for categorisation rules with conditions. Route prefix `/rules`. Exposes reorder (`PATCH /rules/:id/move`), state change (`PATCH /rules/:id/state`), and active toggle (`PATCH /rules/:id/toggle-active`).
 - `rule-engine` — **(Phase B)** Orchestrator module. No database table of its own. Two-pass engine: vendor-match pass (longest-alias tiebreak) then rule-match pass (first-match-wins, AND-only conditions). Exposes `POST /rule-engine/recategorise` (batch run over selected transactions) and `POST /rule-engine/test` (dry-run sandbox with no side effects). Engine writes are wrapped in a single Prisma `$transaction`; a `CategorisationEvent` row is written for every change. `Rule.hitCount` and `lastFiredAt` are incremented per pass.
 - `categorisation-events` — **(Phase B)** Read-only. Route prefix `/categorisation-events`. Exposes the `CategorisationEvent` audit log. No write endpoints — rows are append-only.
+- `ai-providers` — **(Phase C scaffolding)** CRUD for `AiProvider` config rows. Route prefix `/ai-providers`. Includes `PATCH /ai-providers/:id/set-primary` (atomically sets one provider as primary). **No LLM is called anywhere yet** — this module persists config that Phase C will consume.
 - `prisma` — shared global module exposing `PrismaService`.
 
 #### Banking Phase B — endpoint summary
@@ -109,6 +110,16 @@ NestJS module layout (one per backend domain):
 | `GET` | `/categorisation-events` | read-only audit log |
 
 All wired in [backend/src/app.module.ts](backend/src/app.module.ts).
+
+#### AI Providers — endpoint summary (Phase C scaffolding)
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET/POST` | `/ai-providers` | list all / create |
+| `GET/PATCH/DELETE` | `/ai-providers/:id` | read / update / delete (deleting primary auto-promotes oldest remaining) |
+| `PATCH` | `/ai-providers/:id/set-primary` | atomically sets this provider as primary, clears all others |
+
+**No LLM calls are made anywhere yet.** The module persists provider config for Phase C.
 
 #### Banking — shared types
 `backend/src/transaction-imports/types.ts` defines the `ImportReport`, `ImportReportRow`, and column-mapping interfaces shared across the sniff/commit/log pipeline. The frontend counterpart lives at `frontend/lib/types.ts` (Banking section). Both files must stay in sync — the shape is serialised into `TransactionImport.reportJson` and read back by `<ImportReportPopup>`.

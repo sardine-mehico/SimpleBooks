@@ -582,3 +582,24 @@ Append-only audit log. One row per change to a transaction's category, vendor, o
 | `createdAt` | datetime | default `now()` — no `updatedAt`; rows are immutable |
 
 Indexes: `@@index([transactionId])`, `@@index([source, createdAt])`, `@@index([ruleId])`.
+
+---
+
+## AI
+
+### AiProvider
+Configuration record for an external LLM provider. Phase C scaffolding — no LLM is called anywhere yet. This table persists provider config that Phase C will read.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `name` | string | |
+| `model` | string | e.g. "gpt-4o" |
+| `apiBaseUrl` | string | |
+| `apiKey` | string | **Stored as plain text — same boilerplate trade-off as `MailConfiguration.password` and `BillingCompany.customSmtpPassword`. Revisit before production.** |
+| `isPrimary` | bool | default `false`. At most one row has `isPrimary=true` at any time; enforced by the service. |
+| `createdAt` / `updatedAt` | datetime | |
+
+Server rules:
+- Setting any provider as primary atomically unsets `isPrimary` on all others.
+- Deleting the current primary auto-promotes the oldest remaining provider (by `createdAt` asc) as the new primary.
