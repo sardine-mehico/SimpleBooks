@@ -1,6 +1,8 @@
 # Banking — User Guide
 
-Last updated: 2026-05-22 (Phase B complete)
+Last updated: 2026-05-22 (Phase B complete + transaction edit modal + back buttons on Banking pages + AI Setup page scaffolding)
+
+A note on navigation: every detail or wizard page under Banking has a back button (←) in the top-left that returns you to the parent listing — `/accounts/[id]` → `/accounts`, `/vendors/extract` → `/vendors`, `/rules/test` → `/rules`. Edit pages use the existing EditPageChrome back button that was introduced in Phase A.
 
 > Screenshots TBD — capture from a running instance after Phase B is verified end-to-end.
 
@@ -74,10 +76,24 @@ Filters available:
 
 ### 3.3 Row actions
 
-The Actions menu on each row offers:
+The Actions menu (three-dots button on each row) offers three options:
 
-- **Split** — open the split modal to divide the transaction across multiple categories (see Section 11).
-- **Create rule** — open the rule editor pre-populated with this transaction's description, so you can write a rule for it (you still fill in the outcome and any other conditions).
+- **Edit** — open the edit modal (see 3.4 below).
+- **Split** — open the split modal directly to divide the transaction across multiple categories (see Section 11).
+- **Create rule** — open the rule editor so you can write a rule for similar transactions (you fill in the conditions and outcome).
+
+### 3.4 Edit modal
+
+The edit modal lets you change the parts of a transaction that you control, while keeping the bank-statement facts read-only.
+
+- **Read-only fields** (shown in a grey panel at the top): Date · Description · Amount · Balance · Account. These come from the imported CSV and cannot be changed — editing them would defeat the duplicate-detection hash. If something here is wrong, you'd need to delete the row and re-import.
+- **Editable fields**:
+  - **Category** — dropdown (or "uncategorised").
+  - **Vendor** — dropdown (or "none").
+  - **Notes** — free-text, up to 2000 characters.
+- **Manage splits** — a button at the bottom switches from the edit modal to the split modal. Use this if the transaction needs a multi-category breakdown instead of a single category.
+- **Banner for split transactions** — if the transaction already has splits, the modal shows an amber warning: setting a single Category here resets the splits. Click "Manage splits" instead to preserve the breakdown.
+- Manual edits write a `CategorisationEvent` row with `source=USER`, so the change is captured for Phase C's AI to learn from (see Section 12).
 
 ---
 
@@ -498,10 +514,22 @@ Phase C's AI will also use these metrics — combined with the CategorisationEve
 
 Phase C will add AI-assisted categorisation. The broad plan:
 
-- A settings page to register one or more OpenAI-compatible providers (any provider that implements the `/chat/completions` endpoint works).
+- **A settings page to register one or more OpenAI-compatible providers** (any provider that implements the `/chat/completions` endpoint works). **This page already exists** at `/settings/ai-setup` as Phase C scaffolding — you can register a primary provider plus any number of backups, each with a name, model id, base URL, and API key. No AI calls happen yet; the records just persist. Phase C wires the actual LLM calls to these providers.
 - The AI reads your USER/approved rules and recent CategorisationEvents as few-shot examples. It learns from your history without any model training or fine-tuning.
 - For uncategorised transactions (or all transactions, on request), the AI proposes a category. You see the proposal alongside any rule match.
 - You accept, edit, or reject each proposal. Your decisions feed back into the few-shot examples — the AI improves the more you use it.
 - The AI can also propose new RULES based on patterns in your accept/edit history. These appear in the "AI Drafts" tab of `/rules`. You approve, modify, or deny each. Approved AI rules join the active rule set.
 
-Nothing in Phase B is wasted. The schema — `CategorisationEvent`, `Rule.state`, `Rule.hitCount`, `Rule.lastFiredAt` — is already in place for Phase C to use.
+Nothing in Phase B is wasted. The schema — `CategorisationEvent`, `Rule.state`, `Rule.hitCount`, `Rule.lastFiredAt`, and the new `AiProvider` table — is already in place for Phase C to use.
+
+### What's persisted on `/settings/ai-setup` today
+
+| Field | Notes |
+|---|---|
+| Name | User-facing label, e.g. "OpenAI GPT-4o" |
+| Model | Model id passed to the provider, e.g. `gpt-4o` or `claude-3-5-sonnet-20241022` |
+| API Base URL | e.g. `https://api.openai.com/v1` |
+| API Key | Stored verbatim (same pattern as the existing SMTP password) |
+| Primary | Exactly one provider has this flag at any time. Setting one primary unsets the others atomically. Deleting the primary auto-promotes the oldest remaining provider. |
+
+Each card has explicit dirty-tracking — the Save button is disabled until you edit a field. The eye icon on the API Key field toggles visibility.
