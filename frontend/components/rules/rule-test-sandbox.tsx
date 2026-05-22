@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, FlaskConical, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, FlaskConical, Loader2 } from "lucide-react";
 import { TransactionAmountCell } from "@/components/transactions/transaction-amount-cell";
 import { testRules } from "@/lib/banking-rules";
 import type { Account, EngineOutput, Rule } from "@/lib/types";
@@ -51,6 +51,16 @@ export function RuleTestSandbox({ rules, accounts }: { rules: Rule[]; accounts: 
 
   return (
     <div className="px-6 py-6 md:px-8 md:py-8 space-y-5">
+      <div className="flex items-center gap-3">
+        <Link
+          href="/rules"
+          aria-label="Back to rules"
+          className="grid h-9 w-9 place-items-center rounded-[0.3rem] border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+        <h1 className="text-2xl font-semibold text-slate-900">Test Rules</h1>
+      </div>
       <Card className="border-amber-200 bg-amber-50 p-4">
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-700" />

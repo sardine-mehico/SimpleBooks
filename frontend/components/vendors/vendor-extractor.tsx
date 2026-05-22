@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertCircle, Check } from "lucide-react";
+import { Loader2, AlertCircle, Check, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 import { VENDOR_KINDS, type Account, type VendorExtractionCandidate, type VendorKind } from "@/lib/types";
 import { extractVendorCandidates, commitVendorCandidates } from "@/lib/banking-rules";
 
@@ -93,6 +94,13 @@ export function VendorExtractor({ accounts }: { accounts: Account[] }) {
   return (
     <div className="px-6 py-6 md:px-8 md:py-8">
       <div className="mb-6 flex items-center gap-3">
+        <Link
+          href="/vendors"
+          aria-label="Back to vendors"
+          className="grid h-9 w-9 place-items-center rounded-[0.3rem] border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
         <h1 className="text-2xl font-semibold text-slate-900">Suggest vendors from transactions</h1>
       </div>
 

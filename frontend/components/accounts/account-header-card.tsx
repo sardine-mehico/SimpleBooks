@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Pencil } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 import type { Account } from "@/lib/types";
 
 function fmt(amount: string | number | undefined) {
@@ -25,7 +25,16 @@ export function AccountHeaderCard({
     <Card className="mb-5 p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-xs uppercase tracking-wider text-slate-400">{account.accountType?.name ?? ""}</div>
+          <div className="mb-3 flex items-center gap-2">
+            <Link
+              href="/accounts"
+              aria-label="Back to accounts"
+              className="grid h-9 w-9 place-items-center rounded-[0.3rem] border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <div className="text-xs uppercase tracking-wider text-slate-400">{account.accountType?.name ?? ""}</div>
+          </div>
           <h1 className="text-2xl font-semibold text-slate-900">{account.name}</h1>
           <div className="mt-1 text-sm text-slate-600">
             {account.bank}{account.accountNumber ? ` · ${account.accountNumber}` : ""}

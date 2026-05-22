@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { TransactionAmountCell } from "./transaction-amount-cell";
 import { listTransactions } from "@/lib/banking";
 import { CATEGORY_KINDS } from "@/lib/types";
-import type { Account, Category, Transaction } from "@/lib/types";
+import type { Account, Category, Transaction, Vendor } from "@/lib/types";
 import { RecategoriseDialog } from "./recategorise-dialog";
 import { TransactionRowMenu } from "./transaction-row-menu";
 
@@ -23,12 +23,14 @@ export function TransactionsTable({
   fixedAccountId,
   accounts,
   categories,
+  vendors,
   searchParams,
 }: {
   mode: "account" | "global";
   fixedAccountId?: string;
   accounts: Account[];
   categories: Category[];
+  vendors: Vendor[];
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const router = useRouter();
@@ -264,7 +266,7 @@ export function TransactionsTable({
                     </div>
                   )}
                   <div className="flex justify-end">
-                    <TransactionRowMenu transaction={t} categories={categories} />
+                    <TransactionRowMenu transaction={t} categories={categories} vendors={vendors} />
                   </div>
                 </div>
               </li>
