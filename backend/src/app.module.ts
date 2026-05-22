@@ -29,6 +29,7 @@ import { TransactionImportsModule } from './transaction-imports/transaction-impo
 import { ImportLogsModule } from './import-logs/import-logs.module';
 import { RulesModule } from './rules/rules.module';
 import { RuleEngineModule } from './rule-engine/rule-engine.module';
+import { CategorisationEventsModule } from './categorisation-events/categorisation-events.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
 
@@ -69,6 +70,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
     ImportLogsModule,
     RulesModule,
     RuleEngineModule,
+    CategorisationEventsModule,
   ],
 })
 export class AppModule {}
