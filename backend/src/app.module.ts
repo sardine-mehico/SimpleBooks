@@ -13,6 +13,7 @@ import { ItemsModule } from './items/items.module';
 import { TaxTypesModule } from './tax-types/tax-types.module';
 import { AccountTypesModule } from './account-types/account-types.module';
 import { AccountsModule } from './accounts/accounts.module';
+import { CategoriesModule } from './categories/categories.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { RecurringSchedulesModule } from './recurring-schedules/recurring-schedules.module';
 import { MailConfigurationModule } from './mail-configuration/mail-configuration.module';
@@ -49,6 +50,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
     TaxTypesModule,
     AccountTypesModule,
     AccountsModule,
+    CategoriesModule,
     TransactionsModule,
     RecurringSchedulesModule,
     MailConfigurationModule,
