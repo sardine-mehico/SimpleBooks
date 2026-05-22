@@ -507,6 +507,82 @@ async function main() {
     },
   });
 
+  // ── Categories (Banking Phase B) ─────────────────────────────────────────
+  const CATEGORIES = [
+    { name: 'Income — Customer payments', kind: 'INCOME' as const, sortOrder: 10 },
+    { name: 'Income — Personal', kind: 'INCOME' as const, sortOrder: 20 },
+    { name: 'Income — Refunds', kind: 'INCOME' as const, sortOrder: 30 },
+    { name: 'Income — Other', kind: 'INCOME' as const, sortOrder: 40 },
+    { name: 'Expense — Rent', kind: 'EXPENSE' as const, sortOrder: 110 },
+    { name: 'Expense — Utilities', kind: 'EXPENSE' as const, sortOrder: 120 },
+    { name: 'Expense — Telecom', kind: 'EXPENSE' as const, sortOrder: 130 },
+    { name: 'Expense — Insurance', kind: 'EXPENSE' as const, sortOrder: 140 },
+    { name: 'Expense — Groceries', kind: 'EXPENSE' as const, sortOrder: 150 },
+    { name: 'Expense — Fuel', kind: 'EXPENSE' as const, sortOrder: 160 },
+    { name: 'Expense — Subscriptions & Online', kind: 'EXPENSE' as const, sortOrder: 170 },
+    { name: 'Expense — Personal', kind: 'EXPENSE' as const, sortOrder: 180 },
+    { name: 'Expense — Bank fees', kind: 'EXPENSE' as const, sortOrder: 190 },
+    { name: 'Transfer — Between own accounts', kind: 'TRANSFER' as const, sortOrder: 210 },
+    { name: 'Other — Uncategorised review', kind: 'OTHER' as const, sortOrder: 999 },
+  ];
+  for (const c of CATEGORIES) {
+    await prisma.category.upsert({
+      where: { name: c.name },
+      update: {},
+      create: c,
+    });
+  }
+
+  // ── Vendors (Banking Phase B) ────────────────────────────────────────────
+  const VENDORS: Array<{ name: string; kind: 'MERCHANT' | 'PERSON' | 'CUSTOMER' | 'BANK' | 'OTHER'; aliases: string[] }> = [
+    { name: 'BP', kind: 'MERCHANT', aliases: ['bp ', 'bp australia', 'bp connect'] },
+    { name: 'Caltex', kind: 'MERCHANT', aliases: ['caltex', 'ampol caltex'] },
+    { name: 'Shell', kind: 'MERCHANT', aliases: ['shell ', 'shell coles'] },
+    { name: 'Ampol', kind: 'MERCHANT', aliases: ['ampol', 'caltex ampol'] },
+    { name: '7-Eleven', kind: 'MERCHANT', aliases: ['7-eleven', '7 eleven', '7eleven'] },
+    { name: 'Costco', kind: 'MERCHANT', aliases: ['costco'] },
+    { name: 'Liberty', kind: 'MERCHANT', aliases: ['liberty oil', 'liberty service'] },
+    { name: 'Mobil', kind: 'MERCHANT', aliases: ['mobil '] },
+    { name: 'Vibe', kind: 'MERCHANT', aliases: ['vibe service', 'vibe petroleum'] },
+    { name: 'United', kind: 'MERCHANT', aliases: ['united petroleum'] },
+    { name: 'Woolworths', kind: 'MERCHANT', aliases: ['woolworths', 'woolies', 'ww metro', 'ww supermarkets'] },
+    { name: 'Coles', kind: 'MERCHANT', aliases: ['coles ', 'coles supermarkets', 'coles express'] },
+    { name: 'IGA', kind: 'MERCHANT', aliases: ['iga '] },
+    { name: 'ALDI', kind: 'MERCHANT', aliases: ['aldi '] },
+    { name: 'Foodland', kind: 'MERCHANT', aliases: ['foodland'] },
+    { name: 'PayPal', kind: 'MERCHANT', aliases: ['paypal', '617704'] },
+    { name: 'Stripe', kind: 'MERCHANT', aliases: ['stripe payments'] },
+    { name: 'eBay', kind: 'MERCHANT', aliases: ['ebay '] },
+    { name: 'Amazon AU', kind: 'MERCHANT', aliases: ['amazon au', 'amazon.com.au', 'amzn mktp au'] },
+    { name: 'Apple', kind: 'MERCHANT', aliases: ['apple.com/bill', 'apple pty ltd'] },
+    { name: 'Google Play', kind: 'MERCHANT', aliases: ['google *play', 'google play'] },
+    { name: 'Telstra', kind: 'MERCHANT', aliases: ['telstra'] },
+    { name: 'Optus', kind: 'MERCHANT', aliases: ['optus ', 'singtel optus'] },
+    { name: 'Vodafone', kind: 'MERCHANT', aliases: ['vodafone'] },
+    { name: 'TPG', kind: 'MERCHANT', aliases: ['tpg internet', 'tpg telecom'] },
+    { name: 'Aussie Broadband', kind: 'MERCHANT', aliases: ['aussie broadband'] },
+    { name: 'Synergy', kind: 'MERCHANT', aliases: ['synergy '] },
+    { name: 'Water Corp', kind: 'MERCHANT', aliases: ['water corp', 'water corporation'] },
+    { name: 'Alinta Energy', kind: 'MERCHANT', aliases: ['alinta energy', 'alinta gas'] },
+    { name: 'RAC', kind: 'MERCHANT', aliases: ['rac ', 'raci ', '250930'] },
+    { name: 'NRMA', kind: 'MERCHANT', aliases: ['nrma '] },
+    { name: 'AAMI', kind: 'MERCHANT', aliases: ['aami '] },
+    { name: 'Allianz', kind: 'MERCHANT', aliases: ['allianz'] },
+    { name: 'Bupa', kind: 'MERCHANT', aliases: ['bupa '] },
+    { name: 'Medibank', kind: 'MERCHANT', aliases: ['medibank'] },
+    { name: 'Commonwealth Bank', kind: 'BANK', aliases: ['commbank', 'cba ', 'commonwealth bank'] },
+    { name: 'NAB', kind: 'BANK', aliases: ['national australia bank', 'nab '] },
+    { name: 'Westpac', kind: 'BANK', aliases: ['westpac'] },
+    { name: 'ANZ', kind: 'BANK', aliases: ['anz '] },
+  ];
+  for (const v of VENDORS) {
+    await prisma.vendor.upsert({
+      where: { name: v.name },
+      update: { aliases: v.aliases, kind: v.kind },
+      create: v,
+    });
+  }
+
   console.log('seed: done');
 }
 
