@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Filter, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { Filter, ChevronUp, ChevronDown, ChevronsUpDown, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import { listTransactions } from "@/lib/banking";
 import { CATEGORY_KINDS } from "@/lib/types";
 import type { Account, Category, Transaction, Vendor } from "@/lib/types";
 import { RecategoriseDialog } from "./recategorise-dialog";
+import { BulkAiCategoriseDialog } from "./bulk-ai-categorise-dialog";
 import { TransactionRowMenu } from "./transaction-row-menu";
 
 type SortKey = "date" | "amount" | "description" | "runningBalance";
@@ -54,6 +55,7 @@ export function TransactionsTable({
   const [loading, setLoading] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
   const [showRecategorise, setShowRecategorise] = useState(false);
+  const [bulkAiOpen, setBulkAiOpen] = useState(false);
 
   // Local input mirrors for the filter panel before user clicks Apply.
   const [tempDateFrom, setTempDateFrom] = useState(dateFrom);
@@ -139,6 +141,9 @@ export function TransactionsTable({
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" onClick={() => setShowRecategorise(true)}>
             Re-categorise
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setBulkAiOpen(true)}>
+            <Sparkles className="h-4 w-4" /> Categorise with AI
           </Button>
           <Button
             type="button"
@@ -290,6 +295,7 @@ export function TransactionsTable({
           onClose={() => setShowRecategorise(false)}
         />
       )}
+      <BulkAiCategoriseDialog accounts={accounts} open={bulkAiOpen} onClose={() => setBulkAiOpen(false)} />
     </div>
   );
 }
