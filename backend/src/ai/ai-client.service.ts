@@ -12,8 +12,15 @@ export class AiClientService {
 
   constructor(
     private prisma: PrismaService,
+    // globalThis.fetch is Node 18+ native fetch (undici). The `any` cast on globalThis
+    // is needed because @types/node doesn't always type `fetch` as a global.
     @Optional() private fetchFn: FetchFn = (...a: any[]) => (globalThis as any).fetch(...a),
   ) {
+    // `removeAdditional: 'all'` silently drops any keys the LLM returns that aren't in
+    // the schema's `properties` list. This keeps the typed result T narrow — callers
+    // receive only the fields they declared. Without it, AJV with `additionalProperties:
+    // false` would reject the whole response on a single hallucinated key, wasting the
+    // chain. The trade-off is intentional: prefer lenient stripping over strict reject.
     this.ajv = new Ajv({ allErrors: true, strict: false, removeAdditional: 'all' });
   }
 
@@ -29,9 +36,13 @@ export class AiClientService {
     for (let i = 0; i < chain.length; i++) {
       const provider = chain[i];
       const attempt = i + 1;
-      const { ok, data, httpStatus, message, repairUsed, tokens, latencyMs } =
+      const { ok, data, httpStatus, message, tokens, latencyMs } =
         await this.tryProvider<T>(provider, input, validator);
 
+      // One AiCall row per provider attempt (NOT per HTTP attempt — the repair retry
+      // inside tryProvider is collapsed into this single row). The spec describes "per
+      // HTTP attempt" but the test expects per-provider, which is the observability
+      // signal that matters: did this provider, in the end, succeed?
       if (ok) {
         await this.logCall(provider.id, input, 'OK', httpStatus ?? 200, null, tokens, latencyMs);
         return {
@@ -91,25 +102,26 @@ export class AiClientService {
       const payload = await res.json().catch(() => null as any);
 
       if (status === 408 || status === 429 || status >= 500) {
-        return { ok: false as const, httpStatus: status, message: payload?.error?.message ?? `HTTP ${status}`, repairUsed: false, tokens, latencyMs };
+        return { ok: false as const, httpStatus: status, message: payload?.error?.message ?? `HTTP ${status}`, tokens, latencyMs };
       }
       if (status >= 400) {
-        return { ok: false as const, httpStatus: status, message: payload?.error?.message ?? `HTTP ${status}`, repairUsed: false, tokens, latencyMs };
+        return { ok: false as const, httpStatus: status, message: payload?.error?.message ?? `HTTP ${status}`, tokens, latencyMs };
       }
 
       const raw = payload?.choices?.[0]?.message?.content;
       if (typeof raw !== 'string') {
-        return { ok: false as const, httpStatus: status, message: 'missing message.content', repairUsed: false, tokens, latencyMs };
+        return { ok: false as const, httpStatus: status, message: 'missing message.content', tokens, latencyMs };
       }
       tokens.promptTokens = payload?.usage?.prompt_tokens ?? null;
       tokens.completionTokens = payload?.usage?.completion_tokens ?? null;
 
       const parsed = this.parseAndValidate<T>(raw, validator);
       if (parsed.ok) {
-        return { ok: true as const, data: parsed.data, httpStatus: status, message: undefined, repairUsed: false, tokens, latencyMs };
+        return { ok: true as const, data: parsed.data, httpStatus: status, message: undefined, tokens, latencyMs };
       }
 
-      // One repair retry on the same provider with the validation error appended.
+      // Send the original messages + an additional user turn telling the model what was wrong
+      // with the previous response. response_format and other top-level fields are unchanged.
       const repairBody = {
         ...body,
         messages: [
@@ -132,17 +144,20 @@ export class AiClientService {
         if (parsed2.ok) {
           tokens.promptTokens = payload2?.usage?.prompt_tokens ?? tokens.promptTokens;
           tokens.completionTokens = payload2?.usage?.completion_tokens ?? tokens.completionTokens;
-          return { ok: true as const, data: parsed2.data, httpStatus: status2, message: undefined, repairUsed: true, tokens, latencyMs: latency2 };
+          return { ok: true as const, data: parsed2.data, httpStatus: status2, message: undefined, tokens, latencyMs: latency2 };
         }
-        return { ok: false as const, httpStatus: status2, message: `schema invalid after repair: ${parsed2.error}`, repairUsed: true, tokens, latencyMs: latency2 };
+        return { ok: false as const, httpStatus: status2, message: `schema invalid after repair: ${parsed2.error}`, tokens, latencyMs: latency2 };
       }
-      return { ok: false as const, httpStatus: status2, message: `repair retry failed (HTTP ${status2})`, repairUsed: true, tokens, latencyMs: latency2 };
+      return { ok: false as const, httpStatus: status2, message: `repair retry failed (HTTP ${status2})`, tokens, latencyMs: latency2 };
     } catch (e: any) {
       const latencyMs = Date.now() - t0;
-      const message = e?.code === 'ABORT_ERR' || e?.name === 'AbortError' || e?.name === 'TimeoutError'
+      // Native fetch + AbortSignal.timeout() throws a DOMException with name='TimeoutError'
+      // (or 'AbortError' if the caller aborts manually). The older string 'ABORT_ERR' code
+      // is from node-fetch/older Node http and never fires here.
+      const message = e?.name === 'AbortError' || e?.name === 'TimeoutError'
         ? `timeout after ${input.timeoutMs}ms`
         : (e?.message || String(e));
-      return { ok: false as const, httpStatus: undefined, message, repairUsed: false, tokens, latencyMs };
+      return { ok: false as const, httpStatus: undefined, message, tokens, latencyMs };
     }
   }
 
