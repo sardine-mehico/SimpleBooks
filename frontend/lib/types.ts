@@ -583,3 +583,14 @@ export type CategorisationEvent = {
   acceptedAiSuggestion?: boolean | null;
   createdAt: string;
 };
+
+export type AiProvider = {
+  id: string;
+  name: string;
+  model: string;
+  apiBaseUrl: string;
+  apiKey: string;
+  isPrimary: boolean;
+  createdAt: string;
+  updatedAt: string;
+};

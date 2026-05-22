@@ -30,6 +30,7 @@ import { ImportLogsModule } from './import-logs/import-logs.module';
 import { RulesModule } from './rules/rules.module';
 import { RuleEngineModule } from './rule-engine/rule-engine.module';
 import { CategorisationEventsModule } from './categorisation-events/categorisation-events.module';
+import { AiProvidersModule } from './ai-providers/ai-providers.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
 
@@ -71,6 +72,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
     RulesModule,
     RuleEngineModule,
     CategorisationEventsModule,
+    AiProvidersModule,
   ],
 })
 export class AppModule {}

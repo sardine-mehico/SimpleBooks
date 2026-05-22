@@ -601,6 +601,20 @@ model TransactionSplit {
   @@index([transactionId])
 }
 
+// Configuration for an OpenAI-compatible AI provider. Phase C reads these
+// to make AI calls; Phase B only persists the records. At most one provider
+// has isPrimary=true (server-enforced in set-primary).
+model AiProvider {
+  id         String   @id @default(uuid())
+  name       String                          // user-facing label, e.g. "OpenAI GPT-4o"
+  model      String                          // model id passed to the provider, e.g. "gpt-4o"
+  apiBaseUrl String                          // e.g. "https://api.openai.com/v1"
+  apiKey     String                          // stored plain (matches existing customSmtpPassword pattern)
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 model CategorisationEvent {
   id            String      @id @default(uuid())
   transactionId String
