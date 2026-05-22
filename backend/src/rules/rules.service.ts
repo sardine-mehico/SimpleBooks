@@ -118,7 +118,11 @@ export class RulesService {
 
   async setState(id: string, state: RuleStateDto) {
     await this.get(id);
-    return this.prisma.rule.update({ where: { id }, data: { state: state as any } });
+    const isActive = state === 'APPROVED' ? true : state === 'DENIED' ? false : undefined;
+    return this.prisma.rule.update({
+      where: { id },
+      data: { state: state as any, ...(isActive !== undefined ? { isActive } : {}) },
+    });
   }
 
   async toggleActive(id: string, isActive: boolean) {

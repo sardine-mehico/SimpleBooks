@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
-import { Plus, FlaskConical } from "lucide-react";
+import { Plus, FlaskConical, Sparkles } from "lucide-react";
 import { RULE_STATES, type Account, type Rule, type RuleState, type Vendor } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { RuleRow } from "./rule-row";
+import { AiDraftRow } from "./ai-draft-row";
+import { mineRules } from "@/lib/ai";
 
 export function RulesList({
   initial,
@@ -18,7 +21,9 @@ export function RulesList({
   vendors: Vendor[];
   accounts: Account[];
 }) {
+  const router = useRouter();
   const [stateFilter, setStateFilter] = useState<RuleState>("USER");
+  const [mining, setMining] = useState(false);
 
   const counts: Record<RuleState, number> = useMemo(() => {
     const acc = { USER: 0, AI_DRAFTED: 0, APPROVED: 0, DENIED: 0 };
@@ -44,6 +49,22 @@ export function RulesList({
       title="Rules"
       actions={
         <>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              setMining(true);
+              try {
+                const r = await mineRules();
+                alert(`Drafted ${r.drafted} rule(s). ${r.skippedSuppressed} suppressed.`);
+                router.refresh();
+              } finally {
+                setMining(false);
+              }
+            }}
+            disabled={mining}
+          >
+            <Sparkles className="h-4 w-4" /> {mining ? 'Mining…' : 'Find candidates from history'}
+          </Button>
           <Button asChild variant="outline">
             <Link href="/rules/test">
               <FlaskConical className="h-4 w-4" /> Test rules
@@ -85,15 +106,18 @@ export function RulesList({
       )}
 
       <div className="space-y-3">
-        {filtered.map((r, i) => (
-          <RuleRow
-            key={r.id}
-            rule={r}
-            rank={i + 1}
-            vendorNames={vendorNames}
-            accountNames={accountNames}
-          />
-        ))}
+        {stateFilter === 'AI_DRAFTED'
+          ? filtered.map((r) => <AiDraftRow key={r.id} rule={r} />)
+          : filtered.map((r, i) => (
+              <RuleRow
+                key={r.id}
+                rule={r}
+                rank={i + 1}
+                vendorNames={vendorNames}
+                accountNames={accountNames}
+              />
+            ))
+        }
       </div>
     </PageShell>
   );
