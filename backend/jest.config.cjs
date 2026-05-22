@@ -6,6 +6,6 @@ module.exports = {
   testMatch: ['**/*.spec.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
   transform: {
-    '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true, target: 'ES2022', module: 'commonjs' } }],
+    '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true, target: 'ES2022', module: 'commonjs', strictNullChecks: true, experimentalDecorators: true, emitDecoratorMetadata: true } }],
   },
 };
