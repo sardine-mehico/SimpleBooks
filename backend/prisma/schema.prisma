@@ -338,6 +338,7 @@ model Preferences {
   id                  String   @id @default(uuid())
   timezone            String   @default("Australia/Perth")
   financialYearStart  Int      @default(7)
+  aiMiningThreshold   Int      @default(5)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
@@ -515,6 +516,7 @@ enum EventSource {
   VENDOR_MATCH
   AI_DRAFT
   AI_APPLIED
+  AI_REJECTED
 }
 
 model Category {
@@ -557,6 +559,7 @@ model Rule {
   vendorId    String?
   vendor      Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   noteOnApply String?
+  clusterHash String?
 
   hitCount    Int        @default(0)
   lastFiredAt DateTime?
@@ -570,6 +573,7 @@ model Rule {
 
   @@index([priority])
   @@index([state, isActive])
+  @@index([clusterHash])
 }
 
 model RuleCondition {
@@ -606,13 +610,16 @@ model TransactionSplit {
 // has isPrimary=true (server-enforced in set-primary).
 model AiProvider {
   id         String   @id @default(uuid())
-  name       String                          // user-facing label, e.g. "OpenAI GPT-4o"
-  model      String                          // model id passed to the provider, e.g. "gpt-4o"
-  apiBaseUrl String                          // e.g. "https://api.openai.com/v1"
-  apiKey     String                          // stored plain (matches existing customSmtpPassword pattern)
+  name       String
+  model      String
+  apiBaseUrl String
+  apiKey     String
   isPrimary  Boolean  @default(false)
+  sortOrder  Int      @default(1000)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  calls      AiCall[]
+  @@index([isPrimary, sortOrder])
 }
 
 model CategorisationEvent {
@@ -630,10 +637,41 @@ model CategorisationEvent {
   newVendorId   String?
 
   acceptedAiSuggestion Boolean?
+  reasoning String?
 
   createdAt     DateTime    @default(now())
 
   @@index([transactionId])
   @@index([source, createdAt])
   @@index([ruleId])
+}
+
+enum AiCallPurpose {
+  CATEGORISE
+  DRAFT_RULE
+}
+
+enum AiCallStatus {
+  OK
+  FAILED
+}
+
+model AiCall {
+  id               String        @id @default(uuid())
+  providerId       String
+  provider         AiProvider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  purpose          AiCallPurpose
+  promptTokens     Int?
+  completionTokens Int?
+  latencyMs        Int
+  status           AiCallStatus
+  httpStatus       Int?
+  errorMessage     String?
+  transactionId    String?
+  ruleId           String?
+  createdAt        DateTime      @default(now())
+
+  @@index([providerId, createdAt])
+  @@index([status, createdAt])
+  @@index([transactionId])
 }
