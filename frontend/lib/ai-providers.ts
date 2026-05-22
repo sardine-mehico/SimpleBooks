@@ -10,3 +10,5 @@ export const setAiProviderPrimary = (id: string) =>
   apiClient.patch<AiProvider>(`/ai-providers/${id}/set-primary`, {});
 export const deleteAiProvider = (id: string) =>
   apiClient.delete<{ ok: true }>(`/ai-providers/${id}`);
+export const moveAiProvider = (id: string, direction: 'up' | 'down') =>
+  apiClient.patch(`/ai-providers/${id}/move`, { direction });

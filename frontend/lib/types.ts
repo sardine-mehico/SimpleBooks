@@ -591,6 +591,35 @@ export type AiProvider = {
   apiBaseUrl: string;
   apiKey: string;
   isPrimary: boolean;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 };
+
+export type AiConfidence = 'high' | 'med' | 'low';
+
+export interface AiDraftView {
+  eventId: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  vendorId: string | null;
+  vendorName: string | null;
+  confidence: AiConfidence;
+  reasoning: string;
+  providerId: string | null;
+  createdAt: string;
+}
+
+export type SuggestResult =
+  | { kind: 'fresh'; draft: AiDraftView }
+  | { kind: 'cached'; draft: AiDraftView }
+  | { kind: 'failed'; error: string };
+
+export interface BulkRunStatus {
+  runId: string; totalQueued: number; done: number;
+  ok: number; cached: number; failed: number; cancelled: boolean;
+}
+
+export interface MineRulesResult {
+  drafted: number; skippedSuppressed: number; clustersConsidered: number; failed: number;
+}
