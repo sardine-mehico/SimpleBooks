@@ -6,9 +6,10 @@ import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, Eye, EyeOff, Plus } from "lucide-react";
+import { Trash2, Eye, EyeOff, Plus, ArrowUp, ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createAiProvider, deleteAiProvider, setAiProviderPrimary, updateAiProvider } from "@/lib/ai-providers";
+import { createAiProvider, deleteAiProvider, setAiProviderPrimary, updateAiProvider, moveAiProvider } from "@/lib/ai-providers";
+import { api } from "@/lib/api";
 import type { AiProvider } from "@/lib/types";
 
 type Draft = {
@@ -27,9 +28,11 @@ function toDraft(p: AiProvider): Draft {
   return { id: p.id, name: p.name, model: p.model, apiBaseUrl: p.apiBaseUrl, apiKey: p.apiKey, isPrimary: p.isPrimary, dirty: false, isNew: false, showKey: false };
 }
 
-export function AiSetupPage({ initial }: { initial: AiProvider[] }) {
+export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?: { aiMiningThreshold?: number } }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState<Draft[]>(initial.map(toDraft));
+  const [threshold, setThreshold] = useState<number>(prefs?.aiMiningThreshold ?? 5);
+  const [savingThreshold, setSavingThreshold] = useState(false);
 
   function update(id: string, patch: Partial<Draft>) {
     setDrafts((curr) => curr.map((d) => (d.id === id ? { ...d, ...patch, dirty: true } : d)));
@@ -97,7 +100,15 @@ export function AiSetupPage({ initial }: { initial: AiProvider[] }) {
               {d.isPrimary ? (
                 <span className="inline-block rounded-[0.3rem] bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">Primary</span>
               ) : (
-                <button type="button" onClick={() => makePrimary(d)} className="text-xs text-indigo-700 hover:underline">Set Primary</button>
+                <>
+                  <Button size="sm" variant="outline" onClick={async () => { await moveAiProvider(d.id, 'up'); router.refresh(); }} aria-label="Move up">
+                    <ArrowUp className="h-3 w-3" />
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={async () => { await moveAiProvider(d.id, 'down'); router.refresh(); }} aria-label="Move down">
+                    <ArrowDown className="h-3 w-3" />
+                  </Button>
+                  <button type="button" onClick={() => makePrimary(d)} className="text-xs text-indigo-700 hover:underline">Set Primary</button>
+                </>
               )}
             </div>
             <button type="button" onClick={() => remove(d)} className="text-slate-400 hover:text-red-700" aria-label="Delete">
@@ -148,6 +159,31 @@ export function AiSetupPage({ initial }: { initial: AiProvider[] }) {
       <Button type="button" variant="outline" onClick={addNew} className="w-full justify-center">
         <Plus className="h-4 w-4" /> Add AI Configuration
       </Button>
+
+      <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-semibold">Rule drafting</h2>
+        <label className="block text-xs text-slate-500">Minimum cluster size to draft a rule</label>
+        <div className="mt-1 flex items-center gap-2">
+          <input
+            type="number" min={1} max={50} value={threshold}
+            onChange={(e) => setThreshold(Math.max(1, Math.min(50, Number(e.target.value))))}
+            className="w-20 rounded-[0.3rem] border border-slate-300 px-2 py-1 text-sm"
+          />
+          <span className="text-xs text-slate-500">transactions must agree before AI proposes a rule (1–50)</span>
+          <Button
+            size="sm"
+            disabled={savingThreshold}
+            onClick={async () => {
+              setSavingThreshold(true);
+              try {
+                await api('/preferences', { method: 'PUT', body: JSON.stringify({ aiMiningThreshold: threshold }) });
+              } finally { setSavingThreshold(false); }
+            }}
+          >
+            {savingThreshold ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </section>
     </div>
   );
 }
