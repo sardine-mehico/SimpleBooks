@@ -86,10 +86,11 @@ All wired in [backend/src/app.module.ts](backend/src/app.module.ts).
 `backend/src/transaction-imports/types.ts` defines the `ImportReport`, `ImportReportRow`, and column-mapping interfaces shared across the sniff/commit/log pipeline. The frontend counterpart lives at `frontend/lib/types.ts` (Banking section). Both files must stay in sync — the shape is serialised into `TransactionImport.reportJson` and read back by `<ImportReportPopup>`.
 
 #### Banking — ts-node tests
-CSV parser and column-sniffer have standalone ts-node test scripts (no Jest). Run with:
+CSV parser and column-sniffer have standalone ts-node test scripts (no Jest). The production runner image strips `src/`, so the tests must run against the build-stage image:
 ```
-docker compose exec backend npx ts-node src/transaction-imports/csv-parser.test.ts
-docker compose exec backend npx ts-node src/transaction-imports/csv-sniffer.test.ts
+cd backend && docker build --target build -t simplebooks-backend-test .
+docker run --rm simplebooks-backend-test npx ts-node src/transaction-imports/csv-parser.test.ts
+docker run --rm simplebooks-backend-test npx ts-node src/transaction-imports/csv-sniffer.test.ts
 ```
 `backend/tsconfig.json` has `"types": ["node"]` (added Task 5) for ts-node compatibility. A `package-lock.json` was also added to the backend directory at that point (it didn't exist before).
 

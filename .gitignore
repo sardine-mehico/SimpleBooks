@@ -17,6 +17,9 @@ screenshots/
 # Playwright cache
 .playwright-mcp/
 
+# Sample CSVs and scratch material
+temp/
+
 # OS / editor noise
 .DS_Store
 *.swp
