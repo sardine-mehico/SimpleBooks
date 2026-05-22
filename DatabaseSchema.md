@@ -29,7 +29,9 @@ For per-module *field semantics, required flags, UI surface, and business logic*
 | `RuleState` | `USER`, `AI_DRAFTED`, `APPROVED`, `DENIED` |
 | `RuleField` | Fields a rule condition can match against (e.g. `DESCRIPTION`, `AMOUNT`, `DATE`) |
 | `RuleOperator` | Comparison operators for rule conditions (e.g. `CONTAINS`, `EQUALS`, `GT`, `LT`, `BETWEEN`, `IN_LIST`) |
-| `EventSource` | `MANUAL`, `RULE`, `AI_SUGGESTION`, `IMPORT` — records what triggered a `CategorisationEvent` |
+| `EventSource` | `MANUAL`, `RULE`, `VENDOR_MATCH`, `AI_DRAFT`, `AI_APPLIED`, `AI_REJECTED` (Phase C) — records what triggered a `CategorisationEvent`. `AI_REJECTED` added in Phase C. |
+| `AiCallPurpose` | `CATEGORISE`, `DRAFT_RULE` — **(Phase C)** purpose of an `AiCall` row |
+| `AiCallStatus` | `OK`, `FAILED` — **(Phase C)** outcome of an `AiCall` row |
 
 ## Models
 
@@ -572,7 +574,7 @@ Append-only audit log. One row per change to a transaction's category, vendor, o
 |---|---|---|
 | `id` | UUID | PK |
 | `transactionId` | UUID | FK → `Transaction.id` (ON DELETE **CASCADE**) |
-| `source` | enum `EventSource` | `MANUAL`, `RULE`, `AI_SUGGESTION`, `IMPORT` |
+| `source` | enum `EventSource` | `MANUAL`, `RULE`, `VENDOR_MATCH`, `AI_DRAFT`, `AI_APPLIED`, `AI_REJECTED` |
 | `ruleId` | UUID? | FK → `Rule.id` (ON DELETE **SET NULL**) — set when `source = RULE` |
 | `oldCategoryId` | UUID? | category before the change |
 | `newCategoryId` | UUID? | category after the change |
@@ -588,7 +590,7 @@ Indexes: `@@index([transactionId])`, `@@index([source, createdAt])`, `@@index([r
 ## AI
 
 ### AiProvider
-Configuration record for an external LLM provider. Phase C scaffolding — no LLM is called anywhere yet. This table persists provider config that Phase C will read.
+Configuration record for an external LLM provider.
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -598,8 +600,68 @@ Configuration record for an external LLM provider. Phase C scaffolding — no LL
 | `apiBaseUrl` | string | |
 | `apiKey` | string | **Stored as plain text — same boilerplate trade-off as `MailConfiguration.password` and `BillingCompany.customSmtpPassword`. Revisit before production.** |
 | `isPrimary` | bool | default `false`. At most one row has `isPrimary=true` at any time; enforced by the service. |
+| `sortOrder` | int | default `1000`. **(Phase C)** Consulted only for `isPrimary=false` rows — lower value = tried earlier in the provider chain. |
 | `createdAt` / `updatedAt` | datetime | |
+
+Indexes: `@@index([isPrimary, sortOrder])` (Phase C).
 
 Server rules:
 - Setting any provider as primary atomically unsets `isPrimary` on all others.
 - Deleting the current primary auto-promotes the oldest remaining provider (by `createdAt` asc) as the new primary.
+
+---
+
+## Phase C additions
+
+All Phase C schema changes are **fully additive**. `prisma db push` applies them without data loss and without requiring `docker compose down -v`.
+
+### New enum values
+
+| Enum | New value(s) |
+|---|---|
+| `EventSource` | `AI_REJECTED` — written when a user explicitly rejects an AI suggestion |
+| `AiCallPurpose` *(new enum)* | `CATEGORISE`, `DRAFT_RULE` |
+| `AiCallStatus` *(new enum)* | `OK`, `FAILED` |
+
+### New column — `Rule.clusterHash`
+
+| Column | Type | Notes |
+|---|---|---|
+| `clusterHash` | string? | `sha256(clusterKey|categoryId).slice(0,16)`. Set on AI_DRAFTED / APPROVED / DENIED rules. Used for mining suppression — prevents the same intent being re-mined after approval or denial. |
+
+Index: `@@index([clusterHash])`.
+
+### New column — `CategorisationEvent.reasoning`
+
+| Column | Type | Notes |
+|---|---|---|
+| `reasoning` | string? | AI's free-text justification (≤ 200 chars). Populated for `AI_DRAFT`, `AI_APPLIED`, and `AI_REJECTED` events. Null for USER / RULE / VENDOR_MATCH. |
+
+### New column — `Preferences.aiMiningThreshold`
+
+| Column | Type | Notes |
+|---|---|---|
+| `aiMiningThreshold` | int | default `5`. Minimum cluster size before AI proposes a draft rule. Configurable via `/settings/ai-setup`. |
+
+### New table — `AiCall`
+
+One row per HTTP attempt to an LLM provider. Provides full observability of the provider chain — a primary-fail → backup1-OK sequence writes two rows.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `providerId` | UUID | FK → `AiProvider.id` (ON DELETE **CASCADE**) |
+| `purpose` | enum `AiCallPurpose` | `CATEGORISE` or `DRAFT_RULE` |
+| `promptTokens` | int? | null on failure or when provider omits usage |
+| `completionTokens` | int? | null on failure or when provider omits usage |
+| `latencyMs` | int | wall-clock ms from request start to response end |
+| `status` | enum `AiCallStatus` | `OK` or `FAILED` |
+| `httpStatus` | int? | null on network failure (no response received) |
+| `errorMessage` | string? | populated on `FAILED` rows |
+| `transactionId` | string? | set when `purpose = CATEGORISE` |
+| `ruleId` | string? | set when `purpose = DRAFT_RULE` (back-filled after the rule row is created) |
+| `createdAt` | datetime | default `now()` — no `updatedAt`; rows are immutable |
+
+Indexes: `@@index([providerId, createdAt])`, `@@index([status, createdAt])`, `@@index([transactionId])`.
+
+Note: `AiCall` rows accumulate without a retention policy. A future cleanup job is planned; until then, manual pruning via `DELETE FROM "AiCall" WHERE "createdAt" < NOW() - INTERVAL '30 days'` is sufficient.

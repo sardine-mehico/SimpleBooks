@@ -488,10 +488,8 @@ Read-only list of every CSV import attempt. Sidebar entry under Settings.
 - **Detail page** `/settings/import-logs/[id]`: re-renders the same `<ImportReportPopup>` component shown immediately after import. Single source of truth — both views read the `ImportReport` JSON shape stored in `TransactionImport.reportJson`.
 - No delete endpoint. Records are immutable once created.
 
-### AI Setup — `/settings/ai-setup` (Phase C scaffolding)
+### AI Setup — `/settings/ai-setup`
 Configuration page for external LLM providers. Backend module: `ai-providers`. Sidebar entry after "Import Logs" using the `Robot` icon from `@phosphor-icons/react`.
-
-**No LLM is called anywhere yet.** This page persists provider records that Phase C will read.
 
 #### AiProvider fields
 | Field | Type | Required | Notes |
@@ -501,6 +499,7 @@ Configuration page for external LLM providers. Backend module: `ai-providers`. S
 | `apiBaseUrl` | string | **yes** | e.g. "https://api.openai.com/v1" |
 | `apiKey` | string | **yes** | Stored plain; eye-icon toggle to show/hide in the UI |
 | `isPrimary` | bool | auto | Exactly one provider (or none) is primary at a time |
+| `sortOrder` | int | auto | Lower = tried earlier in the fallback chain. Managed via `[↑]` / `[↓]` arrows on backup cards. |
 
 #### Page layout
 One card per provider. Each card contains Name / Model / API Base URL / API Key fields, with:
@@ -508,11 +507,74 @@ One card per provider. Each card contains Name / Model / API Base URL / API Key 
 - Eye-icon button to reveal/hide the API key value.
 - Trash button to delete the provider.
 - **"Set Primary" link** on non-primary cards; replaced by a **PRIMARY** badge (`bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white`) on the primary card.
+- **`[↑]` / `[↓]` arrows** on backup (non-primary) cards — swap `sortOrder` with the immediate non-primary neighbour via `PATCH /ai-providers/:id/move`. Primary card has no arrows.
 - **"+ Add Provider"** button at the top of the page.
+
+Bottom section — **Rule drafting**:
+- "Minimum cluster size to draft a rule" — integer field (1–50), reads/writes `Preferences.aiMiningThreshold` (default 5).
 
 #### Logic
 - Setting a provider primary via `PATCH /ai-providers/:id/set-primary` atomically clears `isPrimary` on all other rows.
 - Deleting the primary provider auto-promotes the oldest remaining provider (`createdAt` asc) as the new primary. If no providers remain, there is no primary.
+- Provider chain order for AI calls: primary first, then backups ordered by `sortOrder` asc, `createdAt` asc for ties.
+
+---
+
+## AI Categorisation
+
+**(Phase C)** Backend module: `ai`. Route prefix `/ai`. Three services work together:
+
+- **`AiClient`** — the only file that makes HTTPS calls to LLM providers. Walks the provider chain (primary → backups by `sortOrder`) and writes one `AiCall` row per HTTP attempt. 4xx misconfigs surface immediately; 5xx, 408, 429, timeout, and network errors fall through to the next provider.
+- **`AiCategoriser`** — builds few-shot prompts from recent USER / accepted AI events and calls `AiClient`. Handles inline suggest, bulk suggest (concurrent via `pLimit`), and the accept/edit/reject `apply()` flow.
+- **`AiRuleDrafter`** — deterministic clustering over recent accepted events finds candidate patterns; one LLM call per surviving cluster writes a draft rule (`state=AI_DRAFTED, isActive=false`).
+
+### Accept / Edit / Reject semantics
+
+| Trigger | Transaction changed? | Event written |
+|---|---|---|
+| AI returns a suggestion | no | `AI_DRAFT` with `newCategoryId`, `newVendorId`, `reasoning` |
+| User Accept | yes — to AI's picks | `AI_APPLIED` with `acceptedAiSuggestion=true` |
+| User Edit | yes — to user's picks | `AI_APPLIED` with `acceptedAiSuggestion=false` |
+| User Reject | no | `AI_REJECTED` with `newCategoryId` (rejected pick), `reasoning` |
+| User cancels modal without acting | no | nothing — `AI_DRAFT` stays unresolved (cached for next open within 24 h) |
+| User changes Category while banner is in Suggestion state, then saves | yes — to user's picks | `AI_APPLIED`. `acceptedAiSuggestion=true` if final values match AI's pick, else `false`. |
+
+Server-side accept-vs-edit resolution: when the client sends `action: 'edit'` but the chosen `(categoryId, vendorId)` pair equals the AI draft's pick, the server records `AI_APPLIED accepted=true`. Clicking Edit then saving without changing anything is therefore treated as an accept, not a false negative.
+
+### AI banner — transaction edit modal
+
+Banner slot sits between the read-only block and the editable block.
+
+- **Uncategorised transaction**: banner auto-loads on modal open, fires `POST /ai/suggest-category`.
+- **Already-categorised transaction**: banner hidden; a small "Ask AI for a different opinion" link appears under the Category select. Clicking it fires with `force: true` to bypass the 24 h cache.
+- **Suggestion displayed**: bordered card coloured by confidence (emerald=high, amber=med, slate=low). Shows category, optional vendor, and AI reasoning. Three buttons: `[Accept]` `[Edit]` `[Reject]`.
+  - **Accept** — `POST /ai/apply { action: 'accept' }`; modal closes.
+  - **Edit** — banner shrinks to one-line reminder; Category select pre-fills with AI's pick; modal Save calls `POST /ai/apply` with accept-vs-edit comparison at save time.
+  - **Reject** — `POST /ai/apply { action: 'reject' }`; banner hides; modal stays open for manual categorisation.
+- **No providers configured**: thin amber notice with link to `/settings/ai-setup`.
+- **Chain exhausted**: red banner with provider's last error; `[Retry]` re-fires with `force: true`.
+
+### Bulk categorisation — `/transactions`
+
+The transactions table bulk-actions menu includes "Categorise with AI". Clicking opens `<BulkAiCategoriseDialog>` with account multi-select, date range, and scope (`uncategorised` default / `all`). On Start: `POST /ai/bulk-suggest` → polled every 1 s. When done: `[Review now]` → `/transactions/ai-review`. Closing the dialog mid-run cancels via `POST /ai/bulk-suggest/:runId/cancel`.
+
+### AI Review queue — `/transactions/ai-review`
+
+Lists transactions with unresolved `AI_DRAFT` (no subsequent `AI_APPLIED` / `AI_REJECTED`). Loaded via `GET /ai/review-queue` (cap 500). Each row shows the suggestion banner inline with `[Accept] [Edit] [Reject]`. Edit opens the standard transaction edit modal. Toolbar batch action: `[Approve all "high" ▼]` — confirmation dialog, then `apply(accept)` over every visible high-confidence row.
+
+### AI Drafts tab — `/rules`
+
+The rules page gains an "AI Drafts" tab alongside the main list. Each draft row shows name, condition summary, AI reasoning, and inline actions:
+
+- **Approve** — `PATCH /rules/:id/state { state: 'APPROVED' }`. Server sets `isActive=true`. Rule joins the active set immediately.
+- **Modify** — routes to `/rules/:id/edit` with the draft pre-loaded. Saving the editor transitions `state=APPROVED, isActive=true` regardless of whether conditions were changed (Save = ratification). `clusterHash` is preserved.
+- **Deny** — `PATCH /rules/:id/state { state: 'DENIED' }`. Sets `isActive=false`. Row moves to Denied tab. `clusterHash` stays so the same intent won't be re-mined.
+
+Toolbar batch action: `[Approve all]` when ≥ 2 drafts present. `[Find candidates from history]` button triggers `POST /ai/mine-rules`. A subsequent immediate run produces no candidates (all clusters suppressed by existing drafts/approved/denied rules) — self-throttling.
+
+### History drawer — transaction edit modal
+
+Small icon button in the modal header: `[⏱ History (N)]`. Opens a right-side drawer. Reads `GET /categorisation-events?transactionId=:id&limit=50`. Per row: source badge (colour by source — see DesignSystem.md), relative timestamp, old→new change lines, italic reasoning when set. `RULE` rows link to `/rules/:id/edit`. Drawer is read-only.
 
 ---
 

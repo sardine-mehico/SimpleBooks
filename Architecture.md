@@ -17,12 +17,19 @@ For module-by-module data, business logic, and UI specs see [modules_and_logic.m
 │  postgres    │◄────────│  backend :4000     │────────►│  redis             │
 │  17-alpine   │  Prisma │  NestJS 10         │  ioredis│  7-alpine          │
 │  port 55432  │         │                    │  BullMQ │  port 56379        │
-└──────────────┘         └─────────┬──────────┘         └────────────────────┘
-                                   │
-                                   │  Telegraf (long-poll or webhook)
-                                   ▼
+└──────────────┘         └──────┬─────┬───────┘         └────────────────────┘
+                                │     │
+                                │     │  Telegraf (long-poll or webhook)
+                                │     ▼
+                                │    ┌────────────────────┐
+                                │    │  api.telegram.org  │
+                                │    └────────────────────┘
+                                │
+                                │  HTTPS (Phase C — AiClient)
+                                ▼
                           ┌────────────────────┐
-                          │  api.telegram.org  │
+                          │  AI providers      │
+                          │  (OpenAI-compat.)  │
                           └────────────────────┘
 ```
 
@@ -83,7 +90,8 @@ NestJS module layout (one per backend domain):
 - `rules` — **(Phase B)** CRUD for categorisation rules with conditions. Route prefix `/rules`. Exposes reorder (`PATCH /rules/:id/move`), state change (`PATCH /rules/:id/state`), and active toggle (`PATCH /rules/:id/toggle-active`).
 - `rule-engine` — **(Phase B)** Orchestrator module. No database table of its own. Two-pass engine: vendor-match pass (longest-alias tiebreak) then rule-match pass (first-match-wins, AND-only conditions). Exposes `POST /rule-engine/recategorise` (batch run over selected transactions) and `POST /rule-engine/test` (dry-run sandbox with no side effects). Engine writes are wrapped in a single Prisma `$transaction`; a `CategorisationEvent` row is written for every change. `Rule.hitCount` and `lastFiredAt` are incremented per pass.
 - `categorisation-events` — **(Phase B)** Read-only. Route prefix `/categorisation-events`. Exposes the `CategorisationEvent` audit log. No write endpoints — rows are append-only.
-- `ai-providers` — **(Phase C scaffolding)** CRUD for `AiProvider` config rows. Route prefix `/ai-providers`. Includes `PATCH /ai-providers/:id/set-primary` (atomically sets one provider as primary). **No LLM is called anywhere yet** — this module persists config that Phase C will consume.
+- `ai` — **(Phase C)** AI categorisation runtime. Route prefix `/ai`. Endpoints: `POST /ai/suggest-category`, `POST /ai/apply`, `POST /ai/bulk-suggest`, `GET /ai/bulk-suggest/:runId/status`, `POST /ai/bulk-suggest/:runId/cancel`, `GET /ai/review-queue`, `POST /ai/mine-rules`. The `AiClient` is the only file that makes outbound HTTPS to LLM providers. Provider chain order: `[isPrimary desc, sortOrder asc, createdAt asc]`. 4xx misconfig surfaces; 5xx/408/429/timeout/network falls through to the next provider. Every HTTP attempt writes an `AiCall` row.
+- `ai-providers` — CRUD for `AiProvider` config rows. Route prefix `/ai-providers`. Includes `PATCH /ai-providers/:id/set-primary` (atomically sets one provider as primary) and `PATCH /ai-providers/:id/move` (swaps `sortOrder` with the immediate non-primary neighbour; direction `'up'|'down'`).
 - `prisma` — shared global module exposing `PrismaService`.
 
 #### Banking Phase B — endpoint summary
@@ -111,15 +119,26 @@ NestJS module layout (one per backend domain):
 
 All wired in [backend/src/app.module.ts](backend/src/app.module.ts).
 
-#### AI Providers — endpoint summary (Phase C scaffolding)
+#### AI Providers — endpoint summary
 
 | Method | Path | Notes |
 |---|---|---|
 | `GET/POST` | `/ai-providers` | list all / create |
 | `GET/PATCH/DELETE` | `/ai-providers/:id` | read / update / delete (deleting primary auto-promotes oldest remaining) |
 | `PATCH` | `/ai-providers/:id/set-primary` | atomically sets this provider as primary, clears all others |
+| `PATCH` | `/ai-providers/:id/move` | swaps `sortOrder` with the immediate non-primary neighbour; body `{ direction: 'up'|'down' }` |
 
-**No LLM calls are made anywhere yet.** The module persists provider config for Phase C.
+#### AI — endpoint summary (Phase C)
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/ai/suggest-category` | `{ transactionId, force? }` — returns `SuggestResult` (fresh or cached draft) |
+| `POST` | `/ai/apply` | `{ transactionId, decision }` — accept / edit / reject an AI draft |
+| `POST` | `/ai/bulk-suggest` | `{ filter }` — dispatches bulk categorisation; returns `{ runId, totalQueued }` |
+| `GET` | `/ai/bulk-suggest/:runId/status` | poll status of a bulk run |
+| `POST` | `/ai/bulk-suggest/:runId/cancel` | cancel an in-progress bulk run |
+| `GET` | `/ai/review-queue` | list transactions with unresolved `AI_DRAFT` (cap 500) |
+| `POST` | `/ai/mine-rules` | trigger cluster-mining + LLM polish; returns `{ drafted: number }` |
 
 #### Banking — shared types
 `backend/src/transaction-imports/types.ts` defines the `ImportReport`, `ImportReportRow`, and column-mapping interfaces shared across the sniff/commit/log pipeline. The frontend counterpart lives at `frontend/lib/types.ts` (Banking section). Both files must stay in sync — the shape is serialised into `TransactionImport.reportJson` and read back by `<ImportReportPopup>`.
@@ -187,6 +206,9 @@ Both paths matter — App Router pages fetch on the server *and* the client.
 | `PUBLIC_APP_URL` | Customer-facing absolute URL where the public invoice page is reachable (e.g. `http://localhost:3000` locally, `https://books.example.com` in prod). Used by the backend to construct the link injected via `{{invoice link}}` / `{{invoice link button}}` into outgoing invoice emails. **Required for sending** — `MailService` throws if unset. |
 | `RESEND_API_KEY` | Resend API key for the direct-email channel used by invoice-send failure notifications. Used so a broken customer-facing SMTP can't suppress its own failure alert. If unset, the notification email path becomes a no-op and Telegram remains the primary channel. Free tier 100/day. |
 | `RESEND_FROM` | "From" address for Resend-sent failure notifications (e.g. `alerts@yourdomain.com`). |
+| `AI_TIMEOUT_INLINE_MS` | Timeout in ms for inline (modal) AI calls. Default `20000`. |
+| `AI_TIMEOUT_BULK_MS` | Timeout in ms for bulk and mining AI calls. Default `60000`. |
+| `AI_BULK_CONCURRENCY` | Max concurrent LLM calls during bulk categorisation and mining. Default `5`. |
 
 ### Build & run
 | Task | Command |

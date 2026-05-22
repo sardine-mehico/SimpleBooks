@@ -256,3 +256,31 @@ bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider tex
 ```
 
 Non-primary cards show a "Set Primary" text link instead.
+
+---
+
+## Phase C colour additions
+
+### AI confidence banner
+
+The banner in the transaction edit modal (and AI review queue rows) is bordered and tinted by confidence level:
+
+| Confidence | Classes |
+|---|---|
+| `high` | `border-emerald-200 bg-emerald-50` |
+| `med` | `border-amber-200 bg-amber-50` |
+| `low` | `border-slate-200 bg-slate-50` |
+
+### Event-source badges (history drawer)
+
+Each `CategorisationEvent` row in the history drawer carries a badge coloured by `source`:
+
+| `source` | Badge classes |
+|---|---|
+| `USER` | `bg-slate-100 text-slate-700` |
+| `RULE` | `bg-indigo-100 text-indigo-700` |
+| `VENDOR_MATCH` | `bg-violet-100 text-violet-700` |
+| `AI_DRAFT` | `bg-amber-50 text-amber-700` |
+| `AI_APPLIED` (`acceptedAiSuggestion=true`) | `bg-emerald-100 text-emerald-700` |
+| `AI_APPLIED` (`acceptedAiSuggestion=false`) | `bg-amber-100 text-amber-700` |
+| `AI_REJECTED` | `bg-rose-100 text-rose-700` |

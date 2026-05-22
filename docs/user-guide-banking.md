@@ -1,28 +1,28 @@
 # Banking — User Guide
 
-Last updated: 2026-05-22 (Phase B complete + transaction edit modal + back buttons on Banking pages + AI Setup page scaffolding)
+Last updated: 2026-05-22 (Phase C complete — AI categorisation, review queue, AI-drafted rules, history drawer)
 
 A note on navigation: every detail or wizard page under Banking has a back button (←) in the top-left that returns you to the parent listing — `/accounts/[id]` → `/accounts`, `/vendors/extract` → `/vendors`, `/rules/test` → `/rules`. Edit pages use the existing EditPageChrome back button that was introduced in Phase A.
-
-> Screenshots TBD — capture from a running instance after Phase B is verified end-to-end.
 
 ---
 
 ## 1. What Banking is
 
-The Banking module tracks accounts, transactions, and categorises them — either manually, via rules you write, or via the CSV import flow. Phase A (shipped) added accounts and CSV import. Phase B (this guide covers Phase A + B) adds Categories, Vendors, Rules, an automatic categorisation engine, and a sandbox for testing rules.
+The Banking module tracks accounts, transactions, and categorises them — either manually, via rules you write, via the CSV import flow, or via AI. Phase A added accounts and CSV import. Phase B added Categories, Vendors, Rules, an automatic categorisation engine, and a sandbox for testing rules. Phase C adds AI-assisted categorisation throughout.
 
 The module lives under the Banking section of the sidebar. Its pages are:
 
 - `/accounts` — your bank accounts
 - `/transactions` — all transactions across all accounts
+- `/transactions/ai-review` — review queue for AI-suggested categorisations
 - `/categories` — category definitions
 - `/vendors` — vendor (merchant/payee) definitions
 - `/vendors/extract` — wizard to generate vendors from imported descriptions
-- `/rules` — categorisation rules
+- `/rules` — categorisation rules (includes AI Drafts tab)
 - `/rules/new` and `/rules/[id]/edit` — rule editor
 - `/rules/test` — test rules against transactions without changing anything
 - `/settings/import-logs` — permanent record of every CSV import
+- `/settings/ai-setup` — configure AI providers for categorisation
 
 ---
 
@@ -93,7 +93,7 @@ The edit modal lets you change the parts of a transaction that you control, whil
   - **Notes** — free-text, up to 2000 characters.
 - **Manage splits** — a button at the bottom switches from the edit modal to the split modal. Use this if the transaction needs a multi-category breakdown instead of a single category.
 - **Banner for split transactions** — if the transaction already has splits, the modal shows an amber warning: setting a single Category here resets the splits. Click "Manage splits" instead to preserve the breakdown.
-- Manual edits write a `CategorisationEvent` row with `source=USER`, so the change is captured for Phase C's AI to learn from (see Section 12).
+- Manual edits write a `CategorisationEvent` row with `source=USER`. The AI uses these events as few-shot examples when suggesting categories (see §15).
 
 ---
 
@@ -326,7 +326,7 @@ At `/rules`. Rules are ordered by priority number; lower numbers win. Each row s
 - Hit count and "Last fired" date
 - Action buttons: Activate/Deactivate, move up (↑), move down (↓), Edit, Delete
 
-The tabs at the top filter by: **USER** (rules you wrote) / **AI Drafts** / **Approved** / **Denied**. Phase B only populates USER. AI states are reserved for Phase C.
+The tabs at the top filter by: **USER** (rules you wrote) / **AI Drafts** / **Approved** / **Denied**. AI Drafts are populated by the "Find candidates from history" action (see §15.4).
 
 ### 8.5 Priority and ordering
 
@@ -480,14 +480,15 @@ By default, the Re-categorise engine leaves split transactions alone (the "Prese
 
 ## 12. Categorisation history
 
-Every category or vendor change — whether made manually, by a rule, by vendor matching, or in future by AI — writes a `CategorisationEvent` record. The record stores:
+Every category or vendor change — whether made manually, by a rule, by vendor matching, or by AI — writes a `CategorisationEvent` record. The record stores:
 
 - Which transaction was changed
-- The source (USER, RULE, VENDOR_MATCH; AI_DRAFT and AI_APPLIED are reserved for Phase C)
+- The source (USER, RULE, VENDOR_MATCH, AI_DRAFT, AI_APPLIED, AI_REJECTED)
 - Which rule fired (for RULE events)
+- The AI's reasoning text (for AI events)
 - The timestamp
 
-There is no UI for browsing this history in Phase B. Phase C will add a per-transaction history drawer. In the meantime, the events are queryable directly via `/categorisation-events` for debugging or audit purposes.
+Per-transaction history is accessible via the **History drawer** in the transaction edit modal (see §15). The full audit log is also queryable via `/categorisation-events` for debugging or audit purposes.
 
 ---
 
@@ -506,30 +507,106 @@ Use these to maintain your rule set over time:
 | Very high hit count across unrelated transactions | The rule is too broad | Split into two or more specific rules |
 | Hits several months ago, quiet since | Pattern may have stopped appearing in your data | Worth a review, but not necessarily a problem |
 
-Phase C's AI will also use these metrics — combined with the CategorisationEvent log — to suggest improvements automatically.
+The AI uses these metrics — combined with the CategorisationEvent log — to find candidate patterns for draft rules. Use the "Find candidates from history" button on `/rules` to trigger this (see §15.4).
 
 ---
 
-## 14. Phase C preview
+## 14. AI Setup
 
-Phase C will add AI-assisted categorisation. The broad plan:
+Configure the AI providers that power categorisation suggestions and rule drafting. The page is at `/settings/ai-setup` (sidebar: AI Setup, under Settings).
 
-- **A settings page to register one or more OpenAI-compatible providers** (any provider that implements the `/chat/completions` endpoint works). **This page already exists** at `/settings/ai-setup` as Phase C scaffolding — you can register a primary provider plus any number of backups, each with a name, model id, base URL, and API key. No AI calls happen yet; the records just persist. Phase C wires the actual LLM calls to these providers.
-- The AI reads your USER/approved rules and recent CategorisationEvents as few-shot examples. It learns from your history without any model training or fine-tuning.
-- For uncategorised transactions (or all transactions, on request), the AI proposes a category. You see the proposal alongside any rule match.
-- You accept, edit, or reject each proposal. Your decisions feed back into the few-shot examples — the AI improves the more you use it.
-- The AI can also propose new RULES based on patterns in your accept/edit history. These appear in the "AI Drafts" tab of `/rules`. You approve, modify, or deny each. Approved AI rules join the active rule set.
+Any provider that implements the OpenAI `/chat/completions` API works — OpenAI, Anthropic (via their OpenAI-compatible endpoint), Mistral, Ollama (locally hosted), or any other compatible service.
 
-Nothing in Phase B is wasted. The schema — `CategorisationEvent`, `Rule.state`, `Rule.hitCount`, `Rule.lastFiredAt`, and the new `AiProvider` table — is already in place for Phase C to use.
-
-### What's persisted on `/settings/ai-setup` today
+### Provider fields
 
 | Field | Notes |
 |---|---|
-| Name | User-facing label, e.g. "OpenAI GPT-4o" |
-| Model | Model id passed to the provider, e.g. `gpt-4o` or `claude-3-5-sonnet-20241022` |
+| Name | Display label, e.g. "OpenAI GPT-4o" |
+| Model | Model id sent to the provider, e.g. `gpt-4o` or `claude-3-5-sonnet-20241022` |
 | API Base URL | e.g. `https://api.openai.com/v1` |
-| API Key | Stored verbatim (same pattern as the existing SMTP password) |
-| Primary | Exactly one provider has this flag at any time. Setting one primary unsets the others atomically. Deleting the primary auto-promotes the oldest remaining provider. |
+| API Key | Stored verbatim — same pattern as the SMTP password. |
+| Primary | Exactly one provider has this flag. The primary is tried first on every AI call. |
+| Order (backup cards) | Backups are tried in ascending order. Use the `[↑]` / `[↓]` arrows to reorder. |
 
-Each card has explicit dirty-tracking — the Save button is disabled until you edit a field. The eye icon on the API Key field toggles visibility.
+Each card has explicit dirty-tracking — the Save button is enabled only when you have unsaved changes. The eye icon toggles API Key visibility.
+
+### Rule drafting threshold
+
+At the bottom of the page, the "Rule drafting" section lets you set the minimum number of transactions that must share a pattern before the AI proposes a draft rule. Default is 5. Raise it to reduce noise; lower it to catch smaller patterns.
+
+---
+
+## 15. AI categorisation
+
+The AI reads your manual categorisations and accepted suggestions as examples, then proposes categories for uncategorised transactions and writes draft rules based on patterns it finds. No model training or fine-tuning — it learns from your history within each call.
+
+To get started, configure at least one provider at `/settings/ai-setup`. Without a provider the AI banner shows a setup prompt instead of a suggestion.
+
+### 15.1 Inline suggestion in the transaction edit modal
+
+Open any transaction by clicking its row. In the edit modal:
+
+- **Uncategorised transaction**: the AI suggestion banner loads automatically. It shows the proposed category, optional vendor match, a confidence indicator (high / medium / low), and the AI's brief reasoning.
+- **Already-categorised transaction**: the banner is hidden by default. A small "Ask AI for a different opinion" link appears under the Category field — click it to request a fresh suggestion.
+
+Three buttons respond to a suggestion:
+
+| Button | What happens |
+|---|---|
+| **Accept** | The AI's category (and vendor, if any) is applied to the transaction. The modal closes. |
+| **Edit** | The banner shrinks to a reminder. The Category select pre-fills with the AI's pick — you can change it. When you save, the final values are compared to the AI's pick: if they match, it records an accepted suggestion; if not, it records an edited one. |
+| **Reject** | The banner hides. The modal stays open for normal manual categorisation. The suggestion is not applied. |
+
+If you change the Category select while the suggestion banner is visible (without clicking any button), the modal transparently switches to Edit mode. Saving applies the same accept-vs-edit logic.
+
+Cancelling the modal without acting on the banner leaves the suggestion unresolved — the same suggestion is reused if you reopen the modal within 24 hours.
+
+### 15.2 Bulk categorisation
+
+On the `/transactions` page, the bulk-actions menu includes **"Categorise with AI"**. Click it to open a dialog where you select accounts, a date range, and scope (uncategorised transactions only, or all). The dialog shows how many transactions match before you start.
+
+On Start, the backend dispatches AI calls at up to 5 concurrent requests. The dialog polls for progress. When finished, a **"Review now"** button takes you to the AI review queue.
+
+To stop a run in progress, close the dialog — this cancels the remaining calls.
+
+### 15.3 AI review queue — `/transactions/ai-review`
+
+Lists all transactions that have a pending AI suggestion (suggested but not yet accepted, edited, or rejected). Each row shows the suggestion banner inline with the same Accept / Edit / Reject buttons as the modal.
+
+- **Accept** / **Reject** — act immediately; the row fades out.
+- **Edit** — opens the transaction edit modal with the suggestion pre-loaded.
+
+The toolbar includes **"Approve all high-confidence"** — a confirmation dialog then accepts every high-confidence suggestion on the current view at once.
+
+Use filters (account, confidence, date range) to work through the queue in batches.
+
+### 15.4 AI Drafts tab on `/rules`
+
+The rules page has an "AI Drafts" tab. Drafts are rules the AI has proposed based on patterns it found in your categorisation history. They are inactive and do not fire until you promote them.
+
+Per draft row actions:
+
+| Action | What happens |
+|---|---|
+| **Approve** | The rule becomes active immediately and joins the normal rule set. |
+| **Modify** | Opens the rule editor pre-loaded with the draft. Saving the editor promotes the rule to active — even if you made no changes. (Save = ratification.) |
+| **Deny** | Marks the draft as denied. It moves to a Denied tab and will not be re-proposed for the same pattern. |
+
+When ≥ 2 drafts are present, an **"Approve all"** button appears in the toolbar.
+
+**"Find candidates from history"** button — triggers the AI to scan your last 180 days of accepted categorisations for new patterns and produce drafts for any it finds. Running it again immediately produces nothing (existing drafts suppress re-mining) — self-throttling.
+
+**Saving a rule in the editor** auto-promotes an AI Draft to Approved, regardless of whether you changed the conditions.
+
+### 15.5 History drawer — transaction edit modal
+
+The transaction edit modal header includes a `[⏱ History (N)]` button (where N is the event count). Click it to open a read-only drawer on the right listing every categorisation event for this transaction.
+
+Each row shows:
+- A coloured badge indicating who made the change (user manual, rule engine, vendor matcher, AI suggestion, accepted/edited AI, rejected AI).
+- The relative timestamp.
+- The old and new category and vendor (shown only when they differ).
+- The AI's reasoning text (for AI events), in italics.
+- For rule-fired events, the rule name links to the rule editor.
+
+The drawer is read-only — no actions.

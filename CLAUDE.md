@@ -39,6 +39,8 @@ The frontend calls the backend over `NEXT_PUBLIC_API_URL`. When rendering on the
 
 Module structure mirrors top-level domains: `tasks`, `customers`, `companies`, `items`, `invoices`, `recurring`, `dashboard`, `telegram`. Each is a `*.module.ts` with controller + service + DTO (where applicable). All wired in `src/app.module.ts`.
 
+- **`ai` module** — **(Phase C)** AI categorisation runtime. Route prefix `/ai`. Houses `AiClient` (provider-chain HTTP), `AiCategoriser` (inline and bulk suggest), and `AiRuleDrafter` (cluster mining + LLM rule writer). See `Architecture.md` for endpoint summary.
+
 - **Prisma is the source of truth.** Schema lives at `backend/prisma/schema.prisma`. Migrations are *not* used — the entrypoint runs `prisma db push --accept-data-loss` on every boot. This is fine for additive changes; **destructive schema edits (column drops, type changes, new required columns on populated tables) will fail the push and require `docker compose down -v` to wipe the volume.**
 - **Seed runs only when the User table is empty** (see `prisma/seed.ts`). Adding new dev data without wiping requires editing the seed and resetting volumes.
 - **DTO validation is the single source of truth** for all input shapes. The Telegram bot deliberately runs the same `CreateTaskDto` through `class-validator` that the HTTP API uses — never duplicate validation rules client-side or in the bot.
@@ -113,3 +115,7 @@ Quick design-system highlights (full detail in the file):
 - **Rule priority is INT spaced by 10.** The `PATCH /rules/:id/move` endpoint swaps with the immediate neighbour. If repeated moves collapse the gap to 1, a future improvement should rebalance all priorities in a single transaction (not implemented in Phase B — manually adjust via direct UPDATE if needed).
 - **Rule engine and CSV import interact via a two-phase commit.** When "Categorise based on rules" is ticked at import time, the engine runs in a separate query after the import's Prisma transaction has committed — the engine needs the new rows to be visible. This is synchronous and should complete in under 2s for a typical 200-row import.
 - **`POST /rule-engine/test` is always a dry-run.** No rows are written. The rule editor's sample-matches preview calls this endpoint on debounce — safe to call frequently.
+- **`AiCall` table grows unbounded.** A retention job is a future improvement; for now, occasional manual cleanup via `DELETE FROM "AiCall" WHERE "createdAt" < NOW() - INTERVAL '30 days'` is fine.
+- **Phase C schema is fully additive.** Adding the `AI_REJECTED` enum value, the `sortOrder` / `clusterHash` / `reasoning` / `aiMiningThreshold` columns, and the `AiCall` table all survive `prisma db push` without `down -v`.
+- **`AiProvider.apiKey` is stored verbatim** (matches the existing SMTP password precedent). Future improvement: encrypt at rest with a key from env. Not implemented.
+- **AI Draft rule suppression** is keyed on `(clusterKey, categoryId)` only — denying a draft permanently suppresses *any* future rule with the same intent for the same category. Approving a draft does the same. To re-mine an intent you must delete the rule row entirely.
