@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListTransactionsDto } from './dto';
@@ -43,5 +43,103 @@ export class TransactionsService {
     ]);
 
     return { items, totalCount, page, pageSize };
+  }
+
+  async setSplits(transactionId: string, splits: Array<{ categoryId: string; amount: number; notes?: string }>) {
+    const tx = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
+    if (!tx) throw new NotFoundException();
+    const expected = Number(tx.amount);
+    const total = splits.reduce((acc, s) => acc + Number(s.amount), 0);
+    if (Math.abs(expected - total) > 0.005) {
+      throw new BadRequestException(`Splits sum ($${total.toFixed(2)}) must equal transaction amount ($${expected.toFixed(2)}).`);
+    }
+    return this.prisma.$transaction(async (db) => {
+      await db.transactionSplit.deleteMany({ where: { transactionId } });
+      for (let i = 0; i < splits.length; i++) {
+        await db.transactionSplit.create({
+          data: {
+            transactionId,
+            categoryId: splits[i].categoryId,
+            amount: new Prisma.Decimal(splits[i].amount),
+            notes: splits[i].notes ?? null,
+            position: i,
+          },
+        });
+      }
+      await db.transaction.update({
+        where: { id: transactionId },
+        data: { categoryId: null, ruleId: null, categorisedAt: new Date() },
+      });
+      await db.categorisationEvent.create({
+        data: {
+          transactionId,
+          source: 'USER',
+          oldCategoryId: tx.categoryId,
+          newCategoryId: null,
+        },
+      });
+      return db.transaction.findUnique({
+        where: { id: transactionId },
+        include: { splits: { include: { category: true }, orderBy: { position: 'asc' } } },
+      });
+    });
+  }
+
+  async clearSplits(transactionId: string) {
+    const tx = await this.prisma.transaction.findUnique({
+      where: { id: transactionId },
+      include: { splits: { orderBy: { amount: 'desc' } } },
+    });
+    if (!tx) throw new NotFoundException();
+    if (tx.splits.length === 0) return tx;
+    const restoreCategoryId = tx.splits[0].categoryId;
+    return this.prisma.$transaction(async (db) => {
+      await db.transactionSplit.deleteMany({ where: { transactionId } });
+      await db.transaction.update({
+        where: { id: transactionId },
+        data: { categoryId: restoreCategoryId, categorisedAt: new Date() },
+      });
+      await db.categorisationEvent.create({
+        data: {
+          transactionId, source: 'USER',
+          oldCategoryId: null, newCategoryId: restoreCategoryId,
+        },
+      });
+      return db.transaction.findUnique({ where: { id: transactionId } });
+    });
+  }
+
+  async setCategory(transactionId: string, data: { categoryId?: string; vendorId?: string; notes?: string }) {
+    const tx = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
+    if (!tx) throw new NotFoundException();
+    return this.prisma.$transaction(async (db) => {
+      const updated = await db.transaction.update({
+        where: { id: transactionId },
+        data: {
+          categoryId: data.categoryId === undefined ? undefined : data.categoryId,
+          vendorId: data.vendorId === undefined ? undefined : data.vendorId,
+          notes: data.notes === undefined ? undefined : data.notes,
+          categorisedAt: data.categoryId !== undefined ? new Date() : undefined,
+          ruleId: data.categoryId !== undefined ? null : undefined,
+        },
+      });
+      if (data.categoryId !== undefined && data.categoryId !== tx.categoryId) {
+        await db.categorisationEvent.create({
+          data: {
+            transactionId, source: 'USER',
+            oldCategoryId: tx.categoryId, newCategoryId: data.categoryId,
+          },
+        });
+      }
+      if (data.vendorId !== undefined && data.vendorId !== tx.vendorId) {
+        await db.categorisationEvent.create({
+          data: {
+            transactionId, source: 'USER',
+            oldVendorId: tx.vendorId, newVendorId: data.vendorId,
+          },
+        });
+      }
+      return updated;
+    });
   }
 }
