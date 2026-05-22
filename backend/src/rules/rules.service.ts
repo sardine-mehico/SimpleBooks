@@ -63,7 +63,11 @@ export class RulesService {
   }
 
   async update(id: string, data: UpdateRuleDto) {
-    await this.get(id);
+    const existing = await this.get(id);
+
+    // Phase C: Save = ratification for AI drafts.
+    const ratify = existing.state === 'AI_DRAFTED';
+
     return this.prisma.$transaction(async (tx) => {
       if (data.conditions) {
         await tx.ruleCondition.deleteMany({ where: { ruleId: id } });
@@ -75,7 +79,8 @@ export class RulesService {
           categoryId: data.categoryId,
           vendorId: data.vendorId,
           noteOnApply: data.noteOnApply,
-          isActive: data.isActive,
+          isActive: ratify ? true : data.isActive,
+          ...(ratify ? { state: 'APPROVED' as any } : {}),
           conditions: data.conditions
             ? {
                 create: data.conditions.map((c, i) => ({
