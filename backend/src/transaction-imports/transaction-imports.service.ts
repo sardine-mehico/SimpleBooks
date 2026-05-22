@@ -2,16 +2,20 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import Papa from 'papaparse';
 import { PrismaService } from '../prisma/prisma.service';
+import { RuleEngineService } from '../rule-engine/rule-engine.service';
 import { parseCsv } from './csv-parser.service';
 import { sniffCsv } from './csv-sniffer.service';
 import { fileSha256, rowImportHash } from './hash';
-import { ColumnMapping, ImportReport, MappingSuggestion } from './types';
+import { ColumnMapping, ImportRuleCategorisation, ImportReport, MappingSuggestion } from './types';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
 @Injectable()
 export class TransactionImportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private engine: RuleEngineService,
+  ) {}
 
   async sniff(buffer: Buffer, accountId: string, filename: string): Promise<{
     previewRows: string[][];
@@ -53,6 +57,7 @@ export class TransactionImportsService {
     expectedSha: string,
     mapping: ColumnMapping,
     filename: string,
+    applyRules = false,
   ): Promise<ImportReport> {
     if (buffer.length > MAX_BYTES) throw new BadRequestException('File exceeds 10 MB');
     const sha = fileSha256(buffer);
@@ -91,7 +96,7 @@ export class TransactionImportsService {
 
     const importedAt = new Date();
 
-    const report: ImportReport = await this.prisma.$transaction(async (tx) => {
+    const { report, importId, importedRowCount } = await this.prisma.$transaction(async (tx) => {
       const importRow = await tx.transactionImport.create({
         data: {
           accountId,
@@ -167,6 +172,7 @@ export class TransactionImportsService {
         duplicates: duplicateRows,
         failed: parseErrors,
         warnings,
+        ruleCategorisation: null,
       };
 
       await tx.transactionImport.update({
@@ -178,8 +184,47 @@ export class TransactionImportsService {
         },
       });
 
-      return builtReport;
+      return { report: builtReport, importId: importRow.id, importedRowCount: importedRows.length };
     });
+
+    // Run rule-engine over just-inserted transactions after the DB transaction
+    // has committed (engine uses this.prisma directly, not the tx handle).
+    if (applyRules && importedRowCount > 0) {
+      const insertedTransactions = await this.prisma.transaction.findMany({
+        where: { importId },
+        select: { id: true },
+      });
+      const txIds = insertedTransactions.map((t) => t.id);
+      const engineResult = await this.engine.run({
+        transactionIds: txIds,
+        preserveSplits: true,
+        applyVendorMatch: true,
+        applyRules: true,
+        dryRun: false,
+      });
+      const ambiguousVendor = engineResult.rows.filter((r) => r.vendorMatchAmbiguous).length;
+      const ruleCategoryMap = new Map<string, { categoryName: string }>();
+      for (const r of engineResult.rows) {
+        if (r.ruleMatch && !ruleCategoryMap.has(r.ruleMatch.ruleId)) {
+          ruleCategoryMap.set(r.ruleMatch.ruleId, { categoryName: r.ruleMatch.categoryName });
+        }
+      }
+      const ruleCategorisation: ImportRuleCategorisation = {
+        enabled: true,
+        vendorMatched: engineResult.stats.vendorMatched,
+        ruleMatched: engineResult.stats.ruleMatched,
+        perRule: engineResult.stats.perRule.map((p) => ({
+          ...p,
+          categoryName: ruleCategoryMap.get(p.ruleId)?.categoryName ?? '',
+        })),
+        ambiguousVendor,
+      };
+      report.ruleCategorisation = ruleCategorisation;
+      await this.prisma.transactionImport.update({
+        where: { id: importId },
+        data: { reportJson: report as unknown as Prisma.InputJsonValue },
+      });
+    }
 
     return report;
   }

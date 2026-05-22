@@ -57,6 +57,7 @@ export class TransactionImportsController {
       body.fileSha256,
       mapping,
       body.filename ?? file.originalname,
+      body.applyRules === true,
     );
   }
 }

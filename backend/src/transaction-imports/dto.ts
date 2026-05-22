@@ -1,4 +1,5 @@
-import { IsString, IsUUID, IsOptional } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsBoolean } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 // /commit accepts multipart: a file + these JSON-ish form fields.
 // `mapping` arrives as a JSON-stringified ColumnMapping (because multipart
@@ -8,4 +9,8 @@ export class CommitImportDto {
   @IsString() fileSha256!: string;
   @IsString() mapping!: string;
   @IsString() @IsOptional() filename?: string;
+  @IsBoolean()
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  applyRules?: boolean;
 }

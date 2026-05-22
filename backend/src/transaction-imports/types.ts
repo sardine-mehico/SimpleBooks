@@ -42,6 +42,14 @@ export interface MappingSuggestion {
   reasoning: string[];
 }
 
+export interface ImportRuleCategorisation {
+  enabled: boolean;
+  vendorMatched: number;
+  ruleMatched: number;
+  perRule: Array<{ ruleId: string; ruleName: string; categoryName: string; count: number }>;
+  ambiguousVendor: number;
+}
+
 export interface ImportReport {
   importId: string;
   accountId: string;
@@ -66,4 +74,5 @@ export interface ImportReport {
   }>;
   failed: Array<{ rowIndex: number; reason: string; raw: string[] }>;
   warnings: string[];
+  ruleCategorisation?: ImportRuleCategorisation | null;
 }
