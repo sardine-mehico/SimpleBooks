@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Trash2, Eye, EyeOff, Plus, ArrowUp, ArrowDown, Beaker, CheckCircle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createAiProvider, deleteAiProvider, setAiProviderPrimary, updateAiProvider, moveAiProvider, testAiProvider } from "@/lib/ai-providers";
+import { createAiProvider, deleteAiProvider, setAiProviderPrimary, updateAiProvider, moveAiProvider, testAiProvider, listAiProviders } from "@/lib/ai-providers";
 import type { ProviderTestResult } from "@/lib/ai-providers";
 import { api } from "@/lib/api";
 import type { AiProvider } from "@/lib/types";
@@ -81,6 +81,23 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
     router.refresh();
   }
 
+  async function move(d: Draft, direction: 'up' | 'down') {
+    if (d.isPrimary || d.isNew) return;
+    await moveAiProvider(d.id, direction);
+    // Re-fetch authoritative order from backend. router.refresh() alone is not
+    // enough — `drafts` state was initialised once from the prop via useState
+    // and won't update when new props arrive after a server re-render.
+    const fresh = await listAiProviders();
+    setDrafts((curr) => fresh.map((p) => {
+      const existing = curr.find((x) => x.id === p.id);
+      // Preserve dirty in-progress local edits but adopt the new ordering.
+      if (existing?.dirty) {
+        return { ...existing, isPrimary: p.isPrimary };
+      }
+      return toDraft(p);
+    }));
+  }
+
   async function runTest(id: string) {
     setTestResults((m) => new Map(m).set(id, 'pending'));
     try {
@@ -113,10 +130,10 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
                 <span className="inline-block rounded-[0.3rem] bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">Primary</span>
               ) : (
                 <>
-                  <Button size="sm" variant="outline" onClick={async () => { await moveAiProvider(d.id, 'up'); router.refresh(); }} aria-label="Move up">
+                  <Button size="sm" variant="outline" onClick={() => move(d, 'up')} aria-label="Move up">
                     <ArrowUp className="h-3 w-3" />
                   </Button>
-                  <Button size="sm" variant="outline" onClick={async () => { await moveAiProvider(d.id, 'down'); router.refresh(); }} aria-label="Move down">
+                  <Button size="sm" variant="outline" onClick={() => move(d, 'down')} aria-label="Move down">
                     <ArrowDown className="h-3 w-3" />
                   </Button>
                   <button type="button" onClick={() => makePrimary(d)} className="text-xs text-indigo-700 hover:underline">Set Primary</button>
