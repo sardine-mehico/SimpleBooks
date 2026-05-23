@@ -9,6 +9,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -70,6 +71,13 @@ export class VoidInvoiceDto {
 
 export class DeleteInvoiceDto {
   @IsString() @IsNotEmpty() reason!: string;
+}
+
+export class BulkIdsDto {
+  @IsArray()
+  @IsUUID('all', { each: true })
+  @IsString({ each: true })
+  ids!: string[];
 }
 
 // Payload for `POST /invoices/:id/send`. Every field is optional — when the

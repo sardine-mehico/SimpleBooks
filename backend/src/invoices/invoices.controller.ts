@@ -1,7 +1,9 @@
-import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, Patch, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
+import { PDFDocument } from 'pdf-lib';
 import { InvoicesService } from './invoices.service';
 import {
+  BulkIdsDto,
   CreateInvoiceDto,
   DeleteInvoiceDto,
   SendInvoiceDto,
@@ -10,6 +12,8 @@ import {
 } from './dto';
 import { InvoiceMailService } from '../mail/invoice-mail.service';
 import { PdfService } from '../pdf/pdf.service';
+import { pLimit } from '../ai/utils/p-limit';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('invoices')
 export class InvoicesController {
@@ -17,9 +21,66 @@ export class InvoicesController {
     private invoices: InvoicesService,
     private invoiceMail: InvoiceMailService,
     private pdf: PdfService,
+    private prisma: PrismaService,
   ) {}
 
   @Get() list() { return this.invoices.list(); }
+
+  // Concatenate PDFs for a set of invoices into a single downloadable file.
+  @Post('bulk-pdf')
+  @Header('Content-Type', 'application/pdf')
+  async bulkPdf(@Body() dto: BulkIdsDto, @Res() res: Response) {
+    if (!dto.ids?.length) throw new BadRequestException('ids required');
+    const buffers: Buffer[] = [];
+    for (const id of dto.ids) {
+      const { buffer } = await this.pdf.renderInvoice(id);
+      buffers.push(buffer);
+    }
+    const out = await PDFDocument.create();
+    for (const buf of buffers) {
+      const src = await PDFDocument.load(buf);
+      const pages = await out.copyPages(src, src.getPageIndices());
+      pages.forEach((p) => out.addPage(p));
+    }
+    const bytes = await out.save();
+    const combined = Buffer.from(bytes);
+    const filename = `invoices-${new Date().toISOString().slice(0, 10)}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', String(combined.length));
+    res.end(combined);
+  }
+
+  // Send each invoice in the set via the existing mail flow (concurrency cap 3).
+  @Post('bulk-send')
+  @HttpCode(200)
+  async bulkSend(@Body() dto: BulkIdsDto) {
+    if (!dto.ids?.length) return { sent: [], failed: [] };
+    const limit = pLimit(3);
+    const sent: Array<{ id: string; invoiceNumber: number }> = [];
+    const failed: Array<{ id: string; invoiceNumber: number; error: string }> = [];
+    await Promise.all(
+      dto.ids.map((id) =>
+        limit(async () => {
+          try {
+            const inv = await this.prisma.invoice.findUnique({
+              where: { id },
+              select: { invoiceNumber: true },
+            });
+            await this.invoiceMail.send(id, {});
+            sent.push({ id, invoiceNumber: inv?.invoiceNumber ?? 0 });
+          } catch (e: any) {
+            const inv = await this.prisma.invoice
+              .findUnique({ where: { id }, select: { invoiceNumber: true } })
+              .catch(() => null);
+            failed.push({ id, invoiceNumber: inv?.invoiceNumber ?? 0, error: e?.message ?? String(e) });
+          }
+        }),
+      ),
+    );
+    return { sent, failed };
+  }
+
   @Get(':id') get(@Param('id') id: string) { return this.invoices.get(id); }
   @Post() create(@Body() dto: CreateInvoiceDto) { return this.invoices.create(dto); }
   @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateInvoiceDto) { return this.invoices.update(id, dto); }
