@@ -12,3 +12,16 @@ export const deleteAiProvider = (id: string) =>
   apiClient.delete<{ ok: true }>(`/ai-providers/${id}`);
 export const moveAiProvider = (id: string, direction: 'up' | 'down') =>
   apiClient.patch(`/ai-providers/${id}/move`, { direction });
+
+export interface ProviderTestResult {
+  ok: boolean;
+  httpStatus?: number;
+  latencyMs: number;
+  errorMessage?: string;
+  modelEcho?: string;
+  preview?: string;
+}
+
+export function testAiProvider(id: string) {
+  return apiClient.post<ProviderTestResult>(`/ai-providers/${id}/test`);
+}

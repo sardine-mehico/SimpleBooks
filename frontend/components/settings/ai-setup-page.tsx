@@ -6,9 +6,10 @@ import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, Eye, EyeOff, Plus, ArrowUp, ArrowDown } from "lucide-react";
+import { Trash2, Eye, EyeOff, Plus, ArrowUp, ArrowDown, Beaker, CheckCircle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createAiProvider, deleteAiProvider, setAiProviderPrimary, updateAiProvider, moveAiProvider } from "@/lib/ai-providers";
+import { createAiProvider, deleteAiProvider, setAiProviderPrimary, updateAiProvider, moveAiProvider, testAiProvider } from "@/lib/ai-providers";
+import type { ProviderTestResult } from "@/lib/ai-providers";
 import { api } from "@/lib/api";
 import type { AiProvider } from "@/lib/types";
 
@@ -33,6 +34,7 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
   const [drafts, setDrafts] = useState<Draft[]>(initial.map(toDraft));
   const [threshold, setThreshold] = useState<number>(prefs?.aiMiningThreshold ?? 5);
   const [savingThreshold, setSavingThreshold] = useState(false);
+  const [testResults, setTestResults] = useState<Map<string, ProviderTestResult | 'pending'>>(new Map());
 
   function update(id: string, patch: Partial<Draft>) {
     setDrafts((curr) => curr.map((d) => (d.id === id ? { ...d, ...patch, dirty: true } : d)));
@@ -77,6 +79,16 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
     await deleteAiProvider(d.id);
     setDrafts((curr) => curr.filter((x) => x.id !== d.id));
     router.refresh();
+  }
+
+  async function runTest(id: string) {
+    setTestResults((m) => new Map(m).set(id, 'pending'));
+    try {
+      const r = await testAiProvider(id);
+      setTestResults((m) => new Map(m).set(id, r));
+    } catch (e: any) {
+      setTestResults((m) => new Map(m).set(id, { ok: false, latencyMs: 0, errorMessage: e?.message ?? 'request failed' }));
+    }
   }
 
   return (
@@ -148,10 +160,38 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
             </div>
           </Field>
 
-          <div className="flex justify-end">
-            <Button type="button" onClick={() => save(d)} disabled={!d.dirty} size="sm">
-              Save
-            </Button>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => runTest(d.id)} disabled={testResults.get(d.id) === 'pending' || d.isNew}>
+                <Beaker className="h-3 w-3" /> Test
+              </Button>
+              <Button type="button" onClick={() => save(d)} disabled={!d.dirty} size="sm">
+                Save
+              </Button>
+            </div>
+            {testResults.get(d.id) && (
+              <div className="mt-1 text-xs">
+                {testResults.get(d.id) === 'pending' ? (
+                  <span className="text-slate-500">Testing…</span>
+                ) : (() => {
+                  const r = testResults.get(d.id) as ProviderTestResult;
+                  if (r.ok) {
+                    return (
+                      <span className="text-emerald-700">
+                        <CheckCircle className="inline h-3 w-3" /> Connected — {r.latencyMs}ms
+                        {r.preview && <span className="ml-2 text-slate-500 italic">"{r.preview}"</span>}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="text-rose-700">
+                      <XCircle className="inline h-3 w-3" />{' '}
+                      {r.httpStatus ? `HTTP ${r.httpStatus} — ` : ''}{r.errorMessage}
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         </Card>
       ))}

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import { AiProvidersService } from './ai-providers.service';
 import { CreateAiProviderDto, MoveAiProviderDto, UpdateAiProviderDto } from './dto';
 
@@ -13,4 +13,5 @@ export class AiProvidersController {
   @Patch(':id/set-primary') setPrimary(@Param('id') id: string) { return this.service.setPrimary(id); }
   @Patch(':id/move') move(@Param('id') id: string, @Body() dto: MoveAiProviderDto) { return this.service.move(id, dto.direction); }
   @Delete(':id') remove(@Param('id') id: string) { return this.service.remove(id); }
+  @Post(':id/test') @HttpCode(200) test(@Param('id') id: string) { return this.service.test(id); }
 }

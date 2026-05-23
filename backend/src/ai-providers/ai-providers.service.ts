@@ -70,6 +70,68 @@ export class AiProvidersService {
     });
   }
 
+  async test(id: string): Promise<{
+    ok: boolean;
+    httpStatus?: number;
+    latencyMs: number;
+    errorMessage?: string;
+    modelEcho?: string;
+    preview?: string;
+  }> {
+    const provider = await this.get(id);
+    const baseUrl = provider.apiBaseUrl.replace(/\/+$/, '');
+    const url = `${baseUrl}/chat/completions`;
+    const t0 = Date.now();
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${provider.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages: [{ role: 'user', content: 'Reply with the single word: pong' }],
+          max_tokens: 10,
+          temperature: 0,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const latencyMs = Date.now() - t0;
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        let parsedMsg: string | undefined;
+        try {
+          const parsed = JSON.parse(body);
+          parsedMsg = parsed?.error?.message ?? parsed?.message ?? undefined;
+        } catch { /* not JSON, keep raw */ }
+        return {
+          ok: false,
+          httpStatus: res.status,
+          latencyMs,
+          errorMessage: parsedMsg ?? (body.slice(0, 200) || `HTTP ${res.status}`),
+        };
+      }
+      const payload = await res.json().catch(() => null as any);
+      const content: string | undefined = payload?.choices?.[0]?.message?.content;
+      return {
+        ok: true,
+        httpStatus: res.status,
+        latencyMs,
+        modelEcho: payload?.model,
+        preview: typeof content === 'string' ? content.slice(0, 100) : undefined,
+      };
+    } catch (e: any) {
+      const latencyMs = Date.now() - t0;
+      const isTimeout = e?.name === 'AbortError' || e?.name === 'TimeoutError';
+      return {
+        ok: false,
+        latencyMs,
+        errorMessage: isTimeout ? 'Timeout after 15s' : (e?.message ?? String(e)),
+      };
+    }
+  }
+
   async remove(id: string) {
     const row = await this.get(id);
     return this.prisma.$transaction(async (tx) => {
