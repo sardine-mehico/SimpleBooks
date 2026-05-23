@@ -13,19 +13,33 @@ export function BulkAiCategoriseDialog({
   accounts,
   open,
   onClose,
+  initialRunId,
 }: {
   accounts: Account[];
   open: boolean;
   onClose: () => void;
+  initialRunId?: { runId: string; totalQueued: number } | null;
 }) {
   const router = useRouter();
   const [scope, setScope] = useState<'uncategorised' | 'all'>('uncategorised');
   const [accountId, setAccountId] = useState<string>('__all__');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
-  const [runId, setRunId] = useState<string | null>(null);
-  const [status, setStatus] = useState<BulkRunStatus | null>(null);
+  const [runId, setRunId] = useState<string | null>(initialRunId?.runId ?? null);
+  const [status, setStatus] = useState<BulkRunStatus | null>(
+    initialRunId
+      ? { runId: initialRunId.runId, totalQueued: initialRunId.totalQueued, done: 0, ok: 0, cached: 0, failed: 0, cancelled: false, lastError: null }
+      : null
+  );
   const [busy, setBusy] = useState(false);
+
+  // When initialRunId changes (new selection-driven run), jump straight to progress view.
+  useEffect(() => {
+    if (initialRunId) {
+      setRunId(initialRunId.runId);
+      setStatus({ runId: initialRunId.runId, totalQueued: initialRunId.totalQueued, done: 0, ok: 0, cached: 0, failed: 0, cancelled: false, lastError: null });
+    }
+  }, [initialRunId?.runId]);
 
   useEffect(() => {
     if (!runId) return;
@@ -59,6 +73,9 @@ export function BulkAiCategoriseDialog({
     if (runId && status && status.done < status.totalQueued && !status.cancelled) {
       await bulkSuggestCancel(runId);
     }
+    // Reset local state so re-opening the dialog shows the filter form (not stale progress).
+    setRunId(null);
+    setStatus(null);
     onClose();
   }
 

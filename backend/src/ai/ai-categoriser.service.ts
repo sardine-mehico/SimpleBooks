@@ -42,7 +42,9 @@ export interface BulkSuggestQuery {
   accountIds?: string[];
   dateFrom?: string;
   dateTo?: string;
-  scope: 'uncategorised' | 'all';
+  scope?: 'uncategorised' | 'all';
+  transactionIds?: string[];
+  force?: boolean;
 }
 
 @Injectable()
@@ -212,28 +214,34 @@ export class AiCategoriserService {
 
   // ===== bulk =====
   async bulkSuggest(query: BulkSuggestQuery): Promise<{ runId: string; totalQueued: number }> {
-    const where: any = {};
-    if (query.accountIds?.length) where.accountId = { in: query.accountIds };
-    if (query.dateFrom) where.date = { ...(where.date ?? {}), gte: new Date(query.dateFrom) };
-    if (query.dateTo) where.date = { ...(where.date ?? {}), lte: new Date(query.dateTo) };
-    if (query.scope === 'uncategorised') where.categoryId = null;
+    let ids: { id: string }[];
+    if (query.transactionIds?.length) {
+      // Selection-based: use these IDs directly, no filter scan.
+      ids = query.transactionIds.map((id) => ({ id }));
+    } else {
+      const where: any = {};
+      if (query.accountIds?.length) where.accountId = { in: query.accountIds };
+      if (query.dateFrom) where.date = { ...(where.date ?? {}), gte: new Date(query.dateFrom) };
+      if (query.dateTo) where.date = { ...(where.date ?? {}), lte: new Date(query.dateTo) };
+      if (query.scope === 'uncategorised') where.categoryId = null;
+      ids = await this.prisma.transaction.findMany({ where, select: { id: true } });
+    }
 
-    const ids = await this.prisma.transaction.findMany({ where, select: { id: true } });
     const runId = randomUUID();
     const run = BulkRuns.create(runId, ids.length);
 
     // Fire and forget; status polled via BulkRuns.get.
-    void this.runBulk(run, ids.map((x) => x.id));
+    void this.runBulk(run, ids.map((x) => x.id), query.force ?? false);
     return { runId, totalQueued: run.totalQueued };
   }
 
-  private async runBulk(run: { id: string; abort: AbortController; cancelled: boolean }, txIds: string[]) {
+  private async runBulk(run: { id: string; abort: AbortController; cancelled: boolean }, txIds: string[], force: boolean) {
     const r = BulkRuns.get(run.id)!;
     const limit = pLimit(BULK_CONCURRENCY);
     await Promise.all(txIds.map((id) => limit(async () => {
       if (r.cancelled) return;
       try {
-        const result = await this.suggest(id, { force: false, timeoutMs: BULK_TIMEOUT_MS });
+        const result = await this.suggest(id, { force, timeoutMs: BULK_TIMEOUT_MS });
         if (result.kind === 'fresh') r.ok++;
         else if (result.kind === 'cached') r.cached++;
         else {

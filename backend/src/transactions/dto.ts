@@ -68,3 +68,7 @@ export class SetCategoryDto {
   @IsUUID() @IsOptional() vendorId?: string;
   @IsString() @IsOptional() @MaxLength(2000) notes?: string;
 }
+
+export class BulkDeleteDto {
+  @IsArray() @IsUUID('all', { each: true }) @IsOptional() ids?: string[];
+}

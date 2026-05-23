@@ -161,6 +161,18 @@ export class TransactionsService {
     });
   }
 
+  async deleteTransaction(id: string): Promise<void> {
+    const tx = await this.prisma.transaction.findUnique({ where: { id } });
+    if (!tx) throw new NotFoundException();
+    await this.prisma.transaction.delete({ where: { id } });
+  }
+
+  async bulkDelete(ids: string[]): Promise<{ deleted: number }> {
+    if (!ids.length) return { deleted: 0 };
+    const result = await this.prisma.transaction.deleteMany({ where: { id: { in: ids } } });
+    return { deleted: result.count };
+  }
+
   async setCategory(transactionId: string, data: { categoryId?: string; vendorId?: string; notes?: string }) {
     const tx = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
     if (!tx) throw new NotFoundException();

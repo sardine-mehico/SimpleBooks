@@ -15,7 +15,7 @@ export function applyAiSuggestion(transactionId: string, decision: ApplyDecision
   return api<void>('/ai/apply', { method: 'POST', body: JSON.stringify({ transactionId, decision }) });
 }
 
-export function bulkSuggest(query: { accountIds?: string[]; dateFrom?: string; dateTo?: string; scope: 'uncategorised' | 'all' }) {
+export function bulkSuggest(query: { accountIds?: string[]; dateFrom?: string; dateTo?: string; scope?: 'uncategorised' | 'all'; transactionIds?: string[]; force?: boolean }) {
   return api<{ runId: string; totalQueued: number }>('/ai/bulk-suggest', { method: 'POST', body: JSON.stringify(query) });
 }
 

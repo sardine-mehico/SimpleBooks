@@ -84,6 +84,12 @@ export const commitImport = (
   return apiMultipart<ImportReport>('/transaction-imports/commit', fd);
 };
 
+export const deleteTransaction = (id: string) =>
+  apiClient.delete<void>(`/transactions/${id}`);
+
+export const bulkDeleteTransactions = (ids: string[]) =>
+  apiClient.post<{ deleted: number }>('/transactions/bulk-delete', { ids });
+
 // Import logs
 export const listImportLogs = (params: { accountId?: string; dateFrom?: string; dateTo?: string; page?: number; pageSize?: number } = {}) => {
   const search = new URLSearchParams();

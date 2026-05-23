@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Filter, ChevronUp, ChevronDown, ChevronsUpDown, Sparkles } from "lucide-react";
+import { Filter, ChevronUp, ChevronDown, ChevronsUpDown, Sparkles, Trash2, X, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,8 @@ import {
 import { Pagination } from "@/components/data/pagination";
 import { cn } from "@/lib/utils";
 import { TransactionAmountCell } from "./transaction-amount-cell";
-import { listTransactions } from "@/lib/banking";
+import { listTransactions, bulkDeleteTransactions } from "@/lib/banking";
+import { bulkSuggest } from "@/lib/ai";
 import { CATEGORY_KINDS } from "@/lib/types";
 import type { Account, Category, CategoryKind, Transaction, Vendor } from "@/lib/types";
 import { RecategoriseDialog } from "./recategorise-dialog";
@@ -128,6 +129,12 @@ export function TransactionsTable({
   const [filterOpen, setFilterOpen] = useState(false);
   const [showRecategorise, setShowRecategorise] = useState(false);
   const [bulkAiOpen, setBulkAiOpen] = useState(false);
+  const [bulkAiInitial, setBulkAiInitial] = useState<{ runId: string; totalQueued: number } | null>(null);
+
+  // Selection state — ephemeral, not URL-driven.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Ref for the header checkbox to support indeterminate state.
+  const headerCheckboxRef = useRef<HTMLInputElement>(null);
 
   // Local input mirrors for the filter panel before user clicks Apply.
   const [tempDateFrom, setTempDateFrom] = useState(dateFrom);
@@ -248,7 +255,55 @@ export function TransactionsTable({
     });
   }
 
-  const cols: Array<{ key: SortKey | "account" | "category" | "vendor" | "actions"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
+  // ---- selection helpers ----
+  function toggleRow(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    const visibleIds = rows.map((r) => r.id);
+    const allSelected = visibleIds.every((id) => selectedIds.has(id));
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(visibleIds));
+    }
+  }
+
+  // Keep header checkbox indeterminate state in sync.
+  useEffect(() => {
+    const el = headerCheckboxRef.current;
+    if (!el) return;
+    const visibleIds = rows.map((r) => r.id);
+    const selectedCount = visibleIds.filter((id) => selectedIds.has(id)).length;
+    el.indeterminate = selectedCount > 0 && selectedCount < visibleIds.length;
+  }, [selectedIds, rows]);
+
+  // ---- bulk actions ----
+  async function bulkCategorise(force: boolean) {
+    const r = await bulkSuggest({ transactionIds: [...selectedIds], force });
+    setBulkAiInitial(r);
+    setBulkAiOpen(true);
+    setSelectedIds(new Set());
+  }
+
+  async function bulkDelete() {
+    const count = selectedIds.size;
+    if (!confirm(`Delete ${count} transaction${count === 1 ? '' : 's'}? This will also remove their splits and categorisation history.`)) return;
+    await bulkDeleteTransactions([...selectedIds]);
+    setSelectedIds(new Set());
+    const params = new URLSearchParams(urlSearch.toString());
+    params.set('r', String(Date.now()));
+    router.replace(`${pathname}?${params.toString()}`);
+  }
+
+  const cols: Array<{ key: SortKey | "account" | "category" | "vendor" | "actions" | "select"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
+    { key: "select", label: "", sortable: false, width: "40px" },
     { key: "date", label: "Date", sortable: true, width: "110px" },
     { key: "description", label: "Description", sortable: true, width: "2fr" },
     { key: "category", label: "Category", sortable: false, width: "1fr" },
@@ -416,11 +471,44 @@ export function TransactionsTable({
       )}
 
       <Card className="overflow-hidden">
+        {selectedIds.size > 0 && (
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+            <span className="text-sm font-medium text-slate-700">{selectedIds.size} selected</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => bulkCategorise(false)}>
+              <Sparkles className="h-3.5 w-3.5" /> Categorise with AI
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => bulkCategorise(true)}>
+              <RefreshCw className="h-3.5 w-3.5" /> Re-categorise with AI
+            </Button>
+            <Button type="button" size="sm" variant="outline" className="text-rose-600 hover:text-rose-700 hover:border-rose-300" onClick={bulkDelete}>
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+              <X className="h-3.5 w-3.5" /> Clear
+            </Button>
+          </div>
+        )}
         <div
           className="grid items-center gap-x-4 border-b border-slate-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-slate-400"
           style={{ gridTemplateColumns: gridTemplate }}
         >
           {cols.map((c) => {
+            if (c.key === "select") {
+              const visibleIds = rows.map((r) => r.id);
+              const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+              return (
+                <div key="select" className="flex items-center">
+                  <input
+                    ref={headerCheckboxRef}
+                    type="checkbox"
+                    aria-label="Select all visible"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-indigo-600"
+                  />
+                </div>
+              );
+            }
             const isActive = sortBy === c.key;
             const justify = c.align === "right" ? "justify-end" : c.align === "center" ? "justify-center" : "justify-start";
             return (
@@ -447,9 +535,19 @@ export function TransactionsTable({
           )}
           {rows.map((t) => {
             const highlight = searchParams.highlight === t.id;
+            const isSelected = selectedIds.has(t.id);
             return (
-              <li key={t.id} className={cn("transition-colors", highlight && "bg-amber-100/80")}>
+              <li key={t.id} className={cn("transition-colors", highlight && "bg-amber-100/80", isSelected && "bg-indigo-50/60")}>
                 <div className="grid items-center gap-x-4 px-5 py-3 text-sm" style={{ gridTemplateColumns: gridTemplate }}>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select transaction ${t.id}`}
+                      checked={isSelected}
+                      onChange={() => toggleRow(t.id)}
+                      className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-indigo-600"
+                    />
+                  </div>
                   <div className="text-slate-700">{t.date.slice(0, 10)}</div>
                   <div className="min-w-0 truncate text-slate-700">{t.description}</div>
                   <div className="min-w-0 truncate">
@@ -503,7 +601,12 @@ export function TransactionsTable({
           onClose={() => setShowRecategorise(false)}
         />
       )}
-      <BulkAiCategoriseDialog accounts={accounts} open={bulkAiOpen} onClose={() => setBulkAiOpen(false)} />
+      <BulkAiCategoriseDialog
+        accounts={accounts}
+        open={bulkAiOpen}
+        onClose={() => { setBulkAiOpen(false); setBulkAiInitial(null); }}
+        initialRunId={bulkAiInitial}
+      />
     </div>
   );
 }

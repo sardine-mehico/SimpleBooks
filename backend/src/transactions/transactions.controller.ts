@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { ListTransactionsDto, SetCategoryDto, SetSplitsDto } from './dto';
+import { BulkDeleteDto, ListTransactionsDto, SetCategoryDto, SetSplitsDto } from './dto';
 
 @Controller('transactions')
 export class TransactionsController {
@@ -20,6 +20,18 @@ export class TransactionsController {
     const event = await this.prisma.categorisationEvent.findUnique({ where: { id: eventId } });
     if (!event) throw new NotFoundException();
     return this.service.get(event.transactionId);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  async deleteOne(@Param('id') id: string): Promise<void> {
+    await this.service.deleteTransaction(id);
+  }
+
+  @Post('bulk-delete')
+  @HttpCode(200)
+  bulkDelete(@Body() dto: BulkDeleteDto) {
+    return this.service.bulkDelete(dto.ids ?? []);
   }
 
   @Post(':id/splits') setSplits(@Param('id') id: string, @Body() dto: SetSplitsDto) {

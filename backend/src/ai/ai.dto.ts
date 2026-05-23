@@ -22,5 +22,7 @@ export class BulkSuggestDto {
   @IsArray() @IsString({ each: true }) @IsOptional() accountIds?: string[];
   @IsDateString() @IsOptional() dateFrom?: string;
   @IsDateString() @IsOptional() dateTo?: string;
-  @IsIn(['uncategorised', 'all']) scope!: 'uncategorised' | 'all';
+  @IsIn(['uncategorised', 'all']) @IsOptional() scope?: 'uncategorised' | 'all';
+  @IsArray() @IsString({ each: true }) @IsOptional() transactionIds?: string[];
+  @IsBoolean() @IsOptional() force?: boolean;
 }
