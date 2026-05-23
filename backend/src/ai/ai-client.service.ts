@@ -71,6 +71,10 @@ export class AiClientService {
     input: AiCompleteInput,
     validator: ReturnType<Ajv['compile']>,
   ) {
+    // Normalise the base URL: strip trailing slash so `${base}/chat/completions`
+    // doesn't produce a double slash (which 404s on Gemini and possibly others).
+    const baseUrl = provider.apiBaseUrl.replace(/\/+$/, '');
+    const completionsUrl = `${baseUrl}/chat/completions`;
     const t0 = Date.now();
     const tokens = { promptTokens: null as number | null, completionTokens: null as number | null };
     try {
@@ -86,7 +90,7 @@ export class AiClientService {
         },
         temperature: 0,
       };
-      const res = await this.fetchFn(`${provider.apiBaseUrl}/chat/completions`, {
+      const res = await this.fetchFn(completionsUrl, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${provider.apiKey}`,
@@ -128,7 +132,7 @@ export class AiClientService {
           { role: 'user', content: `Your previous response failed validation: ${parsed.error}. Reply again with valid JSON only.` },
         ],
       };
-      const res2 = await this.fetchFn(`${provider.apiBaseUrl}/chat/completions`, {
+      const res2 = await this.fetchFn(completionsUrl, {
         method: 'POST',
         headers: { Authorization: `Bearer ${provider.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(repairBody),
