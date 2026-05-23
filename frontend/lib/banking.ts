@@ -26,6 +26,12 @@ export const listTransactions = (params: {
   accountIds?: string[];
   dateFrom?: string;
   dateTo?: string;
+  q?: string;
+  categoryId?: string;
+  categoryUncategorised?: boolean;
+  categoryKind?: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'OTHER';
+  vendorId?: string;
+  vendorNone?: boolean;
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
   page?: number;
@@ -35,6 +41,12 @@ export const listTransactions = (params: {
   if (params.accountIds?.length) search.set('accountIds', params.accountIds.join(','));
   if (params.dateFrom) search.set('dateFrom', params.dateFrom);
   if (params.dateTo) search.set('dateTo', params.dateTo);
+  if (params.q) search.set('q', params.q);
+  if (params.categoryId) search.set('categoryId', params.categoryId);
+  if (params.categoryUncategorised) search.set('categoryUncategorised', 'true');
+  if (params.categoryKind) search.set('categoryKind', params.categoryKind);
+  if (params.vendorId) search.set('vendorId', params.vendorId);
+  if (params.vendorNone) search.set('vendorNone', 'true');
   if (params.sortBy) search.set('sortBy', params.sortBy);
   if (params.sortDir) search.set('sortDir', params.sortDir);
   if (params.page) search.set('page', String(params.page));

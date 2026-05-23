@@ -4,6 +4,9 @@ import { ArrayMinSize, IsArray, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, Is
 const VALID_SORT_KEYS = ['date', 'amount', 'description', 'runningBalance'] as const;
 export type TransactionSortKey = (typeof VALID_SORT_KEYS)[number];
 
+const VALID_CATEGORY_KINDS = ['INCOME', 'EXPENSE', 'TRANSFER', 'OTHER'] as const;
+export type CategoryKind = (typeof VALID_CATEGORY_KINDS)[number];
+
 export class ListTransactionsDto {
   @IsOptional()
   @Transform(({ value }) => {
@@ -17,6 +20,25 @@ export class ListTransactionsDto {
 
   @IsOptional() @IsISO8601() dateFrom?: string;
   @IsOptional() @IsISO8601() dateTo?: string;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  q?: string;
+
+  // Category filtering — precedence when multiple params are sent:
+  //   categoryId > categoryUncategorised > categoryKind
+  @IsOptional() @IsUUID() categoryId?: string;
+
+  @IsOptional() @IsIn(['true'])
+  categoryUncategorised?: 'true';
+
+  @IsOptional() @IsIn(VALID_CATEGORY_KINDS as unknown as string[])
+  categoryKind?: CategoryKind;
+
+  // Vendor filtering — precedence: vendorId > vendorNone
+  @IsOptional() @IsUUID() vendorId?: string;
+
+  @IsOptional() @IsIn(['true'])
+  vendorNone?: 'true';
 
   @IsOptional() @IsIn(VALID_SORT_KEYS as unknown as string[])
   sortBy?: TransactionSortKey;

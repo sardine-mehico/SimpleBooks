@@ -7,17 +7,74 @@ import { Filter, ChevronUp, ChevronDown, ChevronsUpDown, Sparkles } from "lucide
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Pagination } from "@/components/data/pagination";
 import { cn } from "@/lib/utils";
 import { TransactionAmountCell } from "./transaction-amount-cell";
 import { listTransactions } from "@/lib/banking";
 import { CATEGORY_KINDS } from "@/lib/types";
-import type { Account, Category, Transaction, Vendor } from "@/lib/types";
+import type { Account, Category, CategoryKind, Transaction, Vendor } from "@/lib/types";
 import { RecategoriseDialog } from "./recategorise-dialog";
 import { BulkAiCategoriseDialog } from "./bulk-ai-categorise-dialog";
 import { TransactionRowMenu } from "./transaction-row-menu";
 
 type SortKey = "date" | "amount" | "description" | "runningBalance";
+
+// Category select value encoding:
+//   ''                  => Any category (no filter)
+//   '__uncategorised'   => categoryId IS NULL
+//   '__kind:INCOME'     => category.kind = INCOME
+//   '__kind:EXPENSE'    => category.kind = EXPENSE
+//   '__kind:TRANSFER'   => category.kind = TRANSFER
+//   '<uuid>'            => exact categoryId match
+//
+// Vendor select value encoding:
+//   ''        => Any vendor (no filter)
+//   '__none'  => vendorId IS NULL
+//   '<uuid>'  => exact vendorId match
+
+function encodeCategoryUrlParams(val: string): Record<string, string | null> {
+  if (!val || val === "") {
+    return { categoryId: null, categoryUncategorised: null, categoryKind: null };
+  }
+  if (val === "__uncategorised") {
+    return { categoryId: null, categoryUncategorised: "true", categoryKind: null };
+  }
+  if (val.startsWith("__kind:")) {
+    return { categoryId: null, categoryUncategorised: null, categoryKind: val.slice(7) };
+  }
+  return { categoryId: val, categoryUncategorised: null, categoryKind: null };
+}
+
+function decodeCategoryUrlParams(
+  categoryId: string,
+  categoryUncategorised: string,
+  categoryKind: string,
+): string {
+  if (categoryId) return categoryId;
+  if (categoryUncategorised === "true") return "__uncategorised";
+  if (categoryKind) return `__kind:${categoryKind}`;
+  return "";
+}
+
+function encodeVendorUrlParams(val: string): Record<string, string | null> {
+  if (!val || val === "") return { vendorId: null, vendorNone: null };
+  if (val === "__none") return { vendorId: null, vendorNone: "true" };
+  return { vendorId: val, vendorNone: null };
+}
+
+function decodeVendorUrlParams(vendorId: string, vendorNone: string): string {
+  if (vendorId) return vendorId;
+  if (vendorNone === "true") return "__none";
+  return "";
+}
 
 export function TransactionsTable({
   mode,
@@ -51,6 +108,18 @@ export function TransactionsTable({
   // when the URL otherwise doesn't change. Read as a string so it's stable for useEffect deps.
   const refreshToken = (searchParams.r as string) || "";
 
+  // New filter URL params
+  const urlQ = (searchParams.q as string) || "";
+  const urlCategoryId = (searchParams.categoryId as string) || "";
+  const urlCategoryUncategorised = (searchParams.categoryUncategorised as string) || "";
+  const urlCategoryKind = (searchParams.categoryKind as string) || "";
+  const urlVendorId = (searchParams.vendorId as string) || "";
+  const urlVendorNone = (searchParams.vendorNone as string) || "";
+
+  // Derived category/vendor single-value for use in the select
+  const activeCategoryValue = decodeCategoryUrlParams(urlCategoryId, urlCategoryUncategorised, urlCategoryKind);
+  const activeVendorValue = decodeVendorUrlParams(urlVendorId, urlVendorNone);
+
   const PAGE_SIZE = 200;
 
   const [rows, setRows] = useState<Transaction[]>([]);
@@ -64,14 +133,57 @@ export function TransactionsTable({
   const [tempDateFrom, setTempDateFrom] = useState(dateFrom);
   const [tempDateTo, setTempDateTo] = useState(dateTo);
   const [tempAccountIds, setTempAccountIds] = useState<string[]>(selectedAccountIds);
+  const [tempQ, setTempQ] = useState(urlQ);
+  const [tempCategoryValue, setTempCategoryValue] = useState(activeCategoryValue);
+  const [tempVendorValue, setTempVendorValue] = useState(activeVendorValue);
+
+  // Re-sync temp state from URL whenever the panel is opened.
+  // This ensures Cancel leaves the panel values consistent with the URL.
+  useEffect(() => {
+    if (filterOpen) {
+      setTempDateFrom(dateFrom);
+      setTempDateTo(dateTo);
+      setTempAccountIds(selectedAccountIds);
+      setTempQ(urlQ);
+      setTempCategoryValue(activeCategoryValue);
+      setTempVendorValue(activeVendorValue);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterOpen]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+
+    // Decode category params for the API call
+    const catParams: {
+      categoryId?: string;
+      categoryUncategorised?: boolean;
+      categoryKind?: CategoryKind;
+    } = {};
+    if (urlCategoryId) {
+      catParams.categoryId = urlCategoryId;
+    } else if (urlCategoryUncategorised === "true") {
+      catParams.categoryUncategorised = true;
+    } else if (urlCategoryKind) {
+      catParams.categoryKind = urlCategoryKind as CategoryKind;
+    }
+
+    // Decode vendor params for the API call
+    const vendorParams: { vendorId?: string; vendorNone?: boolean } = {};
+    if (urlVendorId) {
+      vendorParams.vendorId = urlVendorId;
+    } else if (urlVendorNone === "true") {
+      vendorParams.vendorNone = true;
+    }
+
     listTransactions({
       accountIds: selectedAccountIds.length ? selectedAccountIds : undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
+      q: urlQ || undefined,
+      ...catParams,
+      ...vendorParams,
       sortBy,
       sortDir,
       page,
@@ -84,7 +196,12 @@ export function TransactionsTable({
       })
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [sortBy, sortDir, page, dateFrom, dateTo, selectedAccountIds.join(","), refreshToken]);
+  }, [
+    sortBy, sortDir, page, dateFrom, dateTo,
+    selectedAccountIds.join(","), refreshToken,
+    urlQ, urlCategoryId, urlCategoryUncategorised, urlCategoryKind,
+    urlVendorId, urlVendorNone,
+  ]);
 
   function patchQuery(next: Record<string, string | null>) {
     const params = new URLSearchParams(urlSearch);
@@ -107,6 +224,9 @@ export function TransactionsTable({
       accountIds: mode === "global"
         ? (tempAccountIds.length ? tempAccountIds.join(",") : null)
         : null,
+      q: tempQ || null,
+      ...encodeCategoryUrlParams(tempCategoryValue),
+      ...encodeVendorUrlParams(tempVendorValue),
       page: "1",
     });
     setFilterOpen(false);
@@ -116,7 +236,16 @@ export function TransactionsTable({
     setTempDateFrom("");
     setTempDateTo("");
     setTempAccountIds([]);
-    patchQuery({ dateFrom: null, dateTo: null, accountIds: null, page: "1" });
+    setTempQ("");
+    setTempCategoryValue("");
+    setTempVendorValue("");
+    patchQuery({
+      dateFrom: null, dateTo: null, accountIds: null,
+      q: null,
+      categoryId: null, categoryUncategorised: null, categoryKind: null,
+      vendorId: null, vendorNone: null,
+      page: "1",
+    });
   }
 
   const cols: Array<{ key: SortKey | "account" | "category" | "vendor" | "actions"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
@@ -133,7 +262,22 @@ export function TransactionsTable({
   cols.push({ key: "actions", label: "", sortable: false, width: "48px" });
 
   const gridTemplate = cols.map((c) => c.width).join(" ");
-  const activeFilters = (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) + (mode === "global" && selectedAccountIds.length ? 1 : 0);
+
+  const activeFilters =
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0) +
+    (mode === "global" && selectedAccountIds.length ? 1 : 0) +
+    (urlQ ? 1 : 0) +
+    (activeCategoryValue ? 1 : 0) +
+    (activeVendorValue ? 1 : 0);
+
+  // Active vendors only, sorted by name, for the vendor select.
+  const activeVendors = vendors.filter((v) => v.isActive).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Categories sorted by sortOrder then name, for the category select.
+  const sortedCategories = [...categories].sort((a, b) =>
+    a.sortOrder !== b.sortOrder ? a.sortOrder - b.sortOrder : a.name.localeCompare(b.name),
+  );
 
   return (
     <div className="space-y-4">
@@ -166,6 +310,66 @@ export function TransactionsTable({
 
       {filterOpen && (
         <Card className="p-4" style={{ background: "rgb(212 215 225 / 79%)" }}>
+          {/* Row 1: Search */}
+          <div className="mb-3">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Search</label>
+            <Input
+              type="search"
+              placeholder="Search transactions…"
+              value={tempQ}
+              onChange={(e) => setTempQ(e.target.value)}
+            />
+          </div>
+
+          {/* Row 2: Category + Vendor selects */}
+          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Category</label>
+              <Select value={tempCategoryValue} onValueChange={setTempCategoryValue}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Any category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Any category</SelectItem>
+                  <SelectItem value="__uncategorised">— Uncategorised —</SelectItem>
+                  <SelectItem value="__sep_kinds__" disabled>────────────────</SelectItem>
+                  <SelectItem value="__kind:INCOME" className="italic text-emerald-700">All Income</SelectItem>
+                  <SelectItem value="__kind:EXPENSE" className="italic text-red-700">All Expense</SelectItem>
+                  <SelectItem value="__kind:TRANSFER" className="italic text-blue-700">All Transfer</SelectItem>
+                  {sortedCategories.length > 0 && (
+                    <SelectItem value="__sep_cats__" disabled>────────────────</SelectItem>
+                  )}
+                  {sortedCategories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Vendor</label>
+              <Select value={tempVendorValue} onValueChange={setTempVendorValue}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Any vendor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Any vendor</SelectItem>
+                  <SelectItem value="__none">— No vendor —</SelectItem>
+                  {activeVendors.length > 0 && (
+                    <SelectItem value="__sep_vendors__" disabled>────────────────</SelectItem>
+                  )}
+                  {activeVendors.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Row 3: Date range */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Date from</label>
@@ -203,6 +407,7 @@ export function TransactionsTable({
               </div>
             )}
           </div>
+
           <div className="mt-3 flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={clearFilters}>Clear</Button>
             <Button type="button" onClick={applyFilters}>Apply</Button>

@@ -32,6 +32,30 @@ export class TransactionsService {
       if (q.dateTo) (where.date as Prisma.DateTimeFilter).lte = new Date(q.dateTo);
     }
 
+    // Full-text search across description and notes.
+    if (q.q) {
+      where.OR = [
+        { description: { contains: q.q, mode: 'insensitive' } },
+        { notes: { contains: q.q, mode: 'insensitive' } },
+      ];
+    }
+
+    // Category filtering — precedence: categoryId > categoryUncategorised > categoryKind.
+    if (q.categoryId) {
+      where.categoryId = q.categoryId;
+    } else if (q.categoryUncategorised === 'true') {
+      where.categoryId = null;
+    } else if (q.categoryKind) {
+      where.category = { kind: q.categoryKind };
+    }
+
+    // Vendor filtering — precedence: vendorId > vendorNone.
+    if (q.vendorId) {
+      where.vendorId = q.vendorId;
+    } else if (q.vendorNone === 'true') {
+      where.vendorId = null;
+    }
+
     const sortBy = q.sortBy ?? 'date';
     const sortDir = q.sortDir ?? 'desc';
     const orderBy: Prisma.TransactionOrderByWithRelationInput[] = [
