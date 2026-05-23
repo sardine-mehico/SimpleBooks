@@ -95,16 +95,17 @@ describe('AiClientService.complete', () => {
     if (r.ok) expect(r.providerId).toBe('p3');
   });
 
-  it('does NOT fall through on permanent misconfig codes (e.g. 401) — surfaces error', async () => {
+  it('falls through on 401 (any HTTP error triggers fallback)', async () => {
     const prisma = makePrisma(providers);
-    const fetch = mockFetch([{ status: 401, body: { error: 'unauthorized' } }]);
+    const fetch = mockFetch([
+      { status: 401, body: { error: { message: 'unauthorized' } } },
+      { status: 200, body: makeOkBody({}) },
+    ]);
     const r = await new AiClientService(prisma, fetch as any).complete(makeInput());
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.error).toBe('chain-exhausted');
-      expect(r.lastError?.httpStatus).toBe(401);
-    }
-    expect(prisma._aiCalls).toHaveLength(1);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.providerId).toBe('p2');
+    expect(prisma._aiCalls.map((c: any) => c.status)).toEqual(['FAILED', 'OK']);
+    expect(prisma._aiCalls[0].httpStatus).toBe(401);
   });
 
   it('falls through on network error (thrown by fetch)', async () => {
@@ -119,16 +120,22 @@ describe('AiClientService.complete', () => {
     expect(prisma._aiCalls[0]).toMatchObject({ status: 'FAILED', httpStatus: null, errorMessage: expect.stringContaining('ECONNREFUSED') });
   });
 
-  it('returns chain-exhausted when all providers fail with fallback-worthy errors', async () => {
+  it('returns chain-exhausted when all providers fail — reports last provider error (e.g. 3 different 4xx)', async () => {
+    // 401 (wrong key), 403 (forbidden), 404 (wrong model/URL) — all tried, all failed.
+    // chain-exhausted reports the LAST provider's error, which is what the UI surfaces.
     const prisma = makePrisma(providers);
     const fetch = mockFetch([
-      { status: 503, body: {} },
-      { status: 503, body: {} },
-      { status: 503, body: {} },
+      { status: 401, body: { error: { message: 'unauthorized' } } },
+      { status: 403, body: { error: { message: 'forbidden' } } },
+      { status: 404, body: { error: { message: 'not found' } } },
     ]);
     const r = await new AiClientService(prisma, fetch as any).complete(makeInput());
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toBe('chain-exhausted');
+    if (!r.ok) {
+      expect(r.error).toBe('chain-exhausted');
+      expect(r.lastError?.httpStatus).toBe(404);
+      expect(r.lastError?.providerId).toBe('p3');
+    }
     expect(prisma._aiCalls.filter((c: any) => c.status === 'FAILED')).toHaveLength(3);
   });
 
@@ -154,6 +161,19 @@ describe('AiClientService.complete', () => {
     const r = await new AiClientService(prisma, fetch as any).complete(makeInput());
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.providerId).toBe('p2');
+  });
+
+  it('falls through on 404 (e.g. wrong model name or wrong base URL)', async () => {
+    const prisma = makePrisma(providers);
+    const fetch = mockFetch([
+      { status: 404, body: { error: { message: 'model not found' } } },
+      { status: 200, body: makeOkBody({}) },
+    ]);
+    const r = await new AiClientService(prisma, fetch as any).complete(makeInput());
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.providerId).toBe('p2');
+    expect(prisma._aiCalls.map((c: any) => c.status)).toEqual(['FAILED', 'OK']);
+    expect(prisma._aiCalls[0].httpStatus).toBe(404);
   });
 
   it('repair-retries once on schema validation failure on same provider, then falls through', async () => {

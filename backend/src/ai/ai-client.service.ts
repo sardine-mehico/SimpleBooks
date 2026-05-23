@@ -33,6 +33,10 @@ export class AiClientService {
     const validator = this.ajv.compile(input.jsonSchema.schema as any);
     let lastError: { providerId: string; httpStatus?: number; message: string } | undefined;
 
+    // Every failure — any HTTP code, any network/timeout/JSON error — falls through
+    // to the next provider. The chain only fails when all providers have been tried.
+    // The lastError on the final failure carries the most recent provider's error
+    // (which is what the UI surfaces).
     for (let i = 0; i < chain.length; i++) {
       const provider = chain[i];
       const attempt = i + 1;
@@ -57,17 +61,6 @@ export class AiClientService {
 
       await this.logCall(provider.id, input, 'FAILED', httpStatus ?? null, message ?? null, tokens, latencyMs);
       lastError = { providerId: provider.id, httpStatus, message: message ?? 'unknown' };
-
-      // Stop the chain only on codes that indicate this provider is misconfigured in
-      // a way no backup can compensate for: wrong request shape (400), wrong key (401),
-      // wrong base URL (404). Every other 4xx (402 Payment Required / Insufficient
-      // Balance, 403 Forbidden, 408 Request Timeout, 429 Rate Limit, 422 Unprocessable
-      // — and everything 5xx) is treated as fallback-worthy so a backup provider can
-      // take over. This is the case the user with 3 providers expects to work.
-      const PERMANENT_MISCONFIG_CODES = new Set([400, 401, 404]);
-      if (httpStatus !== undefined && PERMANENT_MISCONFIG_CODES.has(httpStatus)) {
-        return { ok: false, error: 'chain-exhausted', lastError };
-      }
     }
 
     return { ok: false, error: 'chain-exhausted', lastError };
