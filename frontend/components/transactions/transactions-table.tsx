@@ -47,6 +47,9 @@ export function TransactionsTable({
   const selectedAccountIds: string[] = mode === "account"
     ? [fixedAccountId!]
     : ((searchParams.accountIds as string)?.split(",").filter(Boolean) ?? []);
+  // Refresh token — bumped by the import dialog (and other callers) to force a re-fetch
+  // when the URL otherwise doesn't change. Read as a string so it's stable for useEffect deps.
+  const refreshToken = (searchParams.r as string) || "";
 
   const PAGE_SIZE = 200;
 
@@ -81,7 +84,7 @@ export function TransactionsTable({
       })
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [sortBy, sortDir, page, dateFrom, dateTo, selectedAccountIds.join(",")]);
+  }, [sortBy, sortDir, page, dateFrom, dateTo, selectedAccountIds.join(","), refreshToken]);
 
   function patchQuery(next: Record<string, string | null>) {
     const params = new URLSearchParams(urlSearch);

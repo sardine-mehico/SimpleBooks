@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Upload, AlertTriangle, Loader2 } from "lucide-react";
@@ -14,6 +14,8 @@ type Stage = "choose" | "confirm" | "importing" | "report";
 
 export function ImportCsvDialog({ accountId, onClose }: { accountId: string; onClose: () => void }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const urlSearch = useSearchParams();
   const fileInput = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<Stage>("choose");
   const [file, setFile] = useState<File | null>(null);
@@ -56,7 +58,14 @@ export function ImportCsvDialog({ accountId, onClose }: { accountId: string; onC
       const r = await commitImport(file, accountId, sniff.fileSha256, mapping, applyRules);
       setReport(r);
       setStage("report");
-      router.refresh();
+      // Bump a refresh token in the URL so the TransactionsTable's client-side
+      // fetcher re-runs. router.refresh() alone won't trigger it — the table
+      // owns its own data, not server-passed props. router.replace keeps the
+      // popup mounted (no navigation), the parent re-renders with new
+      // searchParams, and the table's useEffect dep on `refreshToken` fires.
+      const params = new URLSearchParams(urlSearch.toString());
+      params.set("r", String(Date.now()));
+      router.replace(`${pathname}?${params.toString()}`);
     } catch (e) {
       setError((e as Error).message);
       setStage("confirm");
