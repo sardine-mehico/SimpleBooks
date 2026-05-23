@@ -618,6 +618,7 @@ export type SuggestResult =
 export interface BulkRunStatus {
   runId: string; totalQueued: number; done: number;
   ok: number; cached: number; failed: number; cancelled: boolean;
+  lastError: string | null;
 }
 
 export interface MineRulesResult {

@@ -1,19 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { applyAiSuggestion, listReviewQueue } from "@/lib/ai";
-import type { AiDraftView, Transaction } from "@/lib/types";
+import { applyAiSuggestion, bulkSuggestStatus, listReviewQueue } from "@/lib/ai";
+import type { AiDraftView, BulkRunStatus, Transaction } from "@/lib/types";
 import { api } from "@/lib/api";
 
 export function AiReviewList() {
   const router = useRouter();
+  const sp = useSearchParams();
+  const runId = sp.get("runId");
+  const [runStatus, setRunStatus] = useState<BulkRunStatus | null>(null);
   const [drafts, setDrafts] = useState<AiDraftView[]>([]);
   const [txMap, setTxMap] = useState<Map<string, Transaction & { account?: { name: string } }>>(new Map());
   const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!runId) return;
+    void bulkSuggestStatus(runId).then(setRunStatus).catch(() => {/* run may have been swept */});
+  }, [runId]);
 
   async function refresh() {
     const q = await listReviewQueue();
@@ -43,6 +51,14 @@ export function AiReviewList() {
 
   return (
     <div className="space-y-3">
+      {runStatus && runStatus.failed > 0 && runStatus.lastError && (
+        <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+          <div className="font-medium">
+            {runStatus.failed} transaction{runStatus.failed === 1 ? '' : 's'} failed in the last AI run
+          </div>
+          <div className="mt-1 italic text-xs">{runStatus.lastError}</div>
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <Link href="/transactions" className="text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /></Link>
         <h1 className="text-lg font-semibold">AI Review ({grouped.length} pending)</h1>

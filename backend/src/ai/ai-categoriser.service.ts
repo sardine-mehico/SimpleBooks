@@ -236,9 +236,13 @@ export class AiCategoriserService {
         const result = await this.suggest(id, { force: false, timeoutMs: BULK_TIMEOUT_MS });
         if (result.kind === 'fresh') r.ok++;
         else if (result.kind === 'cached') r.cached++;
-        else r.failed++;
-      } catch {
+        else {
+          r.failed++;
+          r.lastError = result.error;
+        }
+      } catch (e: any) {
         r.failed++;
+        r.lastError = e?.message ?? String(e);
       } finally {
         r.done++;
       }
@@ -248,7 +252,12 @@ export class AiCategoriserService {
   getBulkStatus(runId: string) {
     const r = BulkRuns.get(runId);
     if (!r) throw new NotFoundException('Run not found');
-    return { runId: r.id, totalQueued: r.totalQueued, done: r.done, ok: r.ok, cached: r.cached, failed: r.failed, cancelled: r.cancelled };
+    return {
+      runId: r.id, totalQueued: r.totalQueued, done: r.done,
+      ok: r.ok, cached: r.cached, failed: r.failed,
+      cancelled: r.cancelled,
+      lastError: r.lastError ?? null,
+    };
   }
 
   cancelBulk(runId: string) {

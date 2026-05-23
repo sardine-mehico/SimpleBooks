@@ -11,6 +11,7 @@ export interface BulkRun {
   cancelled: boolean;
   createdAt: number;
   abort: AbortController;
+  lastError?: string;   // verbatim message from the most recent failure
 }
 
 const runs = new Map<string, BulkRun>();

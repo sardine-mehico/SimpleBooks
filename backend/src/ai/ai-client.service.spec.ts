@@ -95,7 +95,7 @@ describe('AiClientService.complete', () => {
     if (r.ok) expect(r.providerId).toBe('p3');
   });
 
-  it('does NOT fall through on 4xx misconfig (e.g. 401) — surfaces error', async () => {
+  it('does NOT fall through on permanent misconfig codes (e.g. 401) — surfaces error', async () => {
     const prisma = makePrisma(providers);
     const fetch = mockFetch([{ status: 401, body: { error: 'unauthorized' } }]);
     const r = await new AiClientService(prisma, fetch as any).complete(makeInput());
@@ -130,6 +130,30 @@ describe('AiClientService.complete', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe('chain-exhausted');
     expect(prisma._aiCalls.filter((c: any) => c.status === 'FAILED')).toHaveLength(3);
+  });
+
+  it('falls through on 402 (Payment Required / Insufficient Balance)', async () => {
+    const prisma = makePrisma(providers);
+    const fetch = mockFetch([
+      { status: 402, body: { error: { message: 'Insufficient Balance' } } },
+      { status: 200, body: makeOkBody({}) },
+    ]);
+    const r = await new AiClientService(prisma, fetch as any).complete(makeInput());
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.providerId).toBe('p2');
+    expect(prisma._aiCalls.map((c: any) => c.status)).toEqual(['FAILED', 'OK']);
+    expect(prisma._aiCalls[0].httpStatus).toBe(402);
+  });
+
+  it('falls through on 403 too', async () => {
+    const prisma = makePrisma(providers);
+    const fetch = mockFetch([
+      { status: 403, body: {} },
+      { status: 200, body: makeOkBody({}) },
+    ]);
+    const r = await new AiClientService(prisma, fetch as any).complete(makeInput());
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.providerId).toBe('p2');
   });
 
   it('repair-retries once on schema validation failure on same provider, then falls through', async () => {

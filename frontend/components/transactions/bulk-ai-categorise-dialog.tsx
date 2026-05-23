@@ -49,7 +49,7 @@ export function BulkAiCategoriseDialog({
         scope,
       });
       setRunId(r.runId);
-      setStatus({ runId: r.runId, totalQueued: r.totalQueued, done: 0, ok: 0, cached: 0, failed: 0, cancelled: false });
+      setStatus({ runId: r.runId, totalQueued: r.totalQueued, done: 0, ok: 0, cached: 0, failed: 0, cancelled: false, lastError: null });
     } finally {
       setBusy(false);
     }
@@ -99,10 +99,19 @@ export function BulkAiCategoriseDialog({
           <div className="space-y-2 py-2 text-sm">
             <div>Queued: <span className="font-mono">{status.totalQueued}</span></div>
             <div>Done: <span className="font-mono">{status.done}</span> · OK: <span className="font-mono text-emerald-700">{status.ok}</span> · Cached: <span className="font-mono text-slate-500">{status.cached}</span> · Failed: <span className="font-mono text-rose-700">{status.failed}</span></div>
-            {done && (
+            {status.failed > 0 && status.lastError && (
+              <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-900">
+                <div className="font-medium">{status.failed} transaction{status.failed === 1 ? '' : 's'} failed</div>
+                <div className="mt-0.5 italic">{status.lastError}</div>
+              </div>
+            )}
+            {done && (status.ok > 0 || status.cached > 0) && (
               <div className="pt-2">
                 <Button onClick={() => { onClose(); router.push(`/transactions/ai-review?runId=${runId}`); }}>Review now</Button>
               </div>
+            )}
+            {done && status.ok === 0 && status.cached === 0 && (
+              <div className="pt-2 text-xs text-slate-500">Nothing to review. Fix the AI configuration and try again.</div>
             )}
           </div>
         )}

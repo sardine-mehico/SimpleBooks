@@ -58,8 +58,14 @@ export class AiClientService {
       await this.logCall(provider.id, input, 'FAILED', httpStatus ?? null, message ?? null, tokens, latencyMs);
       lastError = { providerId: provider.id, httpStatus, message: message ?? 'unknown' };
 
-      // 4xx other than 408/429 = misconfig, do not fall through.
-      if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408 && httpStatus !== 429) {
+      // Stop the chain only on codes that indicate this provider is misconfigured in
+      // a way no backup can compensate for: wrong request shape (400), wrong key (401),
+      // wrong base URL (404). Every other 4xx (402 Payment Required / Insufficient
+      // Balance, 403 Forbidden, 408 Request Timeout, 429 Rate Limit, 422 Unprocessable
+      // — and everything 5xx) is treated as fallback-worthy so a backup provider can
+      // take over. This is the case the user with 3 providers expects to work.
+      const PERMANENT_MISCONFIG_CODES = new Set([400, 401, 404]);
+      if (httpStatus !== undefined && PERMANENT_MISCONFIG_CODES.has(httpStatus)) {
         return { ok: false, error: 'chain-exhausted', lastError };
       }
     }
