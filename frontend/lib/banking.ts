@@ -32,6 +32,7 @@ export const listTransactions = (params: {
   categoryKind?: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'OTHER';
   vendorId?: string;
   vendorNone?: boolean;
+  pendingAiReview?: boolean;
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
   page?: number;
@@ -47,6 +48,7 @@ export const listTransactions = (params: {
   if (params.categoryKind) search.set('categoryKind', params.categoryKind);
   if (params.vendorId) search.set('vendorId', params.vendorId);
   if (params.vendorNone) search.set('vendorNone', 'true');
+  if (params.pendingAiReview) search.set('pendingAiReview', 'true');
   if (params.sortBy) search.set('sortBy', params.sortBy);
   if (params.sortDir) search.set('sortDir', params.sortDir);
   if (params.page) search.set('page', String(params.page));

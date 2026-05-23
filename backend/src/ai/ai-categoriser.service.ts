@@ -14,7 +14,6 @@ import type { AiConfidence, CategoriseLlmResponse } from './types';
 const INLINE_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_INLINE_MS ?? 20_000);
 const BULK_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_BULK_MS ?? 60_000);
 const BULK_CONCURRENCY = Number(process.env.AI_BULK_CONCURRENCY ?? 5);
-const CACHE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface AiDraftView {
   eventId: string;
@@ -55,7 +54,9 @@ export class AiCategoriserService {
   async suggest(transactionId: string, opts: { force?: boolean; timeoutMs?: number } = {}): Promise<SuggestResult> {
     if (!opts.force) {
       const cached = await this.loadUnresolvedDraft(transactionId);
-      if (cached && Date.now() - new Date(cached.createdAt).getTime() < CACHE_WINDOW_MS) {
+      if (cached) {
+        // No expiry — unresolved drafts stay cached until the user accepts/edits/rejects.
+        // Phase C decision: protect users from accidental re-spending on the same tx.
         return { kind: 'cached', draft: cached };
       }
     }
@@ -273,6 +274,36 @@ export class AiCategoriserService {
   }
 
   // ===== review queue =====
+  async reviewQueueCount(): Promise<{ count: number }> {
+    // Count distinct transactionIds with an unresolved AI_DRAFT (no later AI_APPLIED/AI_REJECTED).
+    const drafts = await this.prisma.categorisationEvent.findMany({
+      where: { source: 'AI_DRAFT' },
+      select: { transactionId: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 5000,
+    });
+    const latestResolutionByTx = new Map<string, Date>();
+    const resolutions = await this.prisma.categorisationEvent.findMany({
+      where: { source: { in: ['AI_APPLIED', 'AI_REJECTED'] } },
+      select: { transactionId: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 5000,
+    });
+    for (const r of resolutions) {
+      if (!latestResolutionByTx.has(r.transactionId)) {
+        latestResolutionByTx.set(r.transactionId, r.createdAt);
+      }
+    }
+    const unresolvedTxIds = new Set<string>();
+    for (const d of drafts) {
+      if (unresolvedTxIds.has(d.transactionId)) continue;
+      const resolution = latestResolutionByTx.get(d.transactionId);
+      if (resolution && resolution > d.createdAt) continue;
+      unresolvedTxIds.add(d.transactionId);
+    }
+    return { count: unresolvedTxIds.size };
+  }
+
   async listReviewQueue(): Promise<AiDraftView[]> {
     // Unresolved AI_DRAFTs: most recent AI_DRAFT per transaction, with no later
     // AI_APPLIED|AI_REJECTED for that transaction.

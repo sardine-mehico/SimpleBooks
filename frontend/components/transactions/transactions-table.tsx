@@ -29,44 +29,50 @@ import { TransactionRowMenu } from "./transaction-row-menu";
 type SortKey = "date" | "amount" | "description" | "runningBalance";
 
 // Category select value encoding:
-//   ''                  => Any category (no filter)
-//   '__uncategorised'   => categoryId IS NULL
-//   '__kind:INCOME'     => category.kind = INCOME
-//   '__kind:EXPENSE'    => category.kind = EXPENSE
-//   '__kind:TRANSFER'   => category.kind = TRANSFER
-//   '<uuid>'            => exact categoryId match
+//   '__any__'              => Any category (no filter)
+//   '__uncategorised'      => categoryId IS NULL
+//   '__pending_ai_review'  => has unresolved AI_DRAFT
+//   '__kind:INCOME'        => category.kind = INCOME
+//   '__kind:EXPENSE'       => category.kind = EXPENSE
+//   '__kind:TRANSFER'      => category.kind = TRANSFER
+//   '<uuid>'               => exact categoryId match
 //
 // Vendor select value encoding:
-//   ''        => Any vendor (no filter)
-//   '__none'  => vendorId IS NULL
-//   '<uuid>'  => exact vendorId match
+//   '__any__'  => Any vendor (no filter)
+//   '__none'   => vendorId IS NULL
+//   '<uuid>'   => exact vendorId match
 
 function encodeCategoryUrlParams(val: string): Record<string, string | null> {
-  if (!val || val === "") {
-    return { categoryId: null, categoryUncategorised: null, categoryKind: null };
+  if (!val || val === "__any__") {
+    return { categoryId: null, categoryUncategorised: null, categoryKind: null, pendingAiReview: null };
   }
   if (val === "__uncategorised") {
-    return { categoryId: null, categoryUncategorised: "true", categoryKind: null };
+    return { categoryId: null, categoryUncategorised: "true", categoryKind: null, pendingAiReview: null };
+  }
+  if (val === "__pending_ai_review") {
+    return { categoryId: null, categoryUncategorised: null, categoryKind: null, pendingAiReview: "true" };
   }
   if (val.startsWith("__kind:")) {
-    return { categoryId: null, categoryUncategorised: null, categoryKind: val.slice(7) };
+    return { categoryId: null, categoryUncategorised: null, categoryKind: val.slice(7), pendingAiReview: null };
   }
-  return { categoryId: val, categoryUncategorised: null, categoryKind: null };
+  return { categoryId: val, categoryUncategorised: null, categoryKind: null, pendingAiReview: null };
 }
 
 function decodeCategoryUrlParams(
   categoryId: string,
   categoryUncategorised: string,
   categoryKind: string,
+  pendingAiReview: string,
 ): string {
   if (categoryId) return categoryId;
   if (categoryUncategorised === "true") return "__uncategorised";
+  if (pendingAiReview === "true") return "__pending_ai_review";
   if (categoryKind) return `__kind:${categoryKind}`;
-  return "";
+  return "__any__";
 }
 
 function encodeVendorUrlParams(val: string): Record<string, string | null> {
-  if (!val || val === "") return { vendorId: null, vendorNone: null };
+  if (!val || val === "__any__") return { vendorId: null, vendorNone: null };
   if (val === "__none") return { vendorId: null, vendorNone: "true" };
   return { vendorId: val, vendorNone: null };
 }
@@ -74,7 +80,7 @@ function encodeVendorUrlParams(val: string): Record<string, string | null> {
 function decodeVendorUrlParams(vendorId: string, vendorNone: string): string {
   if (vendorId) return vendorId;
   if (vendorNone === "true") return "__none";
-  return "";
+  return "__any__";
 }
 
 export function TransactionsTable({
@@ -114,11 +120,12 @@ export function TransactionsTable({
   const urlCategoryId = (searchParams.categoryId as string) || "";
   const urlCategoryUncategorised = (searchParams.categoryUncategorised as string) || "";
   const urlCategoryKind = (searchParams.categoryKind as string) || "";
+  const urlPendingAiReview = (searchParams.pendingAiReview as string) || "";
   const urlVendorId = (searchParams.vendorId as string) || "";
   const urlVendorNone = (searchParams.vendorNone as string) || "";
 
   // Derived category/vendor single-value for use in the select
-  const activeCategoryValue = decodeCategoryUrlParams(urlCategoryId, urlCategoryUncategorised, urlCategoryKind);
+  const activeCategoryValue = decodeCategoryUrlParams(urlCategoryId, urlCategoryUncategorised, urlCategoryKind, urlPendingAiReview);
   const activeVendorValue = decodeVendorUrlParams(urlVendorId, urlVendorNone);
 
   const PAGE_SIZE = 200;
@@ -141,8 +148,8 @@ export function TransactionsTable({
   const [tempDateTo, setTempDateTo] = useState(dateTo);
   const [tempAccountIds, setTempAccountIds] = useState<string[]>(selectedAccountIds);
   const [tempQ, setTempQ] = useState(urlQ);
-  const [tempCategoryValue, setTempCategoryValue] = useState(activeCategoryValue);
-  const [tempVendorValue, setTempVendorValue] = useState(activeVendorValue);
+  const [tempCategoryValue, setTempCategoryValue] = useState(activeCategoryValue || "__any__");
+  const [tempVendorValue, setTempVendorValue] = useState(activeVendorValue || "__any__");
 
   // Re-sync temp state from URL whenever the panel is opened.
   // This ensures Cancel leaves the panel values consistent with the URL.
@@ -167,11 +174,14 @@ export function TransactionsTable({
       categoryId?: string;
       categoryUncategorised?: boolean;
       categoryKind?: CategoryKind;
+      pendingAiReview?: boolean;
     } = {};
     if (urlCategoryId) {
       catParams.categoryId = urlCategoryId;
     } else if (urlCategoryUncategorised === "true") {
       catParams.categoryUncategorised = true;
+    } else if (urlPendingAiReview === "true") {
+      catParams.pendingAiReview = true;
     } else if (urlCategoryKind) {
       catParams.categoryKind = urlCategoryKind as CategoryKind;
     }
@@ -206,7 +216,7 @@ export function TransactionsTable({
   }, [
     sortBy, sortDir, page, dateFrom, dateTo,
     selectedAccountIds.join(","), refreshToken,
-    urlQ, urlCategoryId, urlCategoryUncategorised, urlCategoryKind,
+    urlQ, urlCategoryId, urlCategoryUncategorised, urlCategoryKind, urlPendingAiReview,
     urlVendorId, urlVendorNone,
   ]);
 
@@ -244,12 +254,12 @@ export function TransactionsTable({
     setTempDateTo("");
     setTempAccountIds([]);
     setTempQ("");
-    setTempCategoryValue("");
-    setTempVendorValue("");
+    setTempCategoryValue("__any__");
+    setTempVendorValue("__any__");
     patchQuery({
       dateFrom: null, dateTo: null, accountIds: null,
       q: null,
-      categoryId: null, categoryUncategorised: null, categoryKind: null,
+      categoryId: null, categoryUncategorised: null, categoryKind: null, pendingAiReview: null,
       vendorId: null, vendorNone: null,
       page: "1",
     });
@@ -323,8 +333,8 @@ export function TransactionsTable({
     (dateTo ? 1 : 0) +
     (mode === "global" && selectedAccountIds.length ? 1 : 0) +
     (urlQ ? 1 : 0) +
-    (activeCategoryValue ? 1 : 0) +
-    (activeVendorValue ? 1 : 0);
+    (activeCategoryValue && activeCategoryValue !== "__any__" ? 1 : 0) +
+    (activeVendorValue && activeVendorValue !== "__any__" ? 1 : 0);
 
   // Active vendors only, sorted by name, for the vendor select.
   const activeVendors = vendors.filter((v) => v.isActive).sort((a, b) => a.name.localeCompare(b.name));
@@ -385,8 +395,9 @@ export function TransactionsTable({
                   <SelectValue placeholder="Any category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any category</SelectItem>
+                  <SelectItem value="__any__">Any category</SelectItem>
                   <SelectItem value="__uncategorised">— Uncategorised —</SelectItem>
+                  <SelectItem value="__pending_ai_review" className="italic text-indigo-700">— Pending AI review —</SelectItem>
                   <SelectItem value="__sep_kinds__" disabled>────────────────</SelectItem>
                   <SelectItem value="__kind:INCOME" className="italic text-emerald-700">All Income</SelectItem>
                   <SelectItem value="__kind:EXPENSE" className="italic text-red-700">All Expense</SelectItem>
@@ -409,7 +420,7 @@ export function TransactionsTable({
                   <SelectValue placeholder="Any vendor" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any vendor</SelectItem>
+                  <SelectItem value="__any__">Any vendor</SelectItem>
                   <SelectItem value="__none">— No vendor —</SelectItem>
                   {activeVendors.length > 0 && (
                     <SelectItem value="__sep_vendors__" disabled>────────────────</SelectItem>

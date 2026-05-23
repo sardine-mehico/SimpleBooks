@@ -21,11 +21,13 @@ import {
   FileText,
   GearSix,
   CaretDown,
+  Sparkle,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { reviewQueueCount } from "@/lib/ai";
 import { cn } from "@/lib/utils";
 
-type Item = { label: string; href: string; icon?: any };
+type Item = { label: string; href: string; icon?: any; badgeKey?: string };
 type Group =
   | (Item & { kind: "link" })
   | { kind: "group"; label: string; icon: any; items: Item[]; defaultOpen?: boolean };
@@ -50,9 +52,11 @@ const nav: Group[] = [
     kind: "group",
     label: "Banking",
     icon: Bank,
+    defaultOpen: true,
     items: [
       { label: "Accounts", href: "/accounts" },
       { label: "Transactions", href: "/transactions" },
+      { label: "AI Review", href: "/transactions/ai-review", badgeKey: "aiReviewCount" },
       { label: "Categories", href: "/categories" },
       { label: "Vendors", href: "/vendors" },
       { label: "Rules", href: "/rules" },
@@ -73,6 +77,7 @@ const subIcons: Record<string, any> = {
   "/items": Package,
   "/accounts": Wallet,
   "/transactions": ArrowsLeftRight,
+  "/transactions/ai-review": Sparkle,
   "/categories": Tag,
   "/vendors": Storefront,
   "/rules": Scales,
@@ -89,6 +94,18 @@ export function Sidebar() {
 
 export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname();
+  const [aiReviewCount, setAiReviewCount] = useState<number>(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = () => {
+      void reviewQueueCount().then((r) => { if (!cancelled) setAiReviewCount(r.count); }).catch(() => {});
+    };
+    tick();
+    const t = setInterval(tick, 30_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
   return (
     <>
       <div className="flex h-16 items-center gap-2.5 border-b border-white/10 px-5">
@@ -103,7 +120,7 @@ export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
           entry.kind === "link" ? (
             <NavLink key={i} item={entry} active={pathname === entry.href} onNavigate={onNavigate} />
           ) : (
-            <NavGroup key={i} group={entry} pathname={pathname} onNavigate={onNavigate} />
+            <NavGroup key={i} group={entry} pathname={pathname} onNavigate={onNavigate} aiReviewCount={aiReviewCount} />
           )
         )}
       </nav>
@@ -128,7 +145,7 @@ function NavLink({ item, active, onNavigate }: { item: Item & { icon?: any }; ac
   );
 }
 
-function NavGroup({ group, pathname, onNavigate }: { group: Extract<Group, { kind: "group" }>; pathname: string; onNavigate?: () => void }) {
+function NavGroup({ group, pathname, onNavigate, aiReviewCount }: { group: Extract<Group, { kind: "group" }>; pathname: string; onNavigate?: () => void; aiReviewCount?: number }) {
   const isOpenByDefault = group.defaultOpen || group.items.some((i) => i.href === pathname);
   const [open, setOpen] = useState(isOpenByDefault);
   const Icon = group.icon;
@@ -152,6 +169,7 @@ function NavGroup({ group, pathname, onNavigate }: { group: Extract<Group, { kin
           {group.items.map((item) => {
             const SubIcon = subIcons[item.href];
             const active = pathname === item.href;
+            const badgeCount = item.badgeKey === "aiReviewCount" ? (aiReviewCount ?? 0) : 0;
             return (
               <Link
                 key={item.href}
@@ -163,7 +181,12 @@ function NavGroup({ group, pathname, onNavigate }: { group: Extract<Group, { kin
                 )}
               >
                 {SubIcon ? <SubIcon weight="fill" className={cn("h-3.5 w-3.5", active ? "text-white" : "text-slate-300/80")} /> : null}
-                {item.label}
+                <span>{item.label}</span>
+                {badgeCount > 0 && (
+                  <span className="ml-auto rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {badgeCount}
+                  </span>
+                )}
               </Link>
             );
           })}

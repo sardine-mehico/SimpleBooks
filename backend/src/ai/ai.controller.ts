@@ -39,6 +39,11 @@ export class AiController {
     this.categoriser.cancelBulk(runId);
   }
 
+  @Get('review-queue/count')
+  queueCount() {
+    return this.categoriser.reviewQueueCount();
+  }
+
   @Get('review-queue')
   queue() {
     return this.categoriser.listReviewQueue();

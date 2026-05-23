@@ -40,6 +40,9 @@ export class ListTransactionsDto {
   @IsOptional() @IsIn(['true'])
   vendorNone?: 'true';
 
+  @IsOptional() @IsIn(['true'])
+  pendingAiReview?: 'true';
+
   @IsOptional() @IsIn(VALID_SORT_KEYS as unknown as string[])
   sortBy?: TransactionSortKey;
 

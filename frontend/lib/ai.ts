@@ -31,6 +31,10 @@ export function listReviewQueue() {
   return api<AiDraftView[]>('/ai/review-queue');
 }
 
+export function reviewQueueCount() {
+  return api<{ count: number }>('/ai/review-queue/count');
+}
+
 export function mineRules() {
   return api<MineRulesResult>('/ai/mine-rules', { method: 'POST' });
 }

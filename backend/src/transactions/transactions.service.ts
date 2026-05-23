@@ -56,6 +56,36 @@ export class TransactionsService {
       where.vendorId = null;
     }
 
+    // Pending AI review filter — transactions with an unresolved AI_DRAFT.
+    if (q.pendingAiReview === 'true') {
+      const drafts = await this.prisma.categorisationEvent.findMany({
+        where: { source: 'AI_DRAFT' },
+        select: { transactionId: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 5000,
+      });
+      const resolutions = await this.prisma.categorisationEvent.findMany({
+        where: { source: { in: ['AI_APPLIED', 'AI_REJECTED'] } },
+        select: { transactionId: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 5000,
+      });
+      const latestResolutionByTx = new Map<string, Date>();
+      for (const r of resolutions) {
+        if (!latestResolutionByTx.has(r.transactionId)) {
+          latestResolutionByTx.set(r.transactionId, r.createdAt);
+        }
+      }
+      const unresolvedTxIds = new Set<string>();
+      for (const d of drafts) {
+        if (unresolvedTxIds.has(d.transactionId)) continue;
+        const resolution = latestResolutionByTx.get(d.transactionId);
+        if (resolution && resolution > d.createdAt) continue;
+        unresolvedTxIds.add(d.transactionId);
+      }
+      where.id = { in: [...unresolvedTxIds] };
+    }
+
     const sortBy = q.sortBy ?? 'date';
     const sortDir = q.sortDir ?? 'desc';
     const orderBy: Prisma.TransactionOrderByWithRelationInput[] = [
