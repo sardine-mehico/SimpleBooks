@@ -29,8 +29,22 @@ export class InvoicesService {
 
   constructor(private prisma: PrismaService) {}
 
-  list() {
+  list(opts?: { openOnly?: boolean; search?: string }) {
+    const where: any = {};
+    if (opts?.openOnly) {
+      where.status = { in: ['SENT', 'VIEWED', 'PARTIAL_PAID'] };
+    }
+    if (opts?.search) {
+      const s = opts.search.trim();
+      const or: any[] = [
+        { customer: { is: { name: { contains: s, mode: 'insensitive' } } } },
+      ];
+      const asNum = Number(s.replace(/^INV-/i, ''));
+      if (Number.isFinite(asNum) && asNum > 0) or.push({ invoiceNumber: asNum });
+      where.OR = or;
+    }
     return this.prisma.invoice.findMany({
+      where: Object.keys(where).length ? where : undefined,
       orderBy: { invoiceNumber: 'desc' },
       include: { customer: true, billingCompany: true },
     });

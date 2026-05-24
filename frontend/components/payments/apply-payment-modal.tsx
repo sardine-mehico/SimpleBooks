@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { applyPayment, getCandidates } from "@/lib/payments";
-import type { CandidatesResponse, PaymentQueueItem, ScoredInvoice } from "@/lib/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { applyPayment, getCandidates, listOpenInvoices } from "@/lib/payments";
+import type { CandidatesResponse, Customer, Invoice, PaymentQueueItem, ScoredInvoice } from "@/lib/types";
 
 function fmt(n: string | number) {
   return `$${Number(n).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -12,14 +13,41 @@ function fmt(n: string | number) {
 
 type LineState = { checked: boolean; amount: string };
 
+function invoiceToScored(i: Invoice): ScoredInvoice {
+  const dateStr =
+    typeof i.invoiceDate === "string"
+      ? i.invoiceDate.slice(0, 10)
+      : new Date(i.invoiceDate).toISOString().slice(0, 10);
+  return {
+    id: i.id,
+    invoiceNumber: i.invoiceNumber,
+    invoiceDate: dateStr,
+    totalAmount: String(i.totalAmount),
+    amountOutstanding: String(i.amountOutstanding),
+    status: i.status,
+    customerId: i.customerId ?? null,
+    customerName: i.customer?.name ?? null,
+    score: 0,
+    signals: {
+      invoiceNumber: false,
+      exactAmount: false,
+      customerToken: false,
+      datePlausible: false,
+      partialBonus: false,
+    },
+  };
+}
+
 export function ApplyPaymentModal({
   context,
   transaction,
+  customers,
   onClose,
   onApplied,
 }: {
   context: "queue" | "invoice" | "transaction";
   transaction: PaymentQueueItem;
+  customers: Customer[];
   onClose: () => void;
   onApplied: () => void;
 }) {
@@ -27,6 +55,10 @@ export function ApplyPaymentModal({
   const [lines, setLines] = useState<Record<string, LineState>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pickedCustomerId, setPickedCustomerId] = useState<string>("");
+  const [bindVendor, setBindVendor] = useState(false);
+  const [crossSearch, setCrossSearch] = useState("");
+  const [crossResults, setCrossResults] = useState<ScoredInvoice[]>([]);
 
   useEffect(() => {
     if (!transaction.vendorCustomerId) {
@@ -44,6 +76,32 @@ export function ApplyPaymentModal({
       }
     }).catch((e: any) => setError(e?.message ?? "Failed to load candidates"));
   }, [transaction.id, transaction.vendorCustomerId]);
+
+  useEffect(() => {
+    if (!pickedCustomerId) return;
+    void listOpenInvoices("")
+      .then((all) => all.filter((i) => i.customerId === pickedCustomerId))
+      .then((open) => {
+        setCandidates({
+          candidates: open.map(invoiceToScored),
+          bundleSuggestion: null,
+        });
+      })
+      .catch((e: any) => setError(e?.message ?? "Failed to load open invoices"));
+  }, [pickedCustomerId]);
+
+  useEffect(() => {
+    if (!crossSearch) {
+      setCrossResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      void listOpenInvoices(crossSearch)
+        .then((all) => setCrossResults(all.map(invoiceToScored)))
+        .catch((e: any) => setError(e?.message ?? "Search failed"));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [crossSearch]);
 
   function toggle(c: ScoredInvoice, checked: boolean) {
     setLines((prev) => {
@@ -83,7 +141,11 @@ export function ApplyPaymentModal({
         setError("Pick at least one invoice and set an amount > 0.");
         return;
       }
-      await applyPayment({ transactionId: transaction.id, allocations });
+      await applyPayment({
+        transactionId: transaction.id,
+        allocations,
+        bindVendorToCustomerId: bindVendor && pickedCustomerId ? pickedCustomerId : undefined,
+      });
       onApplied();
     } catch (e: any) {
       setError(e?.message ?? "Apply failed");
@@ -105,6 +167,25 @@ export function ApplyPaymentModal({
             <span className="flex-1 truncate">{transaction.description}</span>
             <span>{transaction.accountName}</span>
           </div>
+
+          {!transaction.vendorCustomerId && !pickedCustomerId && (
+            <div className="space-y-2 rounded border border-amber-200 bg-amber-50 p-2">
+              <div className="text-xs">This vendor isn't linked to a customer. Pick one to see candidate invoices:</div>
+              <Select value={pickedCustomerId} onValueChange={setPickedCustomerId}>
+                <SelectTrigger><SelectValue placeholder="Select customer…" /></SelectTrigger>
+                <SelectContent>
+                  {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {pickedCustomerId && (
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={bindVendor} onChange={(e) => setBindVendor(e.target.checked)} />
+              Bind this vendor to {customers.find((c) => c.id === pickedCustomerId)?.name ?? "this customer"} for next time
+            </label>
+          )}
 
           {candidates?.bundleSuggestion && (
             <div className="rounded border border-amber-200 bg-amber-50 p-2">
@@ -149,6 +230,28 @@ export function ApplyPaymentModal({
               })}
             </ul>
           )}
+
+          <details className="rounded border border-slate-200 p-2">
+            <summary className="cursor-pointer text-xs text-slate-700">▸ Apply to any invoice</summary>
+            <div className="mt-2 space-y-2">
+              <input
+                className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                placeholder="Search by invoice number, customer, amount…"
+                value={crossSearch}
+                onChange={(e) => setCrossSearch(e.target.value)}
+              />
+              <ul className="max-h-48 overflow-auto divide-y divide-slate-100">
+                {crossResults.map((c) => (
+                  <li key={c.id} className="flex items-center gap-2 py-1 text-xs">
+                    <input type="checkbox" checked={!!lines[c.id]?.checked} onChange={(e) => toggle(c, e.target.checked)} />
+                    <span className="font-mono w-20">INV-{c.invoiceNumber}</span>
+                    <span className="flex-1 truncate text-slate-500">{c.customerName ?? "—"}</span>
+                    <span className="font-mono w-24 text-right">{fmt(c.amountOutstanding)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </details>
 
           <div className="flex justify-between rounded bg-slate-50 p-2 text-xs">
             <span>Applied: {fmt(totals.applied)}</span>

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { dismissPayment, listPaymentsQueue } from "@/lib/payments";
-import type { PaymentQueueItem } from "@/lib/types";
+import type { Customer, PaymentQueueItem } from "@/lib/types";
 import { ApplyPaymentModal } from "./apply-payment-modal";
 
 function fmtAmount(n: string) {
@@ -16,9 +16,11 @@ function fmtAmount(n: string) {
 export function PaymentsQueue({
   initialItems,
   initialShowAll,
+  customers,
 }: {
   initialItems: PaymentQueueItem[];
   initialShowAll: boolean;
+  customers: Customer[];
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -84,6 +86,7 @@ export function PaymentsQueue({
         <ApplyPaymentModal
           context="queue"
           transaction={openTx}
+          customers={customers}
           onClose={() => setOpenTx(null)}
           onApplied={() => onApplied(openTx.id)}
         />

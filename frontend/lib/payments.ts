@@ -3,8 +3,15 @@ import type {
   ApplyPaymentResponse,
   CandidatesResponse,
   CustomerCredit,
+  Invoice,
   PaymentQueueItem,
 } from "./types";
+
+export function listOpenInvoices(search = ""): Promise<Invoice[]> {
+  const qs = new URLSearchParams({ openOnly: "true" });
+  if (search) qs.set("search", search);
+  return api<Invoice[]>(`/invoices?${qs.toString()}`);
+}
 
 export function listPaymentsQueue(showAll = false): Promise<PaymentQueueItem[]> {
   return api<PaymentQueueItem[]>(`/payments/queue${showAll ? "?showAll=true" : ""}`);

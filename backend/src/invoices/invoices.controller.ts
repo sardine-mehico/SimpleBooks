@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, Patch, Post, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { PDFDocument } from 'pdf-lib';
 import { InvoicesService } from './invoices.service';
@@ -24,7 +24,15 @@ export class InvoicesController {
     private prisma: PrismaService,
   ) {}
 
-  @Get() list() { return this.invoices.list(); }
+  @Get() list(
+    @Query('openOnly') openOnly?: string,
+    @Query('search') search?: string,
+  ) {
+    if (openOnly === 'true' || search) {
+      return this.invoices.list({ openOnly: openOnly === 'true', search });
+    }
+    return this.invoices.list();
+  }
 
   // Concatenate PDFs for a set of invoices into a single downloadable file.
   @Post('bulk-pdf')
