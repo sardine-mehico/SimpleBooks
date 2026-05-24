@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { scoreInvoice } from './scoring';
 import { findBundleSuggestion } from './bundle';
+import { recomputeInvoicePayment } from './recompute';
 import type { CandidatesResponse, ScoredInvoiceView } from './types';
 
 const OPEN_STATUSES = ['SENT', 'VIEWED', 'PARTIAL_PAID'] as const;
@@ -89,5 +90,131 @@ export class PaymentsService {
         total: bundle.total.toString(),
       },
     };
+  }
+
+  async applyAllocations(
+    transactionId: string,
+    allocations: Array<{ invoiceId: string; amount: string }>,
+    bindVendorToCustomerId?: string,
+  ): Promise<import('./types').ApplyResponse> {
+    if (allocations.length === 0) {
+      throw new BadRequestException('allocations must not be empty');
+    }
+    for (const a of allocations) {
+      if (!new Decimal(a.amount).gt(0)) {
+        throw new BadRequestException('allocation amount must be > 0');
+      }
+    }
+
+    return this.prisma.$transaction(async (db: any) => {
+      const tx = await db.transaction.findUnique({
+        where: { id: transactionId },
+        include: { allocations: true, vendor: true, account: true },
+      });
+      if (!tx) throw new NotFoundException('Transaction not found');
+
+      const existingAllocSum = tx.allocations.reduce(
+        (acc: Decimal, a: any) => acc.add(new Decimal(a.amount.toString())),
+        new Decimal(0),
+      );
+      const unallocated = new Decimal(tx.amount.toString()).sub(existingAllocSum);
+
+      const newSum = allocations.reduce(
+        (acc, a) => acc.add(new Decimal(a.amount)),
+        new Decimal(0),
+      );
+      if (newSum.gt(unallocated)) {
+        throw new BadRequestException(
+          `Allocations sum (${newSum.toString()}) exceeds transaction unallocated (${unallocated.toString()})`,
+        );
+      }
+
+      const invoiceIds = allocations.map((a) => a.invoiceId);
+      const invoices = await db.invoice.findMany({ where: { id: { in: invoiceIds } } });
+      if (invoices.length !== invoiceIds.length) {
+        throw new NotFoundException('One or more invoices not found');
+      }
+      const invById = new Map<string, any>(invoices.map((i: any) => [i.id, i]));
+
+      for (const line of allocations) {
+        const inv = invById.get(line.invoiceId)!;
+        if (!OPEN_STATUSES.includes(inv.status)) {
+          if (inv.status === 'PAID' || inv.status === 'VOID') {
+            throw new ConflictException(`Invoice ${inv.invoiceNumber} status is ${inv.status}`);
+          }
+          throw new BadRequestException(`Invoice ${inv.invoiceNumber} status is ${inv.status}`);
+        }
+        const lineAmount = new Decimal(line.amount);
+        const outstanding = new Decimal(inv.amountOutstanding.toString());
+        if (lineAmount.gt(outstanding)) {
+          throw new BadRequestException(
+            `Allocation ${lineAmount.toString()} exceeds invoice ${inv.invoiceNumber} outstanding ${outstanding.toString()}`,
+          );
+        }
+      }
+
+      const affectedInvoiceIds = new Set<string>();
+      for (const line of allocations) {
+        const inv = invById.get(line.invoiceId)!;
+        const statusBefore = inv.status;
+        await db.allocation.create({
+          data: { transactionId, invoiceId: line.invoiceId, amount: new Decimal(line.amount) },
+        });
+        const allocs = await db.allocation.findMany({ where: { invoiceId: line.invoiceId } });
+        const { amountPaid, amountOutstanding, status } = recomputeInvoicePayment(
+          {
+            status: inv.status,
+            totalAmount: new Decimal(inv.totalAmount.toString()),
+            viewedAt: inv.viewedAt,
+            sendAttempts: inv.sendAttempts ?? 0,
+          },
+          allocs.map((a: any) => ({ amount: new Decimal(a.amount.toString()) })),
+        );
+        await db.invoice.update({
+          where: { id: line.invoiceId },
+          data: { amountPaid, amountOutstanding, status },
+        });
+        inv.status = status;
+        inv.amountPaid = amountPaid;
+        inv.amountOutstanding = amountOutstanding;
+        await db.allocationEvent.create({
+          data: {
+            eventType: 'CREATED',
+            transactionId,
+            invoiceId: line.invoiceId,
+            amount: new Decimal(line.amount),
+            invoiceStatusBefore: statusBefore,
+            invoiceStatusAfter: status,
+          },
+        });
+        affectedInvoiceIds.add(line.invoiceId);
+      }
+
+      if (bindVendorToCustomerId && tx.vendor?.id) {
+        await db.vendor.update({
+          where: { id: tx.vendor.id },
+          data: { customerId: bindVendorToCustomerId },
+        });
+      }
+
+      const updatedInvoices = Array.from(affectedInvoiceIds).map((id) => {
+        const inv = invById.get(id)!;
+        return {
+          id,
+          status: inv.status,
+          amountPaid: inv.amountPaid.toString(),
+          amountOutstanding: inv.amountOutstanding.toString(),
+        };
+      });
+      const newUnallocated = unallocated.sub(newSum);
+      return {
+        transaction: {
+          id: tx.id,
+          amount: tx.amount.toString(),
+          unallocated: newUnallocated.toString(),
+        },
+        invoices: updatedInvoices,
+      };
+    });
   }
 }
