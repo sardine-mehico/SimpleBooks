@@ -57,6 +57,15 @@ export class InvoicesService {
         customer: true,
         billingCompany: true,
         lineItems: { orderBy: { position: 'asc' } },
+        // Allocations + a thin transaction snippet so the invoice view can
+        // render the Allocations panel (Task 21) without a second round-trip.
+        // Ordered newest-first to match the panel's display order.
+        allocations: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            transaction: { select: { date: true, description: true } },
+          },
+        },
       },
     });
     if (!row) throw new NotFoundException();

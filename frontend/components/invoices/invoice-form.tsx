@@ -9,6 +9,7 @@ import { parseApiError } from "@/lib/api-errors";
 import { cn } from "@/lib/utils";
 import { EditPageChrome } from "@/components/layout/edit-page-chrome";
 import {
+  type Allocation,
   type Invoice,
   type InvoiceStatus,
   type BillingCompany,
@@ -24,6 +25,14 @@ import {
   blankBodyLine,
   type BodyLine,
 } from "@/components/invoices/invoice-body-editor";
+import { AllocationsPanel } from "@/components/payments/allocations-panel";
+
+// Shape the backend ships back inside `GET /invoices/:id`. The Allocation rows
+// are wrapped with a thin `transaction` snippet so the panel can render the
+// date and description without a second fetch (see `invoices.service.ts`).
+type AllocationWithTx = Allocation & {
+  transaction?: { date: string; description: string } | null;
+};
 
 const DEFAULT_TERMS =
   "Please reference invoice number when making payment.\nA $25 search fee applies if the funds cannot be properly allocated to your account.";
@@ -140,6 +149,17 @@ export function InvoiceForm({
   const customer = customers.find((c) => c.id === customerId);
   const billingCompany = customer?.billingCompany ?? null;
   const billingCompanyId = billingCompany?.id ?? "";
+
+  // Allocations are loaded from the backend via the extended `GET /invoices/:id`
+  // include. We flatten the nested `transaction.date` / `transaction.description`
+  // so the panel can render them inline.
+  const rawAllocations: AllocationWithTx[] =
+    (initial as (Invoice & { allocations?: AllocationWithTx[] }) | undefined)?.allocations ?? [];
+  const allocations = rawAllocations.map((a) => ({
+    ...a,
+    transactionDate: a.transaction?.date ?? undefined,
+    transactionDescription: a.transaction?.description ?? undefined,
+  }));
 
   // Recompute due date on user-driven changes. Skip the very first effect run
   // so we don't clobber a saved due date when editing.
@@ -284,6 +304,22 @@ export function InvoiceForm({
             disabled={viewMode}
           />
         </fieldset>
+
+        {/* Allocations sit outside the `<fieldset disabled>` so the trash /
+            Receive-payment buttons stay operable when the form is in view
+            mode — un-applying is a deliberate action with its own confirm
+            modal, no different from Void / Delete in the action menu which
+            also work without entering edit mode. Only shown on saved
+            invoices (no allocations exist for a brand-new draft). */}
+        {initial ? (
+          <AllocationsPanel
+            invoice={initial}
+            allocations={allocations}
+            onChanged={() => router.refresh()}
+            // Task 22 wires the real "Receive payment" modal here.
+            onReceivePayment={() => alert("Receive payment — Task 22")}
+          />
+        ) : null}
 
         {error ? (
           <p className="text-xs text-rose-600" role="alert">
