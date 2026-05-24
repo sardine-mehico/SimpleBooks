@@ -22,9 +22,11 @@ import {
   GearSix,
   CaretDown,
   Sparkle,
+  Coins,
 } from "@phosphor-icons/react";
 import { useState, useEffect } from "react";
 import { reviewQueueCount } from "@/lib/ai";
+import { paymentsQueueCount } from "@/lib/payments";
 import { cn } from "@/lib/utils";
 
 type Item = { label: string; href: string; icon?: any; badgeKey?: string };
@@ -56,6 +58,7 @@ const nav: Group[] = [
     items: [
       { label: "Accounts", href: "/accounts" },
       { label: "Transactions", href: "/transactions" },
+      { label: "Payments", href: "/banking/payments", badgeKey: "paymentsCount" },
       { label: "AI Review", href: "/transactions/ai-review", badgeKey: "aiReviewCount" },
       { label: "Categories", href: "/categories" },
       { label: "Vendors", href: "/vendors" },
@@ -77,6 +80,7 @@ const subIcons: Record<string, any> = {
   "/items": Package,
   "/accounts": Wallet,
   "/transactions": ArrowsLeftRight,
+  "/banking/payments": Coins,
   "/transactions/ai-review": Sparkle,
   "/categories": Tag,
   "/vendors": Storefront,
@@ -95,11 +99,13 @@ export function Sidebar() {
 export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname();
   const [aiReviewCount, setAiReviewCount] = useState<number>(0);
+  const [paymentsCount, setPaymentsCount] = useState<number>(0);
 
   useEffect(() => {
     let cancelled = false;
     const tick = () => {
       void reviewQueueCount().then((r) => { if (!cancelled) setAiReviewCount(r.count); }).catch(() => {});
+      void paymentsQueueCount().then((r) => { if (!cancelled) setPaymentsCount(r.count); }).catch(() => {});
     };
     tick();
     const t = setInterval(tick, 30_000);
@@ -120,7 +126,7 @@ export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
           entry.kind === "link" ? (
             <NavLink key={i} item={entry} active={pathname === entry.href} onNavigate={onNavigate} />
           ) : (
-            <NavGroup key={i} group={entry} pathname={pathname} onNavigate={onNavigate} aiReviewCount={aiReviewCount} />
+            <NavGroup key={i} group={entry} pathname={pathname} onNavigate={onNavigate} aiReviewCount={aiReviewCount} paymentsCount={paymentsCount} />
           )
         )}
       </nav>
@@ -145,7 +151,7 @@ function NavLink({ item, active, onNavigate }: { item: Item & { icon?: any }; ac
   );
 }
 
-function NavGroup({ group, pathname, onNavigate, aiReviewCount }: { group: Extract<Group, { kind: "group" }>; pathname: string; onNavigate?: () => void; aiReviewCount?: number }) {
+function NavGroup({ group, pathname, onNavigate, aiReviewCount, paymentsCount }: { group: Extract<Group, { kind: "group" }>; pathname: string; onNavigate?: () => void; aiReviewCount?: number; paymentsCount?: number }) {
   const isOpenByDefault = group.defaultOpen || group.items.some((i) => i.href === pathname);
   const [open, setOpen] = useState(isOpenByDefault);
   const Icon = group.icon;
@@ -169,7 +175,12 @@ function NavGroup({ group, pathname, onNavigate, aiReviewCount }: { group: Extra
           {group.items.map((item) => {
             const SubIcon = subIcons[item.href];
             const active = pathname === item.href;
-            const badgeCount = item.badgeKey === "aiReviewCount" ? (aiReviewCount ?? 0) : 0;
+            const badgeCount =
+              item.badgeKey === "aiReviewCount"
+                ? (aiReviewCount ?? 0)
+                : item.badgeKey === "paymentsCount"
+                ? (paymentsCount ?? 0)
+                : 0;
             return (
               <Link
                 key={item.href}
