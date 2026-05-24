@@ -1,0 +1,90 @@
+import { Decimal } from '@prisma/client/runtime/library';
+
+export interface ScoreTransaction {
+  description: string;
+  unallocated: Decimal;
+  date: Date;
+}
+
+export interface ScoreInvoice {
+  invoiceNumber: number;
+  amountOutstanding: Decimal;
+  invoiceDate: Date;
+  status: 'DRAFT' | 'SENT' | 'VIEWED' | 'PARTIAL_PAID' | 'PAID' | 'VOID';
+}
+
+export interface ScoreCustomer {
+  displayName: string;
+}
+
+export interface ScoreSignals {
+  invoiceNumber: boolean;
+  exactAmount: boolean;
+  customerToken: boolean;
+  datePlausible: boolean;
+  partialBonus: boolean;
+}
+
+export interface ScoreResult {
+  total: number;
+  signals: ScoreSignals;
+}
+
+const INVOICE_NUMBER_RE = /INV[-\s]?0*(\d{3,6})/i;
+const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+
+export function scoreInvoice(
+  tx: ScoreTransaction,
+  invoice: ScoreInvoice,
+  customer: ScoreCustomer,
+): ScoreResult {
+  const signals: ScoreSignals = {
+    invoiceNumber: false,
+    exactAmount: false,
+    customerToken: false,
+    datePlausible: false,
+    partialBonus: false,
+  };
+
+  // Signal 1: invoice number in description (+60)
+  const m = tx.description.match(INVOICE_NUMBER_RE);
+  if (m && Number(m[1]) === invoice.invoiceNumber) {
+    signals.invoiceNumber = true;
+  }
+
+  // Signal 2: exact amount equality (+40)
+  if (tx.unallocated.eq(invoice.amountOutstanding)) {
+    signals.exactAmount = true;
+  }
+
+  // Signal 3: customer name token (length >= 4) substring match, case-insensitive (+15)
+  const descLower = tx.description.toLowerCase();
+  const tokens = customer.displayName.split(/\s+/).filter((t) => t.length >= 4);
+  for (const t of tokens) {
+    if (descLower.includes(t.toLowerCase())) {
+      signals.customerToken = true;
+      break;
+    }
+  }
+
+  // Signal 4: date plausible — invoiceDate <= tx.date <= invoiceDate + 60d (+10)
+  const txMs = tx.date.getTime();
+  const invMs = invoice.invoiceDate.getTime();
+  if (txMs >= invMs && txMs <= invMs + SIXTY_DAYS_MS) {
+    signals.datePlausible = true;
+  }
+
+  // Signal 5: invoice already PARTIAL_PAID (+5)
+  if (invoice.status === 'PARTIAL_PAID') {
+    signals.partialBonus = true;
+  }
+
+  const total =
+    (signals.invoiceNumber ? 60 : 0) +
+    (signals.exactAmount ? 40 : 0) +
+    (signals.customerToken ? 15 : 0) +
+    (signals.datePlausible ? 10 : 0) +
+    (signals.partialBonus ? 5 : 0);
+
+  return { total, signals };
+}
