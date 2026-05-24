@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsDefined, IsIn, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class SuggestCategoryDto {
   @IsUUID() transactionId!: string;
@@ -15,7 +15,11 @@ export class ApplyRejectDto { @IsIn(['reject']) action!: 'reject'; }
 
 export class ApplyDto {
   @IsUUID() transactionId!: string;
-  decision!: ApplyAcceptDto | ApplyEditDto | ApplyRejectDto;
+  // ValidationPipe runs with whitelist: true — without a decorator here, the
+  // `decision` field gets silently stripped and the service crashes reading
+  // `decision.action`. @IsDefined + @IsObject keep the nested object through
+  // the whitelist; the union variants above remain documentation only.
+  @IsDefined() @IsObject() decision!: ApplyAcceptDto | ApplyEditDto | ApplyRejectDto;
 }
 
 export class BulkSuggestDto {

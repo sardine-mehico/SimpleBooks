@@ -1,22 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { applyAiSuggestion, bulkSuggestStatus, listReviewQueue } from "@/lib/ai";
-import type { AiDraftView, BulkRunStatus, Transaction } from "@/lib/types";
+import type { AiDraftView, BulkRunStatus, Category, Transaction, Vendor } from "@/lib/types";
 import { api } from "@/lib/api";
+import { TransactionEditModal } from "./transaction-edit-modal";
 
-export function AiReviewList() {
-  const router = useRouter();
+type FullTransaction = Transaction & {
+  account?: { id: string; name: string };
+  splits?: Array<{ id: string; categoryId: string; amount: string | number; notes?: string | null }>;
+};
+
+export function AiReviewList({ categories, vendors }: { categories: Category[]; vendors: Vendor[] }) {
   const sp = useSearchParams();
   const runId = sp.get("runId");
   const [runStatus, setRunStatus] = useState<BulkRunStatus | null>(null);
   const [drafts, setDrafts] = useState<AiDraftView[]>([]);
-  const [txMap, setTxMap] = useState<Map<string, Transaction & { account?: { name: string } }>>(new Map());
+  const [txMap, setTxMap] = useState<Map<string, FullTransaction>>(new Map());
   const [busy, setBusy] = useState<string | null>(null);
+  const [editingTx, setEditingTx] = useState<FullTransaction | null>(null);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!runId) return;
@@ -27,10 +34,12 @@ export function AiReviewList() {
     const q = await listReviewQueue();
     setDrafts(q);
     if (q.length) {
-      const tx = await Promise.all(q.map((d) => api<Transaction & { account?: { name: string } }>(`/transactions/by-event/${d.eventId}`).catch(() => null)));
-      const m = new Map<string, Transaction & { account?: { name: string } }>();
+      const tx = await Promise.all(q.map((d) => api<FullTransaction>(`/transactions/by-event/${d.eventId}`).catch(() => null)));
+      const m = new Map<string, FullTransaction>();
       for (let i = 0; i < q.length; i++) if (tx[i]) m.set(q[i].eventId, tx[i]!);
       setTxMap(m);
+    } else {
+      setTxMap(new Map());
     }
   }
   useEffect(() => { void refresh(); }, []);
@@ -42,9 +51,23 @@ export function AiReviewList() {
       if (!tx) return;
       await applyAiSuggestion(tx.id, { action });
       setDrafts((d) => d.filter((x) => x.eventId !== draft.eventId));
+    } catch (e: any) {
+      alert(`Failed to ${action}: ${e?.message ?? 'unknown error'}`);
     } finally {
       setBusy(null);
     }
+  }
+
+  function openEdit(draft: AiDraftView) {
+    const tx = txMap.get(draft.eventId);
+    if (!tx) return;
+    setEditingTx(tx);
+    setEditingEventId(draft.eventId);
+  }
+
+  function closeEdit() {
+    setEditingTx(null);
+    setEditingEventId(null);
   }
 
   const grouped = useMemo(() => drafts, [drafts]);
@@ -94,13 +117,29 @@ export function AiReviewList() {
               {d.reasoning && <div className="mt-1 italic text-xs opacity-80">&ldquo;{d.reasoning}&rdquo;</div>}
               <div className="mt-2 flex gap-2">
                 <Button size="sm" onClick={() => act(d, 'accept')} disabled={busy === d.eventId || !d.categoryId}>Accept</Button>
-                <Button size="sm" variant="outline" onClick={() => tx && router.push(`/transactions?edit=${tx.id}`)} disabled={busy === d.eventId}>Edit</Button>
+                <Button size="sm" variant="outline" onClick={() => openEdit(d)} disabled={busy === d.eventId || !tx}>Edit</Button>
                 <Button size="sm" variant="ghost" onClick={() => act(d, 'reject')} disabled={busy === d.eventId}>Reject</Button>
               </div>
             </div>
           </div>
         );
       })}
+
+      {editingTx && (
+        <TransactionEditModal
+          transaction={editingTx}
+          categories={categories}
+          vendors={vendors}
+          aiReviewMode
+          onClose={closeEdit}
+          onManageSplits={closeEdit}
+          onAiReviewResolved={() => {
+            if (editingEventId) {
+              setDrafts((d) => d.filter((x) => x.eventId !== editingEventId));
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -31,6 +31,8 @@ export function TransactionEditModal({
   vendors,
   onClose,
   onManageSplits,
+  aiReviewMode = false,
+  onAiReviewResolved,
 }: {
   transaction: Transaction & {
     splits?: Array<{ id: string; categoryId: string; amount: string | number; notes?: string | null }>;
@@ -40,6 +42,11 @@ export function TransactionEditModal({
   vendors: Vendor[];
   onClose: () => void;
   onManageSplits: () => void;
+  // When true the modal is launched from the AI Review queue: the AiSuggestionBanner
+  // is hidden (the parent already shows the suggestion) and Save resolves the
+  // pending AI draft via /ai/apply so the row disappears from the queue.
+  aiReviewMode?: boolean;
+  onAiReviewResolved?: () => void;
 }) {
   const router = useRouter();
   const hasSplits = !!transaction.splits && transaction.splits.length > 0;
@@ -62,7 +69,18 @@ export function TransactionEditModal({
   async function onSave() {
     setSaving(true);
     try {
-      if (aiEditMode && activeDraft) {
+      if (aiReviewMode) {
+        // From the AI Review queue we always resolve the pending draft via /ai/apply.
+        // The server resolves accept-vs-edit based on whether chosen values match the
+        // AI's pick, so an unchanged save accepts and an edited save edits — both
+        // remove the row from the review queue.
+        await applyAiSuggestion(transaction.id, {
+          action: 'edit',
+          chosenCategoryId: categoryId,
+          chosenVendorId: vendorId || null,
+        });
+        onAiReviewResolved?.();
+      } else if (aiEditMode && activeDraft) {
         // Server-side resolves accept-vs-edit based on whether chosen values
         // match the AI's pick (decided server-side per spec).
         await applyAiSuggestion(transaction.id, {
@@ -133,19 +151,21 @@ export function TransactionEditModal({
             </div>
           </div>
 
-          <AiSuggestionBanner
-            transactionId={transaction.id}
-            auto={!transaction.categoryId}
-            onAccepted={() => { router.refresh(); onClose(); }}
-            onRejected={() => { setActiveDraft(null); setAiEditMode(false); }}
-            onEditMode={(draft) => {
-              setActiveDraft(draft);
-              setAiEditMode(true);
-              if (draft.categoryId) setCategoryId(draft.categoryId);
-              if (draft.vendorId)   setVendorId(draft.vendorId);
-            }}
-            onDraftLoaded={setActiveDraft}
-          />
+          {!aiReviewMode && (
+            <AiSuggestionBanner
+              transactionId={transaction.id}
+              auto={!transaction.categoryId}
+              onAccepted={() => { router.refresh(); onClose(); }}
+              onRejected={() => { setActiveDraft(null); setAiEditMode(false); }}
+              onEditMode={(draft) => {
+                setActiveDraft(draft);
+                setAiEditMode(true);
+                if (draft.categoryId) setCategoryId(draft.categoryId);
+                if (draft.vendorId)   setVendorId(draft.vendorId);
+              }}
+              onDraftLoaded={setActiveDraft}
+            />
+          )}
 
           {/* Editable block */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -185,7 +205,9 @@ export function TransactionEditModal({
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="button" onClick={onSave} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button type="button" onClick={onSave} disabled={saving}>
+            {saving ? "Saving…" : aiReviewMode ? "Save and Accept" : "Save"}
+          </Button>
         </DialogFooter>
         <TransactionHistoryDrawer
           transactionId={transaction.id}

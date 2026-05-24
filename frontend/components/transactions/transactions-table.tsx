@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Filter, ChevronUp, ChevronDown, ChevronsUpDown, Sparkles, Trash2, X, RefreshCw } from "lucide-react";
+import { Filter, ChevronUp, ChevronDown, ChevronsUpDown, Sparkles, Trash2, X, RefreshCw, Check } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Pagination } from "@/components/data/pagination";
 import { cn } from "@/lib/utils";
 import { TransactionAmountCell } from "./transaction-amount-cell";
@@ -375,19 +380,17 @@ export function TransactionsTable({
 
       {filterOpen && (
         <Card className="p-4" style={{ background: "rgb(212 215 225 / 79%)" }}>
-          {/* Row 1: Search */}
-          <div className="mb-3">
-            <label className="mb-1 block text-xs font-medium text-slate-600">Search</label>
-            <Input
-              type="search"
-              placeholder="Search transactions…"
-              value={tempQ}
-              onChange={(e) => setTempQ(e.target.value)}
-            />
-          </div>
-
-          {/* Row 2: Category + Vendor selects */}
-          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+          {/* Row 1: Search + Category + Vendor */}
+          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Search</label>
+              <Input
+                type="search"
+                placeholder="Search transactions…"
+                value={tempQ}
+                onChange={(e) => setTempQ(e.target.value)}
+              />
+            </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Category</label>
               <Select value={tempCategoryValue} onValueChange={setTempCategoryValue}>
@@ -435,8 +438,8 @@ export function TransactionsTable({
             </div>
           </div>
 
-          {/* Row 3: Date range */}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {/* Row 2: Date from + Date to + Accounts (multi-select dropdown) */}
+          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Date from</label>
               <Input type="date" value={tempDateFrom} onChange={(e) => setTempDateFrom(e.target.value)} />
@@ -448,33 +451,54 @@ export function TransactionsTable({
             {mode === "global" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Accounts</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {accounts.map((a) => {
-                    const on = tempAccountIds.includes(a.id);
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() =>
-                          setTempAccountIds((curr) =>
-                            curr.includes(a.id) ? curr.filter((x) => x !== a.id) : [...curr, a.id],
-                          )
-                        }
-                        className={cn(
-                          "rounded-[0.3rem] border px-2 py-1 text-xs",
-                          on ? "border-indigo-400 bg-indigo-100 text-indigo-900" : "border-slate-300 bg-white text-slate-600",
-                        )}
-                      >
-                        {a.name}
-                      </button>
-                    );
-                  })}
-                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-9 w-full items-center justify-between rounded-[0.3rem] border border-slate-300 bg-white px-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      <span className="truncate">
+                        {tempAccountIds.length === 0
+                          ? "All accounts"
+                          : tempAccountIds.length === 1
+                            ? accounts.find((a) => a.id === tempAccountIds[0])?.name ?? "1 account"
+                            : `${tempAccountIds.length} accounts`}
+                      </span>
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="max-h-72 w-[--radix-dropdown-menu-trigger-width] overflow-auto p-1">
+                    {accounts.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-slate-400">No accounts</div>
+                    )}
+                    {accounts.map((a) => {
+                      const on = tempAccountIds.includes(a.id);
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() =>
+                            setTempAccountIds((curr) =>
+                              curr.includes(a.id) ? curr.filter((x) => x !== a.id) : [...curr, a.id],
+                            )
+                          }
+                          className="flex w-full items-center gap-2 rounded-[0.2rem] px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-100"
+                        >
+                          <span className="grid h-4 w-4 flex-shrink-0 place-items-center rounded border border-slate-300 bg-white">
+                            {on && <Check className="h-3 w-3 text-indigo-600" />}
+                          </span>
+                          <span className="truncate">{a.name}</span>
+                        </button>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             )}
           </div>
 
-          <div className="mt-3 flex justify-end gap-2">
+          {/* Row 3: Action buttons */}
+          <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={clearFilters}>Clear</Button>
             <Button type="button" onClick={applyFilters}>Apply</Button>
           </div>
