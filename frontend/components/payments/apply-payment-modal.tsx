@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { applyPayment, getCandidates, listOpenInvoices } from "@/lib/payments";
-import type { CandidatesResponse, Customer, Invoice, PaymentQueueItem, ScoredInvoice } from "@/lib/types";
+import { applyPayment, getCandidates, getCustomerCredit, listOpenInvoices } from "@/lib/payments";
+import type { CandidatesResponse, Customer, CustomerCredit, Invoice, PaymentQueueItem, ScoredInvoice } from "@/lib/types";
 
 function fmt(n: string | number) {
   return `$${Number(n).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -59,6 +59,15 @@ export function ApplyPaymentModal({
   const [bindVendor, setBindVendor] = useState(false);
   const [crossSearch, setCrossSearch] = useState("");
   const [crossResults, setCrossResults] = useState<ScoredInvoice[]>([]);
+  const [credit, setCredit] = useState<CustomerCredit | null>(null);
+
+  useEffect(() => {
+    const customerId = transaction.vendorCustomerId ?? pickedCustomerId;
+    if (!customerId) { setCredit(null); return; }
+    void getCustomerCredit(customerId)
+      .then(setCredit)
+      .catch(() => setCredit(null));
+  }, [transaction.vendorCustomerId, pickedCustomerId]);
 
   useEffect(() => {
     if (!transaction.vendorCustomerId) {
@@ -192,6 +201,25 @@ export function ApplyPaymentModal({
               Looks like this pays {candidates.bundleSuggestion.invoices.length} invoices:{" "}
               {candidates.bundleSuggestion.invoices.map((i) => `INV-${i.invoiceNumber} ${fmt(i.amountOutstanding)}`).join(" + ")}
               {" = "}{fmt(candidates.bundleSuggestion.total)}
+            </div>
+          )}
+
+          {credit && Number(credit.credit) > 0 && !(credit.transactions.length === 1 && credit.transactions[0].id === transaction.id) && (
+            <div className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 p-2 text-xs">
+              <span>
+                Customer credit available: {fmt(credit.credit)} from {credit.transactions.length} earlier transaction{credit.transactions.length === 1 ? "" : "s"}.
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  const oldest = credit.transactions[credit.transactions.length - 1];
+                  onClose();
+                  window.dispatchEvent(new CustomEvent("apply-payment-modal:reopen", { detail: { transactionId: oldest.id } }));
+                }}
+              >
+                Use existing credit instead →
+              </Button>
             </div>
           )}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -27,6 +27,17 @@ export function PaymentsQueue({
   const [items, setItems] = useState<PaymentQueueItem[]>(initialItems);
   const [showAll, setShowAll] = useState(initialShowAll);
   const [openTx, setOpenTx] = useState<PaymentQueueItem | null>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      void listPaymentsQueue(true).then((all) => {
+        const found = all.find((x) => x.id === e.detail.transactionId);
+        if (found) setOpenTx(found);
+      });
+    };
+    window.addEventListener("apply-payment-modal:reopen", handler as any);
+    return () => window.removeEventListener("apply-payment-modal:reopen", handler as any);
+  }, []);
 
   function toggleShowAll(next: boolean) {
     const params = new URLSearchParams(sp);
