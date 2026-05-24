@@ -42,6 +42,7 @@ model Customer {
   billingCompany BillingCompany? @relation(fields: [billingCompanyId], references: [id], onDelete: SetNull)
   invoices       Invoice[]
   recurringRules RecurringRule[]
+  vendors        Vendor[]
 }
 
 enum SendVia {
@@ -167,6 +168,11 @@ model Invoice {
   // trail survives even though the dashboard excludes VOIDs from aggregates.
   voidReason String?
   voidedAt   DateTime?
+
+  amountPaid        Decimal      @db.Decimal(12, 2) @default(0)
+  amountOutstanding Decimal      @db.Decimal(12, 2) @default(0)
+
+  allocations Allocation[]
 }
 
 model InvoiceItem {
@@ -440,6 +446,9 @@ model Transaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  paymentReviewDismissedAt DateTime?
+  allocations              Allocation[]
+
   @@unique([accountId, importHash])
   @@index([accountId, date])
   @@index([date])
@@ -545,6 +554,9 @@ model Vendor {
 
   transactions Transaction[]
   rules        Rule[]
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 }
 
 model Rule {
@@ -675,4 +687,42 @@ model AiCall {
   @@index([status, createdAt])
   @@index([transactionId])
   @@index([ruleId])
+}
+
+enum AllocationEventType {
+  CREATED
+  DELETED
+}
+
+enum AllocationEventSource {
+  USER
+}
+
+model Allocation {
+  id            String      @id @default(uuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  invoiceId     String
+  invoice       Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  amount        Decimal     @db.Decimal(14, 2)
+  createdAt     DateTime    @default(now())
+
+  @@index([transactionId])
+  @@index([invoiceId])
+}
+
+model AllocationEvent {
+  id                  String                @id @default(uuid())
+  eventType           AllocationEventType
+  transactionId       String
+  invoiceId           String
+  amount              Decimal               @db.Decimal(14, 2)
+  invoiceStatusBefore InvoiceStatus
+  invoiceStatusAfter  InvoiceStatus
+  source              AllocationEventSource @default(USER)
+  createdAt           DateTime              @default(now())
+
+  @@index([transactionId])
+  @@index([invoiceId])
+  @@index([createdAt])
 }
