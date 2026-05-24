@@ -16,9 +16,9 @@ export const deleteCategory = (id: string) => apiClient.delete<{ ok: true }>(`/c
 export const listVendors = (includeInactive = false) =>
   apiClient.get<Vendor[]>(`/vendors${includeInactive ? '?includeInactive=true' : ''}`);
 export const getVendor = (id: string) => apiClient.get<Vendor>(`/vendors/${id}`);
-export const createVendor = (data: { name: string; kind: VendorKind; aliases: string[]; notes?: string; isActive?: boolean }) =>
+export const createVendor = (data: { name: string; kind: VendorKind; aliases: string[]; notes?: string; isActive?: boolean; customerId?: string }) =>
   apiClient.post<Vendor>('/vendors', data);
-export const updateVendor = (id: string, data: Partial<{ name: string; kind: VendorKind; aliases: string[]; notes: string; isActive: boolean }>) =>
+export const updateVendor = (id: string, data: Partial<{ name: string; kind: VendorKind; aliases: string[]; notes: string; isActive: boolean; customerId: string }>) =>
   apiClient.patch<Vendor>(`/vendors/${id}`, data);
 export const deleteVendor = (id: string) => apiClient.delete<{ ok: true }>(`/vendors/${id}`);
 

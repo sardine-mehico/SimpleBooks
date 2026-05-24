@@ -20,24 +20,33 @@ export class VendorsService {
     return row;
   }
 
-  create(data: CreateVendorDto) {
+  create(dto: CreateVendorDto) {
+    // Treat empty string as "no link". UUID sets it. Undefined leaves it unset.
+    const customerId =
+      dto.customerId === undefined ? undefined : dto.customerId === '' ? null : dto.customerId;
     return this.prisma.vendor.create({
       data: {
-        ...data,
-        isActive: data.isActive ?? true,
-        aliases: data.aliases.map((a) => a.toLowerCase()),
+        ...dto,
+        isActive: dto.isActive ?? true,
+        aliases: dto.aliases.map((a) => a.toLowerCase()),
+        customerId,
       },
     });
   }
 
-  async update(id: string, data: UpdateVendorDto) {
+  async update(id: string, dto: UpdateVendorDto) {
     await this.get(id);
+    const data: any = {
+      ...dto,
+      aliases: dto.aliases ? dto.aliases.map((a) => a.toLowerCase()) : undefined,
+    };
+    // Treat empty string as "clear the link". UUID sets it. Undefined leaves it untouched.
+    if (dto.customerId !== undefined) {
+      data.customerId = dto.customerId === '' ? null : dto.customerId;
+    }
     return this.prisma.vendor.update({
       where: { id },
-      data: {
-        ...data,
-        aliases: data.aliases ? data.aliases.map((a) => a.toLowerCase()) : undefined,
-      },
+      data,
     });
   }
 

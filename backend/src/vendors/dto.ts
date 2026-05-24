@@ -30,6 +30,11 @@ export class CreateVendorDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  // empty string clears the link; UUID sets it. The service translates "" → null.
+  customerId?: string | null;
 }
 
 export class UpdateVendorDto {
@@ -56,6 +61,11 @@ export class UpdateVendorDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  // empty string clears the link; UUID sets it. The service translates "" → null.
+  customerId?: string | null;
 }
 
 export class ExtractCandidatesDto {

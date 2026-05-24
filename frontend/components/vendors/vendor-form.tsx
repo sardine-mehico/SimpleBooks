@@ -12,9 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { AliasChipInput } from "./alias-chip-input";
 import { createVendor, deleteVendor, updateVendor } from "@/lib/banking-rules";
-import { VENDOR_KINDS, type Vendor, type VendorKind } from "@/lib/types";
+import { VENDOR_KINDS, type Customer, type Vendor, type VendorKind } from "@/lib/types";
 
-export function VendorForm({ initial }: { initial?: Vendor }) {
+export function VendorForm({ initial, customers = [] }: { initial?: Vendor; customers?: Customer[] }) {
   const router = useRouter();
   const isEdit = !!initial;
 
@@ -23,13 +23,22 @@ export function VendorForm({ initial }: { initial?: Vendor }) {
   const [aliases, setAliases] = useState<string[]>(initial?.aliases ?? []);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
+  const [customerId, setCustomerId] = useState<string>(initial?.customerId ?? "");
   const [saving, setSaving] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { name: name.trim(), kind, aliases, notes: notes.trim() || undefined, isActive };
+      const resolvedCustomerId = customerId === "__none__" ? "" : customerId;
+      const payload = {
+        name: name.trim(),
+        kind,
+        aliases,
+        notes: notes.trim() || undefined,
+        isActive,
+        customerId: resolvedCustomerId,
+      };
       if (isEdit) await updateVendor(initial!.id, payload);
       else await createVendor(payload);
       router.push("/vendors");
@@ -64,6 +73,22 @@ export function VendorForm({ initial }: { initial?: Vendor }) {
               </SelectContent>
             </Select>
           </Field>
+          <div className="md:col-span-2">
+            <Field label="Customer">
+              <Select value={customerId || "__none__"} onValueChange={setCustomerId}>
+                <SelectTrigger><SelectValue placeholder="— none —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— none —</SelectItem>
+                  {customers.filter((c) => c.isActive).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-slate-500">
+                Linking a vendor to a customer enables automatic candidate matching in the Payments queue.
+              </p>
+            </Field>
+          </div>
           <div className="md:col-span-2">
             <Field label='Aliases (lowercase substrings; match is case-insensitive. Trailing space prevents false-positives — e.g. "rac " not "rac".)'>
               <AliasChipInput value={aliases} onChange={setAliases} />
