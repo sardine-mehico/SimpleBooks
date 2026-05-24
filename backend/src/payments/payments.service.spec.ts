@@ -475,3 +475,27 @@ describe('PaymentsService.getQueue / getQueueCount', () => {
     expect(list.map((x) => x.id)).toContain('tx-inc');
   });
 });
+
+describe('PaymentsService.getCustomerCredit', () => {
+  it('sums remaining across transactions for vendors linked to the customer', async () => {
+    const prisma = {
+      $queryRaw: jest.fn(async () => [
+        { id: 't1', date: new Date('2026-01-10'), amount: new Decimal('100'), description: 'a', remaining: new Decimal('40') },
+        { id: 't2', date: new Date('2026-01-12'), amount: new Decimal('200'), description: 'b', remaining: new Decimal('200') },
+      ]),
+    } as any;
+    const svc = new PaymentsService(prisma);
+    const r = await svc.getCustomerCredit('c1');
+    expect(r.credit).toBe('240');
+    expect(r.transactions).toHaveLength(2);
+    expect(r.transactions[0].remaining).toBe('40');
+  });
+
+  it('returns zero credit and empty list when query returns []', async () => {
+    const prisma = { $queryRaw: jest.fn(async () => []) } as any;
+    const svc = new PaymentsService(prisma);
+    const r = await svc.getCustomerCredit('c1');
+    expect(r.credit).toBe('0');
+    expect(r.transactions).toEqual([]);
+  });
+});

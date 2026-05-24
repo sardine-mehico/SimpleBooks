@@ -314,4 +314,35 @@ export class PaymentsService {
       data: { paymentReviewDismissedAt: null },
     } as any);
   }
+
+  async getCustomerCredit(customerId: string): Promise<import('./types').CustomerCreditView> {
+    const rows: Array<{ id: string; date: Date; amount: Decimal; description: string; remaining: Decimal }> =
+      await this.prisma.$queryRaw`
+        SELECT
+          t.id, t.date, t.amount, t.description,
+          t.amount - COALESCE(SUM(a.amount), 0) AS remaining
+        FROM "Transaction" t
+        JOIN "Vendor" v ON v.id = t."vendorId"
+        LEFT JOIN "Allocation" a ON a."transactionId" = t.id
+        WHERE v."customerId" = ${customerId}
+          AND t.amount > 0
+        GROUP BY t.id
+        HAVING t.amount - COALESCE(SUM(a.amount), 0) > 0
+        ORDER BY t.date DESC
+      ` as any;
+    const total = rows.reduce(
+      (acc, r) => acc.add(new Decimal(r.remaining.toString())),
+      new Decimal(0),
+    );
+    return {
+      credit: total.toString(),
+      transactions: rows.map((r) => ({
+        id: r.id,
+        date: r.date.toISOString().slice(0, 10),
+        amount: r.amount.toString(),
+        remaining: r.remaining.toString(),
+        description: r.description,
+      })),
+    };
+  }
 }
