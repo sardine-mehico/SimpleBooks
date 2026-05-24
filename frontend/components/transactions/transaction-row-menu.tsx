@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { MoreHorizontal, Pencil, Scissors, PlusCircle, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Scissors, PlusCircle, Trash2, Coins } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { SplitModal } from "./split-modal";
@@ -12,11 +12,12 @@ import { deleteTransaction } from "@/lib/banking";
 import type { Category, Transaction, Vendor } from "@/lib/types";
 
 export function TransactionRowMenu({
-  transaction, categories, vendors,
+  transaction, categories, vendors, onApplyToInvoices,
 }: {
   transaction: Transaction & { splits?: any[]; account?: { id: string; name: string } };
   categories: Category[];
   vendors: Vendor[];
+  onApplyToInvoices?: (t: Transaction) => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -45,6 +46,10 @@ export function TransactionRowMenu({
           <Button type="button" variant="ghost" size="sm" aria-label="Actions"><MoreHorizontal className="h-4 w-4"/></Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => onApplyToInvoices?.(transaction)}>
+            <Coins className="h-3.5 w-3.5"/> Apply to invoices
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={(e) => { e.preventDefault(); setShowEdit(true); }}>
             <Pencil className="h-3.5 w-3.5"/> Edit
           </DropdownMenuItem>

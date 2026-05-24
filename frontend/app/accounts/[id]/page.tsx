@@ -2,8 +2,10 @@ import { AccountHeaderCard } from "@/components/accounts/account-header-card";
 import { AccountRecategoriseShortcut } from "@/components/accounts/account-recategorise-shortcut";
 import { TransactionsTable } from "@/components/transactions/transactions-table";
 import { ImportCsvButton } from "@/components/transaction-imports/import-csv-button";
+import { api } from "@/lib/api";
 import { getAccount, listAccounts, getTransactionStats } from "@/lib/banking";
 import { listCategories, listVendors } from "@/lib/banking-rules";
+import type { Customer } from "@/lib/types";
 import { PageShell } from "@/components/layout/page-shell";
 
 export default async function Page({
@@ -15,8 +17,13 @@ export default async function Page({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const [account, allAccounts, categories, vendors, stats] = await Promise.all([
-    getAccount(id), listAccounts(true), listCategories(), listVendors(true), getTransactionStats([id]),
+  const [account, allAccounts, categories, vendors, stats, customers] = await Promise.all([
+    getAccount(id),
+    listAccounts(true),
+    listCategories(),
+    listVendors(true),
+    getTransactionStats([id]),
+    api<Customer[]>("/customers").catch(() => [] as Customer[]),
   ]);
   return (
     <PageShell title={account.name}>
@@ -33,6 +40,7 @@ export default async function Page({
         accounts={allAccounts}
         categories={categories}
         vendors={vendors}
+        customers={customers}
         searchParams={sp}
       />
     </PageShell>

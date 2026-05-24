@@ -26,10 +26,11 @@ import { TransactionAmountCell } from "./transaction-amount-cell";
 import { listTransactions, bulkDeleteTransactions } from "@/lib/banking";
 import { bulkSuggest } from "@/lib/ai";
 import { CATEGORY_KINDS } from "@/lib/types";
-import type { Account, Category, CategoryKind, Transaction, Vendor } from "@/lib/types";
+import type { Account, Category, CategoryKind, Customer, PaymentQueueItem, Transaction, Vendor } from "@/lib/types";
 import { RecategoriseDialog } from "./recategorise-dialog";
 import { BulkAiCategoriseDialog } from "./bulk-ai-categorise-dialog";
 import { TransactionRowMenu } from "./transaction-row-menu";
+import { ApplyPaymentModal } from "@/components/payments/apply-payment-modal";
 
 type SortKey = "date" | "amount" | "description" | "runningBalance";
 
@@ -94,6 +95,7 @@ export function TransactionsTable({
   accounts,
   categories,
   vendors,
+  customers,
   searchParams,
 }: {
   mode: "account" | "global";
@@ -101,6 +103,7 @@ export function TransactionsTable({
   accounts: Account[];
   categories: Category[];
   vendors: Vendor[];
+  customers: Customer[];
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const router = useRouter();
@@ -142,6 +145,31 @@ export function TransactionsTable({
   const [showRecategorise, setShowRecategorise] = useState(false);
   const [bulkAiOpen, setBulkAiOpen] = useState(false);
   const [bulkAiInitial, setBulkAiInitial] = useState<{ runId: string; totalQueued: number } | null>(null);
+  const [applyTx, setApplyTx] = useState<PaymentQueueItem | null>(null);
+
+  function toQueueItem(t: Transaction): PaymentQueueItem {
+    // Compute unallocated from transaction.amount minus the sum of any existing
+    // allocations. If allocations aren't included in the table's transaction
+    // shape, default unallocated to transaction.amount (the backend will
+    // recompute on apply if anything is stale).
+    const allocSum = (t as any).allocations?.reduce(
+      (acc: number, a: any) => acc + Number(a.amount),
+      0,
+    ) ?? 0;
+    return {
+      id: t.id,
+      date: typeof t.date === "string" ? t.date.slice(0, 10) : new Date(t.date).toISOString().slice(0, 10),
+      amount: String(t.amount),
+      description: t.description,
+      accountId: t.accountId,
+      accountName: (t as any).account?.name ?? "",
+      vendorId: (t as any).vendor?.id ?? null,
+      vendorName: (t as any).vendor?.name ?? null,
+      vendorCustomerId: (t as any).vendor?.customerId ?? null,
+      vendorCustomerName: (t as any).vendor?.customer?.name ?? null,
+      unallocated: String(Number(t.amount) - allocSum),
+    };
+  }
 
   // Selection state — ephemeral, not URL-driven.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -612,7 +640,12 @@ export function TransactionsTable({
                     </div>
                   )}
                   <div className="flex justify-end">
-                    <TransactionRowMenu transaction={t} categories={categories} vendors={vendors} />
+                    <TransactionRowMenu
+                      transaction={t}
+                      categories={categories}
+                      vendors={vendors}
+                      onApplyToInvoices={(tx) => setApplyTx(toQueueItem(tx))}
+                    />
                   </div>
                 </div>
               </li>
@@ -642,6 +675,15 @@ export function TransactionsTable({
         onClose={() => { setBulkAiOpen(false); setBulkAiInitial(null); }}
         initialRunId={bulkAiInitial}
       />
+      {applyTx && (
+        <ApplyPaymentModal
+          context="transaction"
+          transaction={applyTx}
+          customers={customers}
+          onClose={() => setApplyTx(null)}
+          onApplied={() => { setApplyTx(null); router.refresh(); }}
+        />
+      )}
     </div>
   );
 }
