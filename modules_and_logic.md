@@ -838,6 +838,65 @@ Read-only audit trail. Backend module: `categorisation-events`. Route prefix: `/
 
 ---
 
+## Payments
+
+**(Phase D)** Invoice payment matching — links incoming bank deposits to outstanding invoices and maintains denormalised `Invoice.amountPaid` / `amountOutstanding` columns. Backend module: `payments`. Route prefix: `/payments`. Audit log lives in `AllocationEvent`. Customer credit is exposed via `GET /customers/:id/credit` (wired in `CustomersController` via `PaymentsService` injection).
+
+### Sidebar entry
+**Payments** sits under the Banking group in the sidebar. The entry carries a small badge whose count comes from `GET /payments/queue/count`, polled every 30s — the number of transactions waiting in the review queue.
+
+### Review queue — `/banking/payments`
+- **Default filter** — positive `amount` + `Category.kind = INCOME` + `paymentReviewDismissedAt IS NULL` + `unallocated > 0` (i.e. some part of the transaction is not yet linked to an invoice).
+- **Widened filter** — appending `?showAll=true` to the URL drops every filter except positive amount.
+- **Per-row actions:** `[Apply]` opens `<ApplyPaymentModal>` in queue context. `[Not a customer payment]` calls `POST /payments/:transactionId/dismiss`, which stamps `Transaction.paymentReviewDismissedAt = now()` and pulls the row off the default queue. Undismiss is reachable via the row's overflow menu or by viewing the transaction in `?showAll=true`.
+
+### ApplyPaymentModal — three contexts
+The same `<ApplyPaymentModal>` component renders in three places. The context governs the initial data load and which side (transaction or invoice) is fixed.
+
+| Context | Where it opens from | Behaviour |
+|---|---|---|
+| **Queue** | `[Apply]` button on the Payments review queue | If the transaction's vendor is linked to a customer (`Vendor.customerId`), loads candidate invoices for that customer via `GET /payments/candidates?transactionId=…`; shows the scored list plus the bundle-suggestion chip when applicable. If the vendor is unlinked (or null), surfaces a customer picker first; an optional **"Bind this vendor to <customer>"** checkbox writes `Vendor.customerId` on apply so the next deposit auto-matches. |
+| **Invoice** | `[Receive payment]` button on the invoice view | Invoice is fixed. Lists the customer's transactions where `remaining > 0` (signed positive minus allocations); user picks transactions to apply against this invoice. Each picked transaction produces one allocation call. |
+| **Transaction** | Three-dots row menu on any transaction row | Identical to the Queue context — reachable from any transaction, not just the queue. |
+
+On submit, `POST /payments/allocations` writes one or more `Allocation` rows in a single Prisma transaction; `recomputeInvoicePayment` is called for every affected invoice; one `AllocationEvent` row per allocation is written with `eventType=CREATED`, `source=USER`, and the invoice status before/after snapshots.
+
+### Scoring signals (per-invoice score)
+The candidate list is sorted by a sum of independent signals computed against `Invoice.invoiceNumber`, `totalAmount`, `customer.name`, `invoiceDate`, and current `status`:
+
+| Signal | Points |
+|---|---|
+| Invoice number appears in transaction description (case-insensitive) | **+60** |
+| Exact amount match (transaction amount = invoice `amountOutstanding`) | **+40** |
+| Customer-name token (≥ 4 characters) appears in transaction description | **+15** |
+| Transaction date is plausible — within 60 days *after* `invoiceDate` | **+10** |
+| Invoice is already `PARTIAL_PAID` (more likely to be the target of a follow-up payment) | **+5** |
+
+Highest score first; ties broken by `invoiceDate` ascending.
+
+### Bundle suggestion
+When the transaction amount doesn't exactly match any single candidate, the modal computes a **bundle suggestion**: a search for any 2- or 3-invoice combination whose `amountOutstanding` sums exactly to the transaction amount. Oldest invoices first. The search is **skipped when the candidate list exceeds 8 invoices** (combinatorial blow-up). When found, a one-line chip appears at the top of the candidate list: "Tick these N invoices to match $X.XX exactly."
+
+### Allocations panel on invoice view
+The invoice view page renders an **Allocations** panel listing each `Allocation` row pointing at the invoice: transaction date · description · amount · trash icon. Clicking the trash icon opens a confirmation dialog that previews the resulting invoice status (e.g. *"Removing this $200.00 allocation will revert this invoice from PAID to PARTIAL_PAID"*). On confirm, `DELETE /payments/allocations/:id` removes the row, runs `recomputeInvoicePayment`, and writes an `AllocationEvent` with `eventType=DELETED` capturing the status before / after.
+
+### Vendor → Customer linkage
+The vendor edit form gains an optional **Linked customer** select (`Vendor.customerId`). When set, the Payments queue can fetch candidate invoices for the customer with no picker step, and the Apply modal opens straight into the scored list. Unsetting it reverts to the picker flow.
+
+### Invoice manual status — derived statuses are read-only
+The invoice edit page's Status control no longer lets the user freely choose any value. **`SENT` / `VIEWED` / `PARTIAL_PAID` / `PAID` are derived** (set by the send flow, the public-view route, and the payments allocator respectively) and render read-only on the form with an inline helper line: *"Status is updated automatically by sending the invoice or receiving a payment. Only Draft and Voided can be set manually."* The select only exposes `DRAFT` and `VOID` as manually-settable options. Existing behaviour for `FAILED_TO_SEND` is unchanged (also derived, never user-settable).
+
+### Customer credit
+`GET /customers/:id/credit` returns the unallocated remainder of transactions whose `vendor.customerId` points at this customer — money the customer has paid that hasn't yet been linked to any invoice. The Apply modal surfaces this as a strip across the top when non-zero: *"<Customer> has $X.XX of unallocated credit. [Use existing credit instead →]"*. Clicking the link routes into a customer-credit allocation flow against the chosen invoice; no new transaction is needed.
+
+### Audit
+Every `Allocation` create or delete writes one `AllocationEvent` row. `transactionId` and `invoiceId` are stored as **plain string snapshots** (not FKs) so the audit history survives subsequent deletes of the underlying records. `invoiceStatusBefore` / `invoiceStatusAfter` capture the derived-status flip caused by the change.
+
+### Backfill
+On backend boot, `PaymentsService.onModuleInit` runs an idempotent one-shot backfill that populates `Invoice.amountPaid` / `amountOutstanding` from the current `Allocation` set. Safe to run repeatedly — the first boot after Phase D lands does the real work; subsequent boots no-op.
+
+---
+
 ## Cross-module conventions
 
 - **DTOs are the source of truth** for input validation. Both HTTP controllers and the Telegram bot run inputs through the same `class-validator` DTOs — never duplicate rules.

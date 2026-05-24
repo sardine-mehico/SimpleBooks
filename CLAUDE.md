@@ -37,9 +37,11 @@ The frontend calls the backend over `NEXT_PUBLIC_API_URL`. When rendering on the
 
 ### Backend (NestJS)
 
-Module structure mirrors top-level domains: `tasks`, `customers`, `companies`, `items`, `invoices`, `recurring`, `dashboard`, `telegram`. Each is a `*.module.ts` with controller + service + DTO (where applicable). All wired in `src/app.module.ts`.
+Module structure mirrors top-level domains: `tasks`, `customers`, `companies`, `items`, `invoices`, `recurring`, `dashboard`, `telegram`, `payments`. Each is a `*.module.ts` with controller + service + DTO (where applicable). All wired in `src/app.module.ts`.
 
 - **`ai` module** — **(Phase C)** AI categorisation runtime. Route prefix `/ai`. Houses `AiClient` (provider-chain HTTP), `AiCategoriser` (inline and bulk suggest), and `AiRuleDrafter` (cluster mining + LLM rule writer). See `Architecture.md` for endpoint summary.
+
+- **`payments` module** — **(Phase D)** Invoice payment matching. Route prefix `/payments`. Houses `PaymentsService` (`getCandidates`, `applyAllocations`, `deleteAllocation`, `getQueue` / `getQueueCount`, `dismiss` / `undismiss`, `getCustomerCredit`) plus three pure helpers (`recomputeInvoicePayment`, `scoreInvoice`, `findBundleSuggestion`). One-shot idempotent backfill runs from `onModuleInit`. Audit log lives in `AllocationEvent`. See `Architecture.md` for endpoint summary.
 
 - **Prisma is the source of truth.** Schema lives at `backend/prisma/schema.prisma`. Migrations are *not* used — the entrypoint runs `prisma db push --accept-data-loss` on every boot. This is fine for additive changes; **destructive schema edits (column drops, type changes, new required columns on populated tables) will fail the push and require `docker compose down -v` to wipe the volume.**
 - **Seed runs only when the User table is empty** (see `prisma/seed.ts`). Adding new dev data without wiping requires editing the seed and resetting volumes.
@@ -119,3 +121,4 @@ Quick design-system highlights (full detail in the file):
 - **Phase C schema is fully additive.** Adding the `AI_REJECTED` enum value, the `sortOrder` / `clusterHash` / `reasoning` / `aiMiningThreshold` columns, and the `AiCall` table all survive `prisma db push` without `down -v`.
 - **`AiProvider.apiKey` is stored verbatim** (matches the existing SMTP password precedent). Future improvement: encrypt at rest with a key from env. Not implemented.
 - **AI Draft rule suppression** is keyed on `(clusterKey, categoryId)` only — denying a draft permanently suppresses *any* future rule with the same intent for the same category. Approving a draft does the same. To re-mine an intent you must delete the rule row entirely.
+- **Invoice payment columns are denormalised**. `Invoice.amountPaid` / `amountOutstanding` are kept in sync by `recomputeInvoicePayment` inside every allocation transaction. Don't write them directly from outside `PaymentsService`. The manual status control on the invoice edit page is gated to `DRAFT` / `VOID` — `SENT` / `VIEWED` / `PARTIAL_PAID` / `PAID` are derived; flipping them by hand will be overwritten on the next allocation event.

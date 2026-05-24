@@ -47,6 +47,7 @@ Card padding: 20px. Card gap: 16px. Section gap: 24px.
   - Pending: amber-50 / amber-700
   - In progress: indigo-50 / indigo-700
   - Completed / Paid: emerald-50 / emerald-700
+  - Partial paid (Phase D): amber-50 / amber-900 (`bg-amber-50 text-amber-900 ring-amber-200`) — a distinct **`partial`** tone in `lib/types.ts`'s `STATUS_TONE` map, deliberately darker than `pending` (amber-700) so the two adjacent invoice states (`SENT` vs `PARTIAL_PAID`) read differently in the list. SENT and PAID tones are unchanged.
   - Cancelled / Void: slate-100 / slate-600
   - Overdue: rose-50 / rose-700
   - Failed to send: rose-50 / rose-700 (reuses the overdue tone)

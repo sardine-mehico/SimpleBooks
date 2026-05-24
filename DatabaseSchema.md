@@ -32,6 +32,8 @@ For per-module *field semantics, required flags, UI surface, and business logic*
 | `EventSource` | `MANUAL`, `RULE`, `VENDOR_MATCH`, `AI_DRAFT`, `AI_APPLIED`, `AI_REJECTED` (Phase C) — records what triggered a `CategorisationEvent`. `AI_REJECTED` added in Phase C. |
 | `AiCallPurpose` | `CATEGORISE`, `DRAFT_RULE` — **(Phase C)** purpose of an `AiCall` row |
 | `AiCallStatus` | `OK`, `FAILED` — **(Phase C)** outcome of an `AiCall` row |
+| `AllocationEventType` | `CREATED`, `DELETED` — **(Phase D)** audit-log event type |
+| `AllocationEventSource` | `USER` — **(Phase D)** origin of the allocation change. Single value today; reserved for future automated sources. |
 
 ## Models
 
@@ -139,9 +141,13 @@ Relations: `invoiceItems InvoiceItem[]`.
 | `viewedAt` | datetime? | First-view timestamp stamped by `GET /public/invoices/:token`. Same-transaction flip from `status = SENT` to `status = VIEWED`. Idempotent — only set when null and only when status is `SENT`. |
 | `voidReason` | string? | Operator-supplied free-text reason captured by the Void confirmation modal. Stays readable on the row forever; survives even though the dashboard excludes VOIDs from aggregates. |
 | `voidedAt` | datetime? | Stamp of the most recent void (same transaction that flips `status` to `VOID`). Re-voiding overwrites both `voidReason` and `voidedAt`. |
+| `amountPaid` | decimal(12,2) | **(Phase D)** default `0`. Denormalised sum of all `Allocation.amount` rows pointing at this invoice. Maintained by `recomputeInvoicePayment` inside `PaymentsService` allocation transactions; backfilled on first boot. Do not write from outside `PaymentsService`. |
+| `amountOutstanding` | decimal(12,2) | **(Phase D)** default `0`. Denormalised `totalAmount − amountPaid`. Maintained by the same recompute step. |
 | `createdAt` / `updatedAt` | datetime | |
 
-Relations: `customer`, `billingCompany`, `recurringRule`, `lineItems InvoiceItem[]`, `invoiceTemplate InvoiceTemplate?`, `emailTemplate EmailTemplate?`.
+Relations: `customer`, `billingCompany`, `recurringRule`, `lineItems InvoiceItem[]`, `invoiceTemplate InvoiceTemplate?`, `emailTemplate EmailTemplate?`, `allocations Allocation[]` (Phase D).
+
+**`InvoiceStatus.PARTIAL_PAID` is now load-bearing** — written by `PaymentsService` when an invoice has at least one allocation but `amountOutstanding > 0`. UI display order: `DRAFT → SENT → VIEWED → PARTIAL_PAID → PAID → VOID`. Manual status edits on the edit form are restricted to `DRAFT` / `VOID`; `SENT` / `VIEWED` / `PARTIAL_PAID` / `PAID` are derived and read-only on the form.
 
 ---
 
@@ -392,6 +398,7 @@ Phase B promoted several forward-compat columns to real FKs and added new column
 | `ruleId` | UUID? | FK → `Rule.id` (ON DELETE **SET NULL**) — the rule that last categorised this row |
 | `categorisedAt` | datetime? | stamped when categoryId is first set or changed by the engine |
 | `notes` | string? | |
+| `paymentReviewDismissedAt` | datetime? | **(Phase D)** Set by the "Not a customer payment" button on the Payments queue. Excludes the row from the default payment-review list; cleared by the Undismiss action. |
 | `importHash` | string | dedupe key — sha256 of `date\|amount.toFixed(2)\|normaliseDesc(description)\|runningBalance` |
 | `importId` | UUID? | FK → `TransactionImport.id` (ON DELETE **SET NULL**) |
 | `createdAt` / `updatedAt` | datetime | |
@@ -401,7 +408,7 @@ Indexes / unique constraints:
 - `@@index([accountId, date])` — primary query pattern for account transaction lists.
 - `@@index([date])` — supports global date-range filters.
 
-Inverse relations added in Phase B: `splits TransactionSplit[]`, `events CategorisationEvent[]`.
+Inverse relations added in Phase B: `splits TransactionSplit[]`, `events CategorisationEvent[]`. Phase D adds `allocations Allocation[]`.
 
 ---
 
@@ -503,10 +510,11 @@ Lookup catalog for payees / merchants. Seeded with 39 rows.
 | `kind` | enum `VendorKind` | `VENDOR_MATCH` |
 | `aliases` | string[] | lowercase substrings; matching is case-insensitive whitespace-collapsed |
 | `notes` | string? | |
+| `customerId` | UUID? | **(Phase D)** FK → `Customer.id` (ON DELETE **SET NULL**). Optional link between a vendor and an invoiced customer. When set, the Payments queue can auto-fetch candidate invoices for the customer without an explicit picker step. |
 | `isActive` | bool | default `true` |
 | `createdAt` / `updatedAt` | datetime | |
 
-Relations: `transactions Transaction[]`, `rules Rule[]`.
+Relations: `transactions Transaction[]`, `rules Rule[]`, `customer Customer?` (Phase D).
 
 ---
 
@@ -665,3 +673,58 @@ One row per HTTP attempt to an LLM provider. Provides full observability of the 
 Indexes: `@@index([providerId, createdAt])`, `@@index([status, createdAt])`, `@@index([transactionId])`.
 
 Note: `AiCall` rows accumulate without a retention policy. A future cleanup job is planned; until then, manual pruning via `DELETE FROM "AiCall" WHERE "createdAt" < NOW() - INTERVAL '30 days'` is sufficient.
+
+---
+
+## Phase D — Invoice payment matching
+
+All Phase D schema changes are **fully additive**. `prisma db push` applies them without data loss and without requiring `docker compose down -v`.
+
+### Allocation
+
+Maps a portion of one `Transaction.amount` onto one `Invoice`. A transaction may have many allocations (split a single deposit across several invoices); an invoice may have many allocations (paid in instalments).
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `transactionId` | UUID | FK → `Transaction.id` (ON DELETE **CASCADE**) |
+| `invoiceId` | UUID | FK → `Invoice.id` (ON DELETE **RESTRICT**) — invoices with allocations cannot be deleted |
+| `amount` | decimal(14,2) | the portion of the transaction allocated to this invoice |
+| `createdAt` | datetime | default `now()` |
+
+Indexes: `@@index([transactionId])`, `@@index([invoiceId])`.
+
+Server rules:
+- `Invoice.amountPaid` / `amountOutstanding` are recomputed by `recomputeInvoicePayment` inside the same transaction as every allocation create or delete.
+- Sum of allocations against a single transaction may not exceed `|Transaction.amount|`. Sum of allocations against a single invoice may not exceed `Invoice.totalAmount`.
+
+---
+
+### AllocationEvent
+
+Append-only audit log. One row per allocation create or delete. Rows are never updated after insert.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `eventType` | enum `AllocationEventType` | `CREATED` or `DELETED` |
+| `transactionId` | string | **Plain string snapshot, NOT a FK.** Audit rows survive deletes of the underlying transaction. |
+| `invoiceId` | string | **Plain string snapshot, NOT a FK.** Audit rows survive deletes of the underlying invoice. |
+| `amount` | decimal(14,2) | the allocation amount as it was at the time of the event |
+| `invoiceStatusBefore` | enum `InvoiceStatus` | invoice status before the change |
+| `invoiceStatusAfter` | enum `InvoiceStatus` | invoice status after the change |
+| `source` | enum `AllocationEventSource` | `USER` (only value today) |
+| `createdAt` | datetime | default `now()` — no `updatedAt`; rows are immutable |
+
+Indexes: `@@index([transactionId])`, `@@index([invoiceId])`, `@@index([createdAt])`.
+
+---
+
+### Relationship diagram additions
+
+```
+Transaction ─< Allocation >─ Invoice
+              (AllocationEvent — string snapshots only, no FKs)
+
+Vendor >─ Customer (optional, ON DELETE SET NULL)
+```
