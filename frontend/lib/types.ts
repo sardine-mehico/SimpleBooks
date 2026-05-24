@@ -249,6 +249,8 @@ export type Invoice = {
   subtotal: string | number;
   taxAmount: string | number;
   totalAmount: string | number;
+  amountPaid: string;
+  amountOutstanding: string;
   poNumber?: string | null;
   paymentDetails?: string | null;
   internalNotes?: string | null;
@@ -456,6 +458,7 @@ export type Vendor = {
   aliases: string[];
   notes?: string | null;
   isActive: boolean;
+  customerId: string | null;
   createdAt: string;
   updatedAt: string;
   _count?: { transactions: number };
@@ -624,3 +627,90 @@ export interface BulkRunStatus {
 export interface MineRulesResult {
   drafted: number; skippedSuppressed: number; clustersConsidered: number; failed: number;
 }
+
+// === Payments (Phase D) ===
+
+export type Allocation = {
+  id: string;
+  transactionId: string;
+  invoiceId: string;
+  amount: string;        // Decimal as string
+  createdAt: string;
+};
+
+export type AllocationEvent = {
+  id: string;
+  eventType: 'CREATED' | 'DELETED';
+  transactionId: string;
+  invoiceId: string;
+  amount: string;
+  invoiceStatusBefore: InvoiceStatus;
+  invoiceStatusAfter: InvoiceStatus;
+  source: 'USER';
+  createdAt: string;
+};
+
+export type ScoredInvoice = {
+  id: string;
+  invoiceNumber: number;
+  invoiceDate: string;
+  totalAmount: string;
+  amountOutstanding: string;
+  status: InvoiceStatus;
+  customerId: string | null;
+  customerName: string | null;
+  score: number;
+  signals: {
+    invoiceNumber: boolean;
+    exactAmount: boolean;
+    customerToken: boolean;
+    datePlausible: boolean;
+    partialBonus: boolean;
+  };
+};
+
+export type BundleSuggestion = {
+  invoiceIds: string[];
+  invoices: Array<{ id: string; invoiceNumber: number; amountOutstanding: string }>;
+  total: string;
+};
+
+export type CandidatesResponse = {
+  candidates: ScoredInvoice[];
+  bundleSuggestion: BundleSuggestion | null;
+};
+
+export type CustomerCredit = {
+  credit: string;
+  transactions: Array<{
+    id: string;
+    date: string;
+    amount: string;
+    remaining: string;
+    description: string;
+  }>;
+};
+
+export type PaymentQueueItem = {
+  id: string;
+  date: string;
+  amount: string;
+  description: string;
+  accountId: string;
+  accountName: string;
+  vendorId: string | null;
+  vendorName: string | null;
+  vendorCustomerId: string | null;
+  vendorCustomerName: string | null;
+  unallocated: string;
+};
+
+export type ApplyPaymentResponse = {
+  transaction: { id: string; amount: string; unallocated: string };
+  invoices: Array<{
+    id: string;
+    status: InvoiceStatus;
+    amountPaid: string;
+    amountOutstanding: string;
+  }>;
+};
