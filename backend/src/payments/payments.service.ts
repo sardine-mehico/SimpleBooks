@@ -217,4 +217,49 @@ export class PaymentsService {
       };
     });
   }
+
+  async deleteAllocation(allocationId: string): Promise<void> {
+    await this.prisma.$transaction(async (db: any) => {
+      const alloc = await db.allocation.findUnique({ where: { id: allocationId } });
+      if (!alloc) throw new NotFoundException('Allocation not found');
+
+      const inv = await db.invoice.findUnique({ where: { id: alloc.invoiceId } });
+      if (!inv) throw new NotFoundException('Invoice not found');
+
+      const statusBefore = inv.status;
+      const snapshot = {
+        transactionId: alloc.transactionId,
+        invoiceId: alloc.invoiceId,
+        amount: new Decimal(alloc.amount.toString()),
+      };
+
+      await db.allocation.delete({ where: { id: allocationId } });
+
+      const remaining = await db.allocation.findMany({ where: { invoiceId: alloc.invoiceId } });
+      const { amountPaid, amountOutstanding, status } = recomputeInvoicePayment(
+        {
+          status: inv.status,
+          totalAmount: new Decimal(inv.totalAmount.toString()),
+          viewedAt: inv.viewedAt,
+          sendAttempts: inv.sendAttempts ?? 0,
+        },
+        remaining.map((a: any) => ({ amount: new Decimal(a.amount.toString()) })),
+      );
+      await db.invoice.update({
+        where: { id: alloc.invoiceId },
+        data: { amountPaid, amountOutstanding, status },
+      });
+
+      await db.allocationEvent.create({
+        data: {
+          eventType: 'DELETED',
+          transactionId: snapshot.transactionId,
+          invoiceId: snapshot.invoiceId,
+          amount: snapshot.amount,
+          invoiceStatusBefore: statusBefore,
+          invoiceStatusAfter: status,
+        },
+      });
+    });
+  }
 }

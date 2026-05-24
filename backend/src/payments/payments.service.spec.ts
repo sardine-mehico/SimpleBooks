@@ -302,3 +302,74 @@ describe('PaymentsService.applyAllocations', () => {
     expect(state.vendors[0].customerId).toBe('c1');
   });
 });
+
+describe('PaymentsService.deleteAllocation', () => {
+  function seededPaid() {
+    const state: any = {
+      accounts: [{ id: 'acc1', name: 'Op' }],
+      customers: [{ id: 'c1', name: 'Cust' }],
+      vendors: [{ id: 'v1', name: 'V', customerId: 'c1' }],
+      transactions: [{ id: 'tx1', accountId: 'acc1', vendorId: 'v1', amount: new Decimal('100.00'), description: 'pmt', date: new Date('2026-01-10') }],
+      invoices: [],
+      allocations: [],
+      events: [],
+    };
+    seedInvoice(state, { id: 'i1', totalAmount: '100.00', status: 'PAID' });
+    state.invoices[0].amountPaid = new Decimal('100');
+    state.invoices[0].amountOutstanding = new Decimal('0');
+    state.allocations.push({ id: 'a1', transactionId: 'tx1', invoiceId: 'i1', amount: new Decimal('100.00'), createdAt: new Date() });
+    return state;
+  }
+
+  it('un-applying the only allocation on a PAID invoice with sendAttempts > 0 reverts to SENT', async () => {
+    const state = seededPaid();
+    const prisma = makeWritePrisma(state);
+    const svc = new PaymentsService(prisma);
+    await svc.deleteAllocation('a1');
+    expect(state.invoices[0].status).toBe('SENT');
+    expect(state.allocations).toHaveLength(0);
+  });
+
+  it('viewedAt stickiness — PAID + viewedAt → un-apply → VIEWED', async () => {
+    const state = seededPaid();
+    state.invoices[0].viewedAt = new Date('2026-01-05');
+    const prisma = makeWritePrisma(state);
+    const svc = new PaymentsService(prisma);
+    await svc.deleteAllocation('a1');
+    expect(state.invoices[0].status).toBe('VIEWED');
+  });
+
+  it('writes an AllocationEvent{DELETED} with the snapshot fields', async () => {
+    const state = seededPaid();
+    const prisma = makeWritePrisma(state);
+    const svc = new PaymentsService(prisma);
+    await svc.deleteAllocation('a1');
+    const ev = state.events.find((e: any) => e.eventType === 'DELETED');
+    expect(ev).toBeDefined();
+    expect(ev.transactionId).toBe('tx1');
+    expect(ev.invoiceId).toBe('i1');
+    expect(ev.amount.toString()).toBe('100');
+    expect(ev.invoiceStatusBefore).toBe('PAID');
+    expect(ev.invoiceStatusAfter).toBe('SENT');
+  });
+
+  it('un-applying one of two allocations on a PAID invoice reverts to PARTIAL_PAID', async () => {
+    const state = seededPaid();
+    state.allocations = [
+      { id: 'a1', transactionId: 'tx1', invoiceId: 'i1', amount: new Decimal('50.00'), createdAt: new Date() },
+      { id: 'a2', transactionId: 'tx1', invoiceId: 'i1', amount: new Decimal('50.00'), createdAt: new Date() },
+    ];
+    const prisma = makeWritePrisma(state);
+    const svc = new PaymentsService(prisma);
+    await svc.deleteAllocation('a1');
+    expect(state.invoices[0].status).toBe('PARTIAL_PAID');
+    expect(state.invoices[0].amountOutstanding.toString()).toBe('50');
+  });
+
+  it('throws NotFoundException when allocation id is unknown', async () => {
+    const state = seededPaid();
+    const prisma = makeWritePrisma(state);
+    const svc = new PaymentsService(prisma);
+    await expect(svc.deleteAllocation('missing')).rejects.toThrow(/not found/i);
+  });
+});
