@@ -373,3 +373,105 @@ describe('PaymentsService.deleteAllocation', () => {
     await expect(svc.deleteAllocation('missing')).rejects.toThrow(/not found/i);
   });
 });
+
+describe('PaymentsService.getQueue / getQueueCount', () => {
+  function baseQueueState() {
+    return {
+      accounts: [{ id: 'acc1', name: 'Operating' }],
+      customers: [{ id: 'c1', name: 'Cust' }],
+      vendors: [
+        { id: 'v1', name: 'V1', customerId: 'c1' },
+        { id: 'v2', name: 'V2', customerId: null },
+      ],
+      categories: [
+        { id: 'cat-inc', name: 'Sales', kind: 'INCOME' },
+        { id: 'cat-int', name: 'Interest', kind: 'INCOME' },
+        { id: 'cat-exp', name: 'Office', kind: 'EXPENSE' },
+      ],
+      transactions: [
+        { id: 'tx-inc', accountId: 'acc1', vendorId: 'v1', categoryId: 'cat-inc', amount: new Decimal('100.00'), description: 'paid', date: new Date('2026-01-10'), paymentReviewDismissedAt: null },
+        { id: 'tx-exp', accountId: 'acc1', vendorId: 'v2', categoryId: 'cat-exp', amount: new Decimal('50.00'),  description: 'cleaning', date: new Date('2026-01-11'), paymentReviewDismissedAt: null },
+        { id: 'tx-neg', accountId: 'acc1', vendorId: 'v1', categoryId: 'cat-inc', amount: new Decimal('-20.00'), description: 'refund', date: new Date('2026-01-12'), paymentReviewDismissedAt: null },
+        { id: 'tx-dis', accountId: 'acc1', vendorId: 'v1', categoryId: 'cat-inc', amount: new Decimal('60.00'),  description: 'dismissed', date: new Date('2026-01-13'), paymentReviewDismissedAt: new Date() },
+        { id: 'tx-full', accountId: 'acc1', vendorId: 'v1', categoryId: 'cat-inc', amount: new Decimal('40.00'), description: 'fully-allocated', date: new Date('2026-01-14'), paymentReviewDismissedAt: null },
+      ],
+      invoices: [],
+      allocations: [
+        { id: 'a-full', transactionId: 'tx-full', invoiceId: 'i-stub', amount: new Decimal('40.00'), createdAt: new Date() },
+      ],
+      events: [],
+    };
+  }
+
+  function makeQueuePrisma(state: any) {
+    const find = (arr: any[], where: any): any =>
+      arr.find((row: any) => Object.entries(where).every(([k, v]) => row[k] === v));
+    return {
+      _state: state,
+      transaction: {
+        findMany: jest.fn(async ({ where }: any) => {
+          return state.transactions
+            .filter((t: any) => t.amount.gt(0))
+            .filter((t: any) => where?.paymentReviewDismissedAt === null ? t.paymentReviewDismissedAt === null : true)
+            .filter((t: any) => {
+              if (!where?.category?.kind) return true;
+              const cat = find(state.categories, { id: t.categoryId });
+              return cat?.kind === where.category.kind;
+            })
+            .map((t: any) => ({
+              ...t,
+              account: find(state.accounts, { id: t.accountId }),
+              vendor: t.vendorId ? { ...find(state.vendors, { id: t.vendorId }), customer: null } : null,
+              allocations: state.allocations.filter((a: any) => a.transactionId === t.id),
+            }));
+        }),
+        update: jest.fn(async ({ where, data }: any) => {
+          const t = find(state.transactions, where)!;
+          Object.assign(t, data);
+          return t;
+        }),
+      },
+    } as any;
+  }
+
+  it('default filter: positive + INCOME kind + not-dismissed + unallocated > 0', async () => {
+    const state = baseQueueState();
+    const svc = new PaymentsService(makeQueuePrisma(state));
+    const r = await svc.getQueue({ showAll: false });
+    const ids = r.map((x) => x.id);
+    expect(ids).toEqual(['tx-inc']);
+  });
+
+  it('?showAll=true drops the INCOME-kind filter — still excludes negative + dismissed + fully-allocated', async () => {
+    const state = baseQueueState();
+    const svc = new PaymentsService(makeQueuePrisma(state));
+    const r = await svc.getQueue({ showAll: true });
+    const ids = r.map((x) => x.id).sort();
+    expect(ids).toEqual(['tx-exp', 'tx-inc']);
+  });
+
+  it('count matches list length', async () => {
+    const state = baseQueueState();
+    const svc = new PaymentsService(makeQueuePrisma(state));
+    const list = await svc.getQueue({ showAll: false });
+    const { count } = await svc.getQueueCount({ showAll: false });
+    expect(count).toBe(list.length);
+  });
+
+  it('dismiss removes from the queue', async () => {
+    const state = baseQueueState();
+    const svc = new PaymentsService(makeQueuePrisma(state));
+    await svc.dismiss('tx-inc');
+    const list = await svc.getQueue({ showAll: false });
+    expect(list.map((x) => x.id)).not.toContain('tx-inc');
+  });
+
+  it('undismiss restores it', async () => {
+    const state = baseQueueState();
+    state.transactions[0].paymentReviewDismissedAt = new Date();
+    const svc = new PaymentsService(makeQueuePrisma(state));
+    await svc.undismiss('tx-inc');
+    const list = await svc.getQueue({ showAll: false });
+    expect(list.map((x) => x.id)).toContain('tx-inc');
+  });
+});

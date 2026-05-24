@@ -262,4 +262,56 @@ export class PaymentsService {
       });
     });
   }
+
+  async getQueue(opts: { showAll?: boolean }): Promise<import('./types').PaymentQueueItem[]> {
+    const where: any = { paymentReviewDismissedAt: null };
+    if (!opts.showAll) where.category = { kind: 'INCOME' };
+    const rows = await this.prisma.transaction.findMany({
+      where,
+      include: { account: true, vendor: { include: { customer: true } }, allocations: true } as any,
+      orderBy: { date: 'desc' },
+    } as any);
+    return (rows as any[])
+      .filter((t) => new Decimal(t.amount.toString()).gt(0))
+      .map((t) => {
+        const allocSum = (t.allocations ?? []).reduce(
+          (acc: Decimal, a: any) => acc.add(new Decimal(a.amount.toString())),
+          new Decimal(0),
+        );
+        const unallocated = new Decimal(t.amount.toString()).sub(allocSum);
+        return {
+          id: t.id,
+          date: t.date.toISOString().slice(0, 10),
+          amount: t.amount.toString(),
+          description: t.description,
+          accountId: t.accountId,
+          accountName: t.account?.name ?? '',
+          vendorId: t.vendorId ?? null,
+          vendorName: t.vendor?.name ?? null,
+          vendorCustomerId: t.vendor?.customerId ?? null,
+          vendorCustomerName: t.vendor?.customer?.name ?? null,
+          unallocated: unallocated.toString(),
+        };
+      })
+      .filter((r) => new Decimal(r.unallocated).gt(0));
+  }
+
+  async getQueueCount(opts: { showAll?: boolean }): Promise<{ count: number }> {
+    const list = await this.getQueue(opts);
+    return { count: list.length };
+  }
+
+  async dismiss(transactionId: string): Promise<void> {
+    await this.prisma.transaction.update({
+      where: { id: transactionId },
+      data: { paymentReviewDismissedAt: new Date() },
+    } as any);
+  }
+
+  async undismiss(transactionId: string): Promise<void> {
+    await this.prisma.transaction.update({
+      where: { id: transactionId },
+      data: { paymentReviewDismissedAt: null },
+    } as any);
+  }
 }
