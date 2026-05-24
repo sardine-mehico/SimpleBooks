@@ -26,6 +26,8 @@ import {
   type BodyLine,
 } from "@/components/invoices/invoice-body-editor";
 import { AllocationsPanel } from "@/components/payments/allocations-panel";
+import { ApplyPaymentModal } from "@/components/payments/apply-payment-modal";
+import { Button } from "@/components/ui/button";
 
 // Shape the backend ships back inside `GET /invoices/:id`. The Allocation rows
 // are wrapped with a thin `transaction` snippet so the panel can render the
@@ -141,6 +143,7 @@ export function InvoiceForm({
   const [sendOpen, setSendOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [receivePaymentOpen, setReceivePaymentOpen] = useState(false);
   // Existing invoices open in view mode (fields locked, Save disabled) and
   // require an explicit Edit click. New invoices skip this — there's no
   // saved state to protect yet.
@@ -251,6 +254,11 @@ export function InvoiceForm({
   // hides it — voided invoices are no longer collectable.
   const canSend = status !== "VOID";
   const canVoid = status !== "VOID";
+  // Receive payment is meaningful only while the invoice is still collectable.
+  // PAID has nothing outstanding; VOID isn't collectable. DRAFT could in theory
+  // accept payments but the standard flow is to Send first, so we follow the
+  // spec and gate on PAID/VOID only.
+  const canReceivePayment = !!initial && status !== "PAID" && status !== "VOID";
 
   return (
     <EditPageChrome
@@ -262,15 +270,22 @@ export function InvoiceForm({
       onEditClick={() => setViewMode(false)}
       rightActions={
         initial ? (
-          <ActionMenu
-            onClone={clone}
-            onPdf={openPdf}
-            onSend={() => setSendOpen(true)}
-            onVoid={() => setVoidOpen(true)}
-            onDelete={() => setDeleteOpen(true)}
-            canSend={canSend}
-            canVoid={canVoid}
-          />
+          <>
+            {canReceivePayment ? (
+              <Button type="button" onClick={() => setReceivePaymentOpen(true)}>
+                Receive payment
+              </Button>
+            ) : null}
+            <ActionMenu
+              onClone={clone}
+              onPdf={openPdf}
+              onSend={() => setSendOpen(true)}
+              onVoid={() => setVoidOpen(true)}
+              onDelete={() => setDeleteOpen(true)}
+              canSend={canSend}
+              canVoid={canVoid}
+            />
+          </>
         ) : null
       }
     >
@@ -316,8 +331,7 @@ export function InvoiceForm({
             invoice={initial}
             allocations={allocations}
             onChanged={() => router.refresh()}
-            // Task 22 wires the real "Receive payment" modal here.
-            onReceivePayment={() => alert("Receive payment — Task 22")}
+            onReceivePayment={() => setReceivePaymentOpen(true)}
           />
         ) : null}
 
@@ -355,6 +369,17 @@ export function InvoiceForm({
             confirmLabel="Delete invoice"
             onConfirm={remove}
           />
+          {receivePaymentOpen ? (
+            <ApplyPaymentModal
+              context="invoice"
+              invoice={initial}
+              onClose={() => setReceivePaymentOpen(false)}
+              onApplied={() => {
+                setReceivePaymentOpen(false);
+                router.refresh();
+              }}
+            />
+          ) : null}
         </>
       ) : null}
     </EditPageChrome>
