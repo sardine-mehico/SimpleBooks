@@ -3,12 +3,13 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { runPaymentsBackfill } from './backfill';
+import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 
 @Module({
   imports: [PrismaModule],
   providers: [PaymentsService],
-  controllers: [],
+  controllers: [PaymentsController],
   exports: [PaymentsService],
 })
 export class PaymentsModule implements OnModuleInit {
