@@ -8,6 +8,7 @@ const badgeVariants = cva(
     variants: {
       tone: {
         pending: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200",
+        partial: "bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-200",
         progress: "bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200",
         completed: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200",
         cancelled: "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200",

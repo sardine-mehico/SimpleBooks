@@ -20,6 +20,11 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = Object.fromEntries(
   INVOICE_STATUSES.map((s) => [s.value, s.label]),
 ) as Record<InvoiceStatus, string>;
 
+// Statuses that the operator can no longer set manually — they're derived from
+// payment allocations. The void/delete actions in the dropdown handle the
+// other state transitions (DRAFT → VOID, deletion).
+const DERIVED_STATUSES = new Set<InvoiceStatus>(["SENT", "VIEWED", "PARTIAL_PAID", "PAID"]);
+
 export type BodyLine = {
   itemId: string;
   description: string;
@@ -215,13 +220,18 @@ export function InvoiceBodyEditor({
               own header card). */}
           {status ? (
           <div className="space-y-3">
-            <div className="flex justify-end pb-1">
+            <div className="flex flex-col items-end gap-1 pb-1">
               <Badge
                 tone={STATUS_TONE[status]}
                 className="rounded-[5px] px-6 py-1.5 text-[33px] leading-none tracking-wide"
               >
                 {STATUS_LABEL[status]}
               </Badge>
+              {DERIVED_STATUSES.has(status) ? (
+                <p className="max-w-[320px] text-right text-xs text-slate-500">
+                  Status is derived from payment allocations. Apply or un-apply payments to change it.
+                </p>
+              ) : null}
             </div>
             <LabeledRow label="Invoice Number">
               <Input

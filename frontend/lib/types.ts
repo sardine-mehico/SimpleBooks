@@ -26,12 +26,12 @@ export const INVOICE_STATUSES: { value: InvoiceStatus; label: string }[] = [
 
 export const STATUS_TONE: Record<
   InvoiceStatus,
-  "draft" | "pending" | "progress" | "completed" | "cancelled" | "overdue"
+  "draft" | "pending" | "partial" | "progress" | "completed" | "cancelled" | "overdue"
 > = {
   DRAFT: "draft",
   SENT: "pending",
   VIEWED: "progress",
-  PARTIAL_PAID: "progress",
+  PARTIAL_PAID: "partial",
   PAID: "completed",
   VOID: "cancelled",
   // Reuses the existing rose-50 / rose-700 "overdue" tone so the failed state
