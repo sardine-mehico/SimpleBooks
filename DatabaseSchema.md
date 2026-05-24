@@ -641,7 +641,7 @@ Index: `@@index([clusterHash])`.
 
 | Column | Type | Notes |
 |---|---|---|
-| `aiMiningThreshold` | int | default `5`. Minimum cluster size before AI proposes a draft rule. Configurable via `/settings/ai-setup`. |
+| `aiMiningThreshold` | int | default `3`. Minimum cluster size before AI proposes a draft rule. Configurable via `/settings/ai-setup`. |
 
 ### New table — `AiCall`
 

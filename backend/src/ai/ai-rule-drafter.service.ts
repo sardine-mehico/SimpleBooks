@@ -92,7 +92,7 @@ export class AiRuleDrafterService {
 
   async mine(): Promise<{ drafted: number; skippedSuppressed: number; clustersConsidered: number; failed: number }> {
     const prefs = await this.prisma.preferences.findFirst();
-    const threshold = prefs?.aiMiningThreshold ?? 5;
+    const threshold = prefs?.aiMiningThreshold ?? 3;
     const cutoff = new Date(Date.now() - MINING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
     const events = await this.prisma.categorisationEvent.findMany({

@@ -511,7 +511,7 @@ One card per provider. Each card contains Name / Model / API Base URL / API Key 
 - **"+ Add Provider"** button at the top of the page.
 
 Bottom section — **Rule drafting**:
-- "Minimum cluster size to draft a rule" — integer field (1–50), reads/writes `Preferences.aiMiningThreshold` (default 5).
+- "Minimum cluster size to draft a rule" — integer field (1–50), reads/writes `Preferences.aiMiningThreshold` (default 3).
 
 #### Logic
 - Setting a provider primary via `PATCH /ai-providers/:id/set-primary` atomically clears `isPrimary` on all other rows.

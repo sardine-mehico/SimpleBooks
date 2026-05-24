@@ -344,7 +344,7 @@ model Preferences {
   id                  String   @id @default(uuid())
   timezone            String   @default("Australia/Perth")
   financialYearStart  Int      @default(7)
-  aiMiningThreshold   Int      @default(5)
+  aiMiningThreshold   Int      @default(3)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }

@@ -32,7 +32,7 @@ function toDraft(p: AiProvider): Draft {
 export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?: { aiMiningThreshold?: number } }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState<Draft[]>(initial.map(toDraft));
-  const [threshold, setThreshold] = useState<number>(prefs?.aiMiningThreshold ?? 5);
+  const [threshold, setThreshold] = useState<number>(prefs?.aiMiningThreshold ?? 3);
   const [savingThreshold, setSavingThreshold] = useState(false);
   const [testResults, setTestResults] = useState<Map<string, ProviderTestResult | 'pending'>>(new Map());
 
