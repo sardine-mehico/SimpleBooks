@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Trash2, Eye, EyeOff, Plus, ArrowUp, ArrowDown, Beaker, CheckCircle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createAiProvider, deleteAiProvider, setAiProviderPrimary, updateAiProvider, moveAiProvider, testAiProvider, listAiProviders } from "@/lib/ai-providers";
@@ -21,13 +22,14 @@ type Draft = {
   apiKey: string;
   isPrimary: boolean;
   requestsPerMinute: number;
+  isEnabled: boolean;
   dirty: boolean;       // true once any field has changed since last save
   isNew: boolean;       // true if not yet persisted
   showKey: boolean;     // toggle for the eye icon
 };
 
 function toDraft(p: AiProvider): Draft {
-  return { id: p.id, name: p.name, model: p.model, apiBaseUrl: p.apiBaseUrl, apiKey: p.apiKey, isPrimary: p.isPrimary, requestsPerMinute: p.requestsPerMinute ?? 15, dirty: false, isNew: false, showKey: false };
+  return { id: p.id, name: p.name, model: p.model, apiBaseUrl: p.apiBaseUrl, apiKey: p.apiKey, isPrimary: p.isPrimary, requestsPerMinute: p.requestsPerMinute ?? 15, isEnabled: p.isEnabled ?? true, dirty: false, isNew: false, showKey: false };
 }
 
 export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?: { aiMiningThreshold?: number } }) {
@@ -49,7 +51,7 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
     const tempId = `new-${Date.now()}`;
     setDrafts((curr) => [
       ...curr,
-      { id: tempId, name: "New AI Configuration", model: "", apiBaseUrl: "https://api.openai.com/v1", apiKey: "", isPrimary: curr.length === 0, requestsPerMinute: 15, dirty: true, isNew: true, showKey: false },
+      { id: tempId, name: "New AI Configuration", model: "", apiBaseUrl: "https://api.openai.com/v1", apiKey: "", isPrimary: curr.length === 0, requestsPerMinute: 15, isEnabled: true, dirty: true, isNew: true, showKey: false },
     ]);
   }
 
@@ -69,6 +71,21 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
     await setAiProviderPrimary(d.id);
     setDrafts((curr) => curr.map((x) => ({ ...x, isPrimary: x.id === d.id })));
     router.refresh();
+  }
+
+  async function toggleEnabled(d: Draft) {
+    if (d.isNew) {
+      setDrafts((curr) => curr.map((x) => (x.id === d.id ? { ...x, isEnabled: !x.isEnabled, dirty: true } : x)));
+      return;
+    }
+    const next = !d.isEnabled;
+    setDrafts((curr) => curr.map((x) => (x.id === d.id ? { ...x, isEnabled: next } : x)));
+    try {
+      await updateAiProvider(d.id, { isEnabled: next });
+      router.refresh();
+    } catch {
+      setDrafts((curr) => curr.map((x) => (x.id === d.id ? { ...x, isEnabled: !next } : x)));
+    }
   }
 
   async function remove(d: Draft) {
@@ -123,10 +140,18 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
       )}
 
       {drafts.map((d) => (
-        <Card key={d.id} className="space-y-4 p-5">
+        <Card key={d.id} className={cn("space-y-4 p-5 transition", !d.isEnabled && "opacity-60")}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
+              <Switch
+                checked={d.isEnabled}
+                onCheckedChange={() => toggleEnabled(d)}
+                id={`enabled-${d.id}`}
+              />
               <span className="font-semibold text-slate-900">{d.name || "(unnamed)"}</span>
+              {!d.isEnabled && (
+                <span className="inline-block rounded-[0.3rem] bg-slate-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-700">Disabled</span>
+              )}
               {d.isPrimary ? (
                 <span className="inline-block rounded-[0.3rem] bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">Primary</span>
               ) : (
