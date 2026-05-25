@@ -196,4 +196,26 @@ describe('AiClientService.complete', () => {
     expect(prisma._aiCalls.filter((c: any) => c.providerId === 'p1' && c.status === 'FAILED')).toHaveLength(1);
     expect(prisma._aiCalls.filter((c: any) => c.providerId === 'p2' && c.status === 'OK')).toHaveLength(1);
   });
+
+  it('skips disabled providers entirely — they do not appear in AiCall logs', async () => {
+    const fixture = [
+      { ...providers[0], isEnabled: false },  // primary, but DISABLED
+      providers[1],                            // backup, enabled
+      providers[2],
+    ];
+    const prisma = makePrisma(fixture);
+    // findMany should be called with where: { isEnabled: true }, so the test
+    // verifies the chain only fetches enabled rows.
+    prisma.aiProvider.findMany = jest.fn().mockResolvedValue([fixture[1], fixture[2]]);
+
+    const fetch = mockFetch([{ status: 200, body: makeOkBody({}) }]);
+    const r = await new AiClientService(prisma, fetch as any).complete(makeInput());
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.providerId).toBe('p2');
+    expect(prisma.aiProvider.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { isEnabled: true } })
+    );
+    expect(prisma._aiCalls).toHaveLength(1);
+    expect(prisma._aiCalls[0].providerId).toBe('p2');
+  });
 });

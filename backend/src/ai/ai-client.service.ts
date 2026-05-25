@@ -64,6 +64,7 @@ export class AiClientService {
 
   async complete<T = any>(input: AiCompleteInput): Promise<AiCompleteResult<T>> {
     const chain = await this.prisma.aiProvider.findMany({
+      where: { isEnabled: true },
       orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
     if (chain.length === 0) return { ok: false, error: 'no-providers' };

@@ -15,6 +15,7 @@ export class UpdateAiProviderDto {
   @IsString() @IsOptional() @MinLength(1) @MaxLength(500) apiBaseUrl?: string;
   @IsString() @IsOptional() @MaxLength(2000) apiKey?: string;
   @IsInt() @IsOptional() @Min(1) @Max(10000) requestsPerMinute?: number;
+  @IsBoolean() @IsOptional() isEnabled?: boolean;
 }
 
 export class MoveAiProviderDto {
