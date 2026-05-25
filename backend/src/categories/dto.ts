@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 
 export enum CategoryKindDto {
   INCOME = 'INCOME',
@@ -13,6 +13,7 @@ export class CreateCategoryDto {
   @IsEnum(CategoryKindDto) kind!: CategoryKindDto;
   @Type(() => Number) @IsInt() @Min(0) @IsOptional() sortOrder?: number;
   @IsBoolean() @IsOptional() isActive?: boolean;
+  @ValidateIf((o) => o.parentId !== null) @IsUUID() @IsOptional() parentId?: string | null;
 }
 
 export class UpdateCategoryDto {
@@ -20,4 +21,5 @@ export class UpdateCategoryDto {
   @IsEnum(CategoryKindDto) @IsOptional() kind?: CategoryKindDto;
   @Type(() => Number) @IsInt() @Min(0) @IsOptional() sortOrder?: number;
   @IsBoolean() @IsOptional() isActive?: boolean;
+  @ValidateIf((o) => o.parentId !== null) @IsUUID() @IsOptional() parentId?: string | null;
 }
