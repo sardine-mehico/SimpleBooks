@@ -6,6 +6,7 @@ import { RuleEngineService } from '../rule-engine/rule-engine.service';
 import { parseCsv } from './csv-parser.service';
 import { sniffCsv } from './csv-sniffer.service';
 import { fileSha256, rowImportHash } from './hash';
+import { assignOrdinals } from './ordinals';
 import { ColumnMapping, ImportRuleCategorisation, ImportReport, MappingSuggestion } from './types';
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -75,9 +76,10 @@ export class TransactionImportsService {
     const { rows, parseErrors } = parsed;
 
     // Compute importHashes for every row up-front.
-    const hashed = rows.map((r) => ({
+    const withOrdinals = assignOrdinals(rows);
+    const hashed = withOrdinals.map((r) => ({
       ...r,
-      importHash: rowImportHash(r.date, r.amount, r.description),
+      importHash: rowImportHash(r.date, r.amount, r.description, r.ordinal),
     }));
 
     // Read the parsed rows' balance column for validation only. If present and
@@ -146,6 +148,32 @@ export class TransactionImportsService {
         })),
         skipDuplicates: true,
       });
+
+      // Sanity check: after createMany with skipDuplicates, the number of rows
+      // with this importId equals the number of distinct hashes in our batch
+      // that were not already in the DB. If those don't match, rows were
+      // silently dropped — fail loudly rather than report bogus counts.
+      const landedForThisImport = await tx.transaction.count({
+        where: { importId: importRow.id },
+      });
+      const batchHashes = new Set(hashed.map((r) => r.importHash));
+      const preexisting = await tx.transaction.count({
+        where: {
+          accountId,
+          importHash: { in: Array.from(batchHashes) },
+          NOT: { importId: importRow.id },
+        },
+      });
+      const expectedLanded = batchHashes.size - preexisting;
+      if (landedForThisImport !== expectedLanded) {
+        throw new BadRequestException(
+          `Import sanity check failed: expected ${expectedLanded} rows to land ` +
+          `(${batchHashes.size} distinct hashes in batch minus ${preexisting} ` +
+          `already in DB) but ${landedForThisImport} actually landed for importId ` +
+          `${importRow.id}. This means rows were silently dropped by the database. ` +
+          `The import has been rolled back.`,
+        );
+      }
 
       // Re-query: which of the input hashes are now stamped with THIS import id?
       const justInserted = await tx.transaction.findMany({
