@@ -22,6 +22,11 @@ export class TransactionsController {
     return this.service.get(event.transactionId);
   }
 
+  @Get(':id')
+  getOne(@Param('id') id: string) {
+    return this.service.get(id);
+  }
+
   @Delete(':id')
   @HttpCode(204)
   async deleteOne(@Param('id') id: string): Promise<void> {
