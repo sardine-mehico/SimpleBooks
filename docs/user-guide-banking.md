@@ -161,7 +161,7 @@ This is informational. You can still proceed. The per-row duplicate detection (s
 Click Import. The server:
 
 1. Parses the CSV with your confirmed column mapping.
-2. For each row, computes a hash using: `sha256(date | amount | normalisedDescription | runningBalance)`. The running balance component is included only when a Balance column was mapped.
+2. For each row, computes a hash using: `sha256(date | amount.toFixed(2) | normalisedDescription)`. If the CSV includes a balance column, it's used to validate the import (a warning fires if `balance[last] − balance[first]` doesn't equal `Σ(amount)`), but it does not affect dedupe.
 3. Inserts rows whose hash does not already exist for this account. Rows with a matching hash are skipped as duplicates.
 4. Optionally runs the categorisation engine (if the checkbox was ticked).
 5. Returns the import report.

@@ -18,7 +18,39 @@ export class TransactionsService {
       },
     });
     if (!tx) throw new NotFoundException();
-    return tx;
+    const [withBalance] = await this.attachComputedBalance([tx]);
+    return withBalance;
+  }
+
+  /**
+   * Attach a server-computed `runningBalance` (string) to each item using a
+   * SUM(...) OVER (PARTITION BY accountId ORDER BY date ASC, id ASC) window
+   * over the UNFILTERED per-account history. The balance is correct for the
+   * given rows regardless of any date/category/q filters or pagination upstream.
+   *
+   * Same-day order tiebreaker is (id ASC) — deterministic but arbitrary;
+   * for same-day rows the per-row balance may not match the bank's statement
+   * ordering. Documented in CLAUDE.md known-gotchas.
+   */
+  private async attachComputedBalance<T extends { id: string; accountId: string }>(
+    items: T[],
+  ): Promise<Array<T & { runningBalance: string | null }>> {
+    if (items.length === 0) return [];
+    const visibleIds = items.map((i) => i.id);
+    const accountIds = Array.from(new Set(items.map((i) => i.accountId)));
+    const balanceRows = await this.prisma.$queryRaw<Array<{ id: string; running_balance: string }>>`
+      SELECT id, running_balance::text AS running_balance FROM (
+        SELECT t.id, a."openingBalance" + SUM(t.amount) OVER (
+          PARTITION BY t."accountId" ORDER BY t.date ASC, t.id ASC
+        ) AS running_balance
+        FROM "Transaction" t
+        JOIN "Account" a ON a.id = t."accountId"
+        WHERE t."accountId" = ANY(${accountIds}::text[])
+      ) AS x
+      WHERE id = ANY(${visibleIds}::text[])
+    `;
+    const balancesById = new Map(balanceRows.map((r) => [r.id, r.running_balance]));
+    return items.map((i) => ({ ...i, runningBalance: balancesById.get(i.id) ?? null }));
   }
 
   async list(q: ListTransactionsDto) {
@@ -115,36 +147,7 @@ export class TransactionsService {
       this.prisma.transaction.count({ where }),
     ]);
 
-    // Compute per-row running balance via window function over the UNFILTERED
-    // per-account history. We use raw SQL because Prisma's query builder can't
-    // express SUM(...) OVER (PARTITION BY ... ORDER BY ...). The window runs over
-    // all rows of the relevant accounts so the balance is correct for the
-    // visible page regardless of date/category/q filters or pagination.
-    //
-    // Same-day order tiebreaker is (id ASC) — deterministic but arbitrary;
-    // for same-day rows the per-row balance may not match the bank's statement
-    // ordering. Documented in CLAUDE.md known-gotchas.
-    const visibleIds = items.map((i) => i.id);
-    let balancesById = new Map<string, string>();
-    if (visibleIds.length > 0) {
-      const accountIds = Array.from(new Set(items.map((i) => i.accountId)));
-      const balanceRows = await this.prisma.$queryRaw<Array<{ id: string; running_balance: string }>>`
-        SELECT id, running_balance::text AS running_balance FROM (
-          SELECT t.id, a."openingBalance" + SUM(t.amount) OVER (
-            PARTITION BY t."accountId" ORDER BY t.date ASC, t.id ASC
-          ) AS running_balance
-          FROM "Transaction" t
-          JOIN "Account" a ON a.id = t."accountId"
-          WHERE t."accountId" = ANY(${accountIds}::text[])
-        ) AS x
-        WHERE id = ANY(${visibleIds}::text[])
-      `;
-      balancesById = new Map(balanceRows.map((r) => [r.id, r.running_balance]));
-    }
-    const itemsWithBalance = items.map((i) => ({
-      ...i,
-      runningBalance: balancesById.get(i.id) ?? null,
-    }));
+    const itemsWithBalance = await this.attachComputedBalance(items);
 
     return { items: itemsWithBalance, totalCount, page, pageSize };
   }
@@ -166,7 +169,7 @@ export class TransactionsService {
     if (Math.abs(expected - total) > 0.005) {
       throw new BadRequestException(`Splits sum ($${total.toFixed(2)}) must equal transaction amount ($${expected.toFixed(2)}).`);
     }
-    return this.prisma.$transaction(async (db) => {
+    const updated = await this.prisma.$transaction(async (db) => {
       await db.transactionSplit.deleteMany({ where: { transactionId } });
       for (let i = 0; i < splits.length; i++) {
         await db.transactionSplit.create({
@@ -196,6 +199,9 @@ export class TransactionsService {
         include: { splits: { include: { category: true }, orderBy: { position: 'asc' } } },
       });
     });
+    if (!updated) return updated;
+    const [withBalance] = await this.attachComputedBalance([updated]);
+    return withBalance;
   }
 
   async clearSplits(transactionId: string) {
@@ -204,9 +210,12 @@ export class TransactionsService {
       include: { splits: { orderBy: { amount: 'desc' } } },
     });
     if (!tx) throw new NotFoundException();
-    if (tx.splits.length === 0) return tx;
+    if (tx.splits.length === 0) {
+      const [withBalance] = await this.attachComputedBalance([tx]);
+      return withBalance;
+    }
     const restoreCategoryId = tx.splits[0].categoryId;
-    return this.prisma.$transaction(async (db) => {
+    const updated = await this.prisma.$transaction(async (db) => {
       await db.transactionSplit.deleteMany({ where: { transactionId } });
       await db.transaction.update({
         where: { id: transactionId },
@@ -220,6 +229,9 @@ export class TransactionsService {
       });
       return db.transaction.findUnique({ where: { id: transactionId } });
     });
+    if (!updated) return updated;
+    const [withBalance] = await this.attachComputedBalance([updated]);
+    return withBalance;
   }
 
   async deleteTransaction(id: string): Promise<void> {
@@ -237,7 +249,7 @@ export class TransactionsService {
   async setCategory(transactionId: string, data: { categoryId?: string; vendorId?: string; notes?: string }) {
     const tx = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
     if (!tx) throw new NotFoundException();
-    return this.prisma.$transaction(async (db) => {
+    const updated = await this.prisma.$transaction(async (db) => {
       const updated = await db.transaction.update({
         where: { id: transactionId },
         data: {
@@ -266,5 +278,7 @@ export class TransactionsService {
       }
       return updated;
     });
+    const [withBalance] = await this.attachComputedBalance([updated]);
+    return withBalance;
   }
 }

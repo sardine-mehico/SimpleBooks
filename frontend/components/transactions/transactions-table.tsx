@@ -32,7 +32,9 @@ import { BulkAiCategoriseDialog } from "./bulk-ai-categorise-dialog";
 import { TransactionRowMenu } from "./transaction-row-menu";
 import { ApplyPaymentModal } from "@/components/payments/apply-payment-modal";
 
-type SortKey = "date" | "amount" | "description" | "runningBalance";
+type SortKey = "date" | "amount" | "description";
+
+const VALID_SORT_KEYS: SortKey[] = ["date", "amount", "description"];
 
 // Category select value encoding:
 //   '__any__'              => Any category (no filter)
@@ -111,7 +113,12 @@ export function TransactionsTable({
   const urlSearch = useSearchParams();
 
   // URL-driven state — parse on every render.
-  const sortBy = (searchParams.sortBy as SortKey) || "date";
+  // Guard against legacy URLs (e.g. ?sortBy=runningBalance from before the
+  // server-computed balance refactor) so stale links fall back to the default.
+  const rawSortBy = searchParams.sortBy as string | undefined;
+  const sortBy: SortKey = VALID_SORT_KEYS.includes(rawSortBy as SortKey)
+    ? (rawSortBy as SortKey)
+    : "date";
   const sortDir = (searchParams.sortDir as "asc" | "desc") || "desc";
   const page = Number(searchParams.page ?? 1);
   const dateFrom = (searchParams.dateFrom as string) || "";
@@ -345,13 +352,13 @@ export function TransactionsTable({
     router.replace(`${pathname}?${params.toString()}`);
   }
 
-  const cols: Array<{ key: SortKey | "account" | "category" | "vendor" | "actions" | "select"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
+  const cols: Array<{ key: SortKey | "account" | "category" | "vendor" | "actions" | "select" | "balance"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
     { key: "select", label: "", sortable: false, width: "40px" },
     { key: "date", label: "Date", sortable: true, width: "110px" },
     { key: "description", label: "Description", sortable: true, width: "2fr" },
     { key: "category", label: "Category", sortable: false, width: "1fr" },
     { key: "amount", label: "Amount", align: "right", sortable: true, width: "1fr" },
-    { key: "runningBalance", label: "Balance", align: "right", sortable: false, width: "1fr" },
+    { key: "balance", label: "Balance", align: "right", sortable: false, width: "1fr" },
   ];
   if (mode === "global") {
     cols.push({ key: "vendor", label: "Vendor", sortable: false, width: "1fr" });
