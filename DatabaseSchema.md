@@ -608,6 +608,7 @@ Configuration record for an external LLM provider.
 | `apiKey` | string | **Stored as plain text — same boilerplate trade-off as `MailConfiguration.password` and `BillingCompany.customSmtpPassword`. Revisit before production.** |
 | `isPrimary` | bool | default `false`. At most one row has `isPrimary=true` at any time; enforced by the service. |
 | `sortOrder` | int | default `1000`. **(Phase C)** Consulted only for `isPrimary=false` rows — lower value = tried earlier in the provider chain. |
+| `requestsPerMinute` | int | default `15`. Per-provider self-pacing ceiling enforced by `AiClientService`. Tier hints surfaced in the UI: `~15 free, ~60 paid lite, ~1000 paid`. Range 1–10000. |
 | `createdAt` / `updatedAt` | datetime | |
 
 Indexes: `@@index([isPrimary, sortOrder])` (Phase C).

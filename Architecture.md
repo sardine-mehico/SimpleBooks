@@ -209,7 +209,16 @@ Both paths matter — App Router pages fetch on the server *and* the client.
 | `RESEND_FROM` | "From" address for Resend-sent failure notifications (e.g. `alerts@yourdomain.com`). |
 | `AI_TIMEOUT_INLINE_MS` | Timeout in ms for inline (modal) AI calls. Default `20000`. |
 | `AI_TIMEOUT_BULK_MS` | Timeout in ms for bulk and mining AI calls. Default `60000`. |
-| `AI_BULK_CONCURRENCY` | Max concurrent LLM calls during bulk categorisation and mining. Default `5`. |
+| `AI_BULK_CONCURRENCY` | Max concurrent LLM calls during bulk categorisation and mining. Default `5`. Acts as an upper bound only; the effective outbound rate is governed by each provider's `requestsPerMinute` (see below). |
+
+### AI rate limiting
+
+`AiClientService` enforces two layers of protection against provider rate limits:
+
+1. **Per-provider self-pacing.** Each `AiProvider` row carries a `requestsPerMinute` field (default `15`). Before every outbound HTTP call, `AiClientService.pace(providerId, rpm)` atomically claims the next time slot (`gap = 60000 / rpm` ms) and waits until that slot. Concurrent callers each claim a unique slot, so 5 bulk workers against an RPM-15 provider serialise at 4-second gaps automatically.
+2. **429 retry-with-backoff.** A 429 response from a provider triggers up to 2 in-provider retries (delays `1000ms`, `3000ms`, plus jitter). The `Retry-After` header is honoured if present (seconds). Only after retries exhaust does the chain advance to the next provider. 408 / 5xx still fall through immediately — only 429 retries in place.
+
+Both layers compose: pacing prevents 429s under steady-state load; the backoff is defence-in-depth for transient bursts and for the moment a provider's per-minute window flips over.
 
 ### Build & run
 | Task | Command |

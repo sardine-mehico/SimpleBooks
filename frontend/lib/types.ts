@@ -595,6 +595,7 @@ export type AiProvider = {
   apiKey: string;
   isPrimary: boolean;
   sortOrder: number;
+  requestsPerMinute: number;
   createdAt: string;
   updatedAt: string;
 };

@@ -500,6 +500,7 @@ Configuration page for external LLM providers. Backend module: `ai-providers`. S
 | `apiKey` | string | **yes** | Stored plain; eye-icon toggle to show/hide in the UI |
 | `isPrimary` | bool | auto | Exactly one provider (or none) is primary at a time |
 | `sortOrder` | int | auto | Lower = tried earlier in the fallback chain. Managed via `[↑]` / `[↓]` arrows on backup cards. |
+| `requestsPerMinute` | int | **yes** | Default `15`. Per-provider self-pacing ceiling used by `AiClientService.pace()` — bulk and inline calls share a single per-provider gate so the effective outbound rate stays under this RPM. Tier hint shown next to the input: `~15 free, ~60 paid lite, ~1000 paid`. |
 
 #### Page layout
 One card per provider. Each card contains Name / Model / API Base URL / API Key fields, with:

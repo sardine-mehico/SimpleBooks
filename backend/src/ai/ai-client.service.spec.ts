@@ -37,10 +37,11 @@ function mockFetch(responses: Array<{ status?: number; body?: any; throws?: Erro
   });
 }
 
+// requestsPerMinute=6000 makes pacing effectively a 10ms gap — keeps tests fast.
 const providers = [
-  { id: 'p1', name: 'Primary',  model: 'm', apiBaseUrl: 'http://p1', apiKey: 'k1', isPrimary: true,  sortOrder: 0 },
-  { id: 'p2', name: 'Backup-2', model: 'm', apiBaseUrl: 'http://p2', apiKey: 'k2', isPrimary: false, sortOrder: 1000 },
-  { id: 'p3', name: 'Backup-3', model: 'm', apiBaseUrl: 'http://p3', apiKey: 'k3', isPrimary: false, sortOrder: 1010 },
+  { id: 'p1', name: 'Primary',  model: 'm', apiBaseUrl: 'http://p1', apiKey: 'k1', isPrimary: true,  sortOrder: 0,    requestsPerMinute: 6000 },
+  { id: 'p2', name: 'Backup-2', model: 'm', apiBaseUrl: 'http://p2', apiKey: 'k2', isPrimary: false, sortOrder: 1000, requestsPerMinute: 6000 },
+  { id: 'p3', name: 'Backup-3', model: 'm', apiBaseUrl: 'http://p3', apiKey: 'k3', isPrimary: false, sortOrder: 1010, requestsPerMinute: 6000 },
 ];
 
 function makeOkBody(parsed: object) {
@@ -83,17 +84,21 @@ describe('AiClientService.complete', () => {
     expect(prisma._aiCalls[0].httpStatus).toBe(503);
   });
 
-  it('falls through on 408 timeout and 429 rate limit', async () => {
+  it('falls through on 408 timeout and 429 rate limit (with 2 in-provider 429 retries)', async () => {
+    // 429s now retry-with-backoff inside the provider before falling through. With MAX_429_RETRIES=2,
+    // p2 sees 3 × 429 (initial + 2 retries) before the chain advances to p3.
     const prisma = makePrisma(providers);
     const fetch = mockFetch([
-      { status: 408, body: {} },
-      { status: 429, body: {} },
-      { status: 200, body: makeOkBody({}) },
+      { status: 408, body: {} },                  // p1: timeout → fall through immediately
+      { status: 429, body: {} },                  // p2: rate limit (initial)
+      { status: 429, body: {} },                  // p2: rate limit (retry 1)
+      { status: 429, body: {} },                  // p2: rate limit (retry 2) → fall through
+      { status: 200, body: makeOkBody({}) },      // p3: success
     ]);
     const r = await new AiClientService(prisma, fetch as any).complete(makeInput());
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.providerId).toBe('p3');
-  });
+  }, 10_000);
 
   it('falls through on 401 (any HTTP error triggers fallback)', async () => {
     const prisma = makePrisma(providers);

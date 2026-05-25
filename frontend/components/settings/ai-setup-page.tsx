@@ -20,13 +20,14 @@ type Draft = {
   apiBaseUrl: string;
   apiKey: string;
   isPrimary: boolean;
+  requestsPerMinute: number;
   dirty: boolean;       // true once any field has changed since last save
   isNew: boolean;       // true if not yet persisted
   showKey: boolean;     // toggle for the eye icon
 };
 
 function toDraft(p: AiProvider): Draft {
-  return { id: p.id, name: p.name, model: p.model, apiBaseUrl: p.apiBaseUrl, apiKey: p.apiKey, isPrimary: p.isPrimary, dirty: false, isNew: false, showKey: false };
+  return { id: p.id, name: p.name, model: p.model, apiBaseUrl: p.apiBaseUrl, apiKey: p.apiKey, isPrimary: p.isPrimary, requestsPerMinute: p.requestsPerMinute ?? 15, dirty: false, isNew: false, showKey: false };
 }
 
 export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?: { aiMiningThreshold?: number } }) {
@@ -48,16 +49,16 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
     const tempId = `new-${Date.now()}`;
     setDrafts((curr) => [
       ...curr,
-      { id: tempId, name: "New AI Configuration", model: "", apiBaseUrl: "https://api.openai.com/v1", apiKey: "", isPrimary: curr.length === 0, dirty: true, isNew: true, showKey: false },
+      { id: tempId, name: "New AI Configuration", model: "", apiBaseUrl: "https://api.openai.com/v1", apiKey: "", isPrimary: curr.length === 0, requestsPerMinute: 15, dirty: true, isNew: true, showKey: false },
     ]);
   }
 
   async function save(d: Draft) {
     if (d.isNew) {
-      const created = await createAiProvider({ name: d.name, model: d.model, apiBaseUrl: d.apiBaseUrl, apiKey: d.apiKey });
+      const created = await createAiProvider({ name: d.name, model: d.model, apiBaseUrl: d.apiBaseUrl, apiKey: d.apiKey, requestsPerMinute: d.requestsPerMinute });
       setDrafts((curr) => curr.map((x) => (x.id === d.id ? { ...toDraft(created) } : x)));
     } else {
-      const updated = await updateAiProvider(d.id, { name: d.name, model: d.model, apiBaseUrl: d.apiBaseUrl, apiKey: d.apiKey });
+      const updated = await updateAiProvider(d.id, { name: d.name, model: d.model, apiBaseUrl: d.apiBaseUrl, apiKey: d.apiKey, requestsPerMinute: d.requestsPerMinute });
       setDrafts((curr) => curr.map((x) => (x.id === d.id ? { ...toDraft(updated), showKey: x.showKey } : x)));
     }
     router.refresh();
@@ -174,6 +175,17 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
               >
                 {d.showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
+            </div>
+          </Field>
+          <Field label="Requests per minute">
+            <div className="flex items-center gap-3">
+              <Input
+                type="number" min={1} max={10000}
+                value={d.requestsPerMinute}
+                onChange={(e) => update(d.id, { requestsPerMinute: Math.max(1, Math.min(10000, Number(e.target.value) || 1)) })}
+                className="w-28"
+              />
+              <span className="text-xs text-slate-500">~15 free, ~60 paid lite, ~1000 paid</span>
             </div>
           </Field>
 

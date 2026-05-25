@@ -6,9 +6,17 @@ import Ajv from 'ajv';
 // Fetch dependency injection — defaults to global fetch. The spec passes a mock.
 export type FetchFn = typeof fetch;
 
+// 429 retry config. Pacing should prevent 429s in steady state; this is defence-in-depth
+// for transient bursts and for the moment a provider's daily/minute window flips.
+const MAX_429_RETRIES = 2;
+const BACKOFF_MS = [1000, 3000];
+
 @Injectable()
 export class AiClientService {
   private ajv: Ajv;
+  // Per-provider next-available timestamp for RPM self-pacing. Slots are atomically
+  // claimed before the await, so concurrent callers each wait their own gap.
+  private nextAvailableAt = new Map<string, number>();
 
   constructor(
     private prisma: PrismaService,
@@ -22,6 +30,36 @@ export class AiClientService {
     // false` would reject the whole response on a single hallucinated key, wasting the
     // chain. The trade-off is intentional: prefer lenient stripping over strict reject.
     this.ajv = new Ajv({ allErrors: true, strict: false, removeAdditional: 'all' });
+  }
+
+  private async pace(providerId: string, rpm: number) {
+    const gap = Math.ceil(60_000 / Math.max(1, rpm));
+    const now = Date.now();
+    const slot = Math.max(this.nextAvailableAt.get(providerId) ?? 0, now);
+    this.nextAvailableAt.set(providerId, slot + gap);
+    const wait = slot - now;
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  }
+
+  private async pacedFetch(
+    url: string,
+    init: any,
+    provider: { id: string; requestsPerMinute?: number | null },
+  ): Promise<Response> {
+    const rpm = provider.requestsPerMinute ?? 15;
+    let attempt = 0;
+    while (true) {
+      await this.pace(provider.id, rpm);
+      const res = await this.fetchFn(url, init);
+      if (res.status !== 429 || attempt >= MAX_429_RETRIES) return res as any;
+      // Honour Retry-After when present (seconds). Fall back to a fixed schedule.
+      const retryAfter = parseInt((res as any).headers?.get?.('retry-after') ?? '', 10);
+      const wait = Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
+      await new Promise((r) => setTimeout(r, wait + Math.random() * 200));
+      attempt++;
+    }
   }
 
   async complete<T = any>(input: AiCompleteInput): Promise<AiCompleteResult<T>> {
@@ -67,7 +105,7 @@ export class AiClientService {
   }
 
   private async tryProvider<T>(
-    provider: { id: string; apiBaseUrl: string; apiKey: string; model: string },
+    provider: { id: string; apiBaseUrl: string; apiKey: string; model: string; requestsPerMinute?: number | null },
     input: AiCompleteInput,
     validator: ReturnType<Ajv['compile']>,
   ) {
@@ -90,7 +128,7 @@ export class AiClientService {
         },
         temperature: 0,
       };
-      const res = await this.fetchFn(completionsUrl, {
+      const res = await this.pacedFetch(completionsUrl, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${provider.apiKey}`,
@@ -98,7 +136,7 @@ export class AiClientService {
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(input.timeoutMs),
-      } as any);
+      } as any, provider);
 
       const latencyMs = Date.now() - t0;
       const status = res.status;
@@ -132,12 +170,12 @@ export class AiClientService {
           { role: 'user', content: `Your previous response failed validation: ${parsed.error}. Reply again with valid JSON only.` },
         ],
       };
-      const res2 = await this.fetchFn(completionsUrl, {
+      const res2 = await this.pacedFetch(completionsUrl, {
         method: 'POST',
         headers: { Authorization: `Bearer ${provider.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(repairBody),
         signal: AbortSignal.timeout(input.timeoutMs),
-      } as any);
+      } as any, provider);
       const status2 = res2.status;
       const payload2 = await res2.json().catch(() => null as any);
       const raw2 = payload2?.choices?.[0]?.message?.content;
