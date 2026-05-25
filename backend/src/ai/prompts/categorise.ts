@@ -28,7 +28,7 @@ export const CATEGORISE_SCHEMA: JsonSchema = {
 };
 
 export interface CategoriseUserPromptInput {
-  categories: Array<{ id: string; name: string; kind: string; usageCount: number }>;
+  categories: Array<{ id: string; name: string; kind: string; usageCount: number; parentName: string | null }>;
   vendors: Array<{ id: string; name: string; aliases: string[] }>;
   fewShots: Array<{ date: string; amount: string; description: string; categoryName: string }>;
   tx: {
@@ -41,7 +41,10 @@ export interface CategoriseUserPromptInput {
 }
 
 export function buildCategoriseUserPrompt(i: CategoriseUserPromptInput): string {
-  const cats = i.categories.map((c) => `  ${c.id} | ${c.name} | ${c.kind} | ${c.usageCount}`).join('\n');
+  const cats = i.categories.map((c) => {
+    const display = c.parentName ? `${c.parentName} > ${c.name}` : c.name;
+    return `  ${c.id} | ${display} | ${c.kind} | ${c.usageCount}`;
+  }).join('\n');
   const vens = i.vendors.map((v) => `  ${v.id} | ${v.name} | ${v.aliases.join(', ')}`).join('\n');
   const shots = i.fewShots.length
     ? i.fewShots.map((s) => `  ${s.date} | ${s.amount} | ${s.description} | ${s.categoryName}`).join('\n')

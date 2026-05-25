@@ -382,11 +382,23 @@ export class AiCategoriserService {
 
   private async loadCategoriesForPrompt() {
     const cats = await this.prisma.category.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        children: { none: {} }, // leaves only
+      },
       orderBy: { name: 'asc' },
-      include: { _count: { select: { transactions: true } } },
+      include: {
+        _count: { select: { transactions: true } },
+        parent: { select: { name: true } },
+      },
     });
-    return cats.map((c) => ({ id: c.id, name: c.name, kind: c.kind, usageCount: c._count.transactions }));
+    return cats.map((c) => ({
+      id: c.id,
+      name: c.name,
+      kind: c.kind,
+      usageCount: c._count.transactions,
+      parentName: c.parent?.name ?? null,
+    }));
   }
 
   private async loadVendorsForPrompt() {
