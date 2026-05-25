@@ -74,7 +74,7 @@ export function ImportCsvDialog({ accountId, onClose }: { accountId: string; onC
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {stage === "choose" && "Import CSV"}

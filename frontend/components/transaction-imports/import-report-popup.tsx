@@ -95,7 +95,7 @@ export function ImportReportPopup({ data, onClose }: { data: ImportReport; onClo
       )}
 
       <Section title="Imported" count={data.imported.length} defaultOpen={false}>
-        <ul className="divide-y divide-slate-100 text-xs">
+        <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto text-xs">
           {data.imported.map((r, i) => (
             <li key={i} className="grid grid-cols-[110px_1fr_110px] gap-3 px-4 py-2">
               <span className="text-slate-600">{r.date}</span>
@@ -107,7 +107,7 @@ export function ImportReportPopup({ data, onClose }: { data: ImportReport; onClo
       </Section>
 
       <Section title="Duplicates (skipped)" count={data.duplicates.length} defaultOpen={data.duplicates.length > 0}>
-        <ul className="divide-y divide-slate-100 text-xs">
+        <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto text-xs">
           {data.duplicates.map((r, i) => (
             <li key={i} className="grid grid-cols-[110px_1fr_110px_auto] gap-3 px-4 py-2">
               <span className="text-slate-600">{r.date}</span>
@@ -125,7 +125,7 @@ export function ImportReportPopup({ data, onClose }: { data: ImportReport; onClo
       </Section>
 
       <Section title="Failed" count={data.failed.length} defaultOpen={data.failed.length > 0}>
-        <ul className="divide-y divide-slate-100 text-xs">
+        <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto text-xs">
           {data.failed.map((r, i) => (
             <li key={i} className="grid grid-cols-[60px_1fr] gap-3 px-4 py-2">
               <span className="text-slate-500">#{r.rowIndex + 1}</span>
