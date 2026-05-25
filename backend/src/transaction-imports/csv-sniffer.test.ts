@@ -39,3 +39,29 @@ run('Style B (debit + credit) detected when no signed column dominates', () => {
   assert.ok(s.mapping.columns.includes('credit'));
   assert.ok(!s.mapping.columns.includes('amount'));
 });
+
+run('Overdraft balance does not flip the amount/balance assignment', () => {
+  // Real-world: account dips negative. Both columns have mixed signs.
+  // Today's signPurity heuristic gets this wrong; arithmetic identity fixes it.
+  const buf = Buffer.from(
+    '02/03/2026,"-87.12","Direct Debit foo","+1759.99"\n' +
+    '02/03/2026,"+1899.44","Direct Credit bar","+1847.11"\n' +
+    '01/03/2026,"-0.53","Excess Interest","-52.33"\n' +
+    '23/02/2026,"-300.00","Transfer out","-51.80"\n' +
+    '23/02/2026,"+300.00","Transfer in","+248.20"\n' +
+    '08/02/2026,"-55.00","Office rent","-51.80"\n',
+  );
+  const s = sniffCsv(buf);
+  assert.deepEqual(s.mapping.columns, ['date', 'amount', 'description', 'balance']);
+});
+
+run('Swapped column order is correctly identified by arithmetic check', () => {
+  // Same data as the first SAMPLE test, but columns reordered: date, balance, desc, amount.
+  const buf = Buffer.from(
+    '09/05/2026,"+7510.46","Transfer from DANIEL LIM","+422.04"\n' +
+    '08/05/2026,"+7088.42","Transfer To Mani Dawa","-1750.00"\n' +
+    '07/05/2026,"+10384.42","Direct Debit PAYPAL","-538.43"\n',
+  );
+  const s = sniffCsv(buf);
+  assert.deepEqual(s.mapping.columns, ['date', 'balance', 'description', 'amount']);
+});

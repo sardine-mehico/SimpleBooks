@@ -118,26 +118,65 @@ export function sniffCsv(buffer: Buffer): MappingSuggestion {
     reasoning.push(`Col ${dateIdx}: date in ${dateFmt} (score ${bestDate.toFixed(2)})`);
   }
 
-  // Amount candidates = columns with amountScore > 0.8 that aren't the date column.
   const amountCandidates = colScores
     .map((s, c) => ({ c, s }))
     .filter(({ c, s }) => c !== dateIdx && s.amount > 0.8)
     .sort((a, b) => b.s.amount - a.s.amount);
 
   if (amountCandidates.length >= 2) {
-    // Pick the most-likely balance column = highest balanceScore among the candidates.
-    const balancePick = [...amountCandidates].sort((a, b) => b.s.balance - a.s.balance)[0];
-    // Pick amount = the candidate with the LOWEST balance score (transactions
-    // jump up and down; running balance trends).
-    const remaining = amountCandidates.filter((x) => x.c !== balancePick.c);
-    const amountPick = remaining[0];
-    if (balancePick.s.balance > 0.7) {
-      roles[balancePick.c] = 'balance';
-      reasoning.push(`Col ${balancePick.c}: running balance (changes every row)`);
+    // Score every (amountCol, balanceCol) ordered pair by how often the
+    // arithmetic identity balance[n+1] - balance[n] ≈ amount[n+1] holds.
+    // Tolerance: 1 cent. Strong signal — survives overdrafts where signPurity fails.
+    const parseNum = (s: string) =>
+      Number((s ?? '').replace(/^"|"$/g, '').replace(/^\+/, '').replace(/,/g, ''));
+    const colValues = (c: number) => dataRows.map((r) => parseNum(r[c] ?? ''));
+
+    function identityScore(amountCol: number, balanceCol: number): number {
+      const a = colValues(amountCol);
+      const b = colValues(balanceCol);
+      if (b.length < 2) return 0;
+      // Check both row orderings — CSVs commonly arrive reverse-chronological.
+      // Forward (oldest first): balance[i] - balance[i-1] ≈ amount[i].
+      // Reverse (newest first): balance[i-1] - balance[i] ≈ amount[i-1].
+      let fwd = 0;
+      let rev = 0;
+      for (let i = 1; i < b.length; i++) {
+        if (Math.abs(b[i] - b[i - 1] - a[i]) < 0.01) fwd++;
+        if (Math.abs(b[i - 1] - b[i] - a[i - 1]) < 0.01) rev++;
+      }
+      return Math.max(fwd, rev) / (b.length - 1);
     }
-    if (amountPick) {
-      roles[amountPick.c] = 'amount';
-      reasoning.push(`Col ${amountPick.c}: signed amount`);
+
+    let bestPair: { amountCol: number; balanceCol: number; score: number } | null = null;
+    for (const { c: amountCol } of amountCandidates) {
+      for (const { c: balanceCol } of amountCandidates) {
+        if (amountCol === balanceCol) continue;
+        const score = identityScore(amountCol, balanceCol);
+        if (!bestPair || score > bestPair.score) {
+          bestPair = { amountCol, balanceCol, score };
+        }
+      }
+    }
+
+    if (bestPair && bestPair.score >= 0.5) {
+      roles[bestPair.amountCol] = 'amount';
+      roles[bestPair.balanceCol] = 'balance';
+      reasoning.push(`Col ${bestPair.amountCol}: signed amount`);
+      reasoning.push(`Col ${bestPair.balanceCol}: running balance (arithmetic identity score ${bestPair.score.toFixed(2)})`);
+    } else {
+      // Fall back to the old heuristic when arithmetic check is inconclusive
+      // (e.g. CSV rows aren't in date order — identity won't hold).
+      const balancePick = [...amountCandidates].sort((a, b) => b.s.balance - a.s.balance)[0];
+      const remaining = amountCandidates.filter((x) => x.c !== balancePick.c);
+      const amountPick = remaining[0];
+      if (balancePick.s.balance > 0.7) {
+        roles[balancePick.c] = 'balance';
+        reasoning.push(`Col ${balancePick.c}: running balance (changes every row)`);
+      }
+      if (amountPick) {
+        roles[amountPick.c] = 'amount';
+        reasoning.push(`Col ${amountPick.c}: signed amount`);
+      }
     }
   } else if (amountCandidates.length === 1) {
     roles[amountCandidates[0].c] = 'amount';
