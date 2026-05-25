@@ -408,10 +408,9 @@ model Account {
 }
 
 // A single bank-statement line. `amount` is SIGNED (negative=debit,
-// positive=credit). `runningBalance` is the bank-supplied figure for the
-// row when the CSV exposes it; nullable so manual entries and bank formats
-// without a balance column still fit. `importHash` is the dedupe key —
-// sha256 of date|amount.toFixed(2)|normaliseDesc(description)|runningBalance,
+// positive=credit). Balance is derived (Account.openingBalance + Σ amount)
+// at query time via a window function — not stored. `importHash` is the
+// dedupe key — sha256 of date|amount.toFixed(2)|normaliseDesc(description),
 // uniqued per account.
 model Transaction {
   id              String   @id @default(uuid())
@@ -421,7 +420,6 @@ model Transaction {
   date            DateTime @db.Date
   amount          Decimal  @db.Decimal(14, 2)
   description     String
-  runningBalance  Decimal? @db.Decimal(14, 2)
 
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
