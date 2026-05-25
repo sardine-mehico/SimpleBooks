@@ -30,6 +30,7 @@ describe('AiCategoriserService.suggest', () => {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(async ({ data }: any) => { const row = { id: 'e1', createdAt: new Date(), ...data }; created.push(row); return row; }),
       },
+      aiProvider: { findUnique: jest.fn().mockResolvedValue({ name: 'Test Provider' }) },
     };
     const ai: any = {
       complete: jest.fn().mockResolvedValue({ ok: true, data: { categoryId: 'cat1', vendorId: null, confidence: 'high', reasoning: 'ok' }, providerId: 'prov-1', attempts: 1, promptTokens: 10, completionTokens: 5 }),

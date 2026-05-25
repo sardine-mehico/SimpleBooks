@@ -24,6 +24,7 @@ export interface AiDraftView {
   confidence: AiConfidence;
   reasoning: string;
   providerId: string | null;
+  providerName: string | null;
   createdAt: string;
 }
 
@@ -123,6 +124,10 @@ export class AiCategoriserService {
       },
     });
 
+    const providerName = result.providerId
+      ? (await this.prisma.aiProvider.findUnique({ where: { id: result.providerId }, select: { name: true } }))?.name ?? null
+      : null;
+
     return {
       kind: 'fresh',
       draft: {
@@ -134,6 +139,7 @@ export class AiCategoriserService {
         confidence,
         reasoning,
         providerId: result.providerId,
+        providerName,
         createdAt: event.createdAt.toISOString(),
       },
     };
@@ -315,6 +321,7 @@ export class AiCategoriserService {
       where: { source: 'AI_DRAFT' },
       orderBy: { createdAt: 'desc' },
       take: 1000,
+      include: { provider: { select: { id: true, name: true } } },
     });
     const resolutions = await this.prisma.categorisationEvent.findMany({
       where: { source: { in: ['AI_APPLIED', 'AI_REJECTED'] } },
@@ -346,7 +353,8 @@ export class AiCategoriserService {
         vendorName: d.newVendorId ? ven.get(d.newVendorId) ?? null : null,
         confidence: 'med', // confidence isn't stored on the event; conservative default for the queue
         reasoning: d.reasoning ?? '',
-        providerId: null,
+        providerId: d.provider?.id ?? null,
+        providerName: d.provider?.name ?? null,
         createdAt: d.createdAt.toISOString(),
       });
       if (out.length >= 500) break;
@@ -359,6 +367,7 @@ export class AiCategoriserService {
     const draft = await this.prisma.categorisationEvent.findFirst({
       where: { transactionId, source: 'AI_DRAFT' },
       orderBy: { createdAt: 'desc' },
+      include: { provider: { select: { name: true } } },
     });
     if (!draft) return null;
     const later = await this.prisma.categorisationEvent.findFirst({
@@ -380,6 +389,7 @@ export class AiCategoriserService {
       confidence: 'med',
       reasoning: draft.reasoning ?? '',
       providerId: draft.providerId,
+      providerName: (draft as any).provider?.name ?? null,
       createdAt: draft.createdAt.toISOString(),
     };
   }
