@@ -326,6 +326,7 @@ export type Transaction = {
   category?: { id: string; name: string; kind: CategoryKind } | null;
   vendor?: { id: string; name: string } | null;
   splits?: Array<{ id: string; categoryId: string; amount: string | number; notes?: string | null }>;
+  categorisationProvenance?: CategorisationProvenance;
 };
 
 export type TransactionListResponse = {
@@ -439,8 +440,21 @@ export type Category = {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
-  _count?: { transactions: number; transactionSplits?: number; rules?: number };
+  parentId: string | null;
+  _count?: {
+    transactions: number;
+    transactionSplits: number;
+    rules: number;
+    children: number;
+  };
 };
+
+export type CategorisationProvenance = {
+  source: 'USER' | 'AI_APPLIED' | 'RULE';
+  at: string;
+  providerName: string | null;
+  ruleName: string | null;
+} | null;
 
 export type VendorKind = 'MERCHANT' | 'PERSON' | 'CUSTOMER' | 'BANK' | 'OTHER';
 export const VENDOR_KINDS: { value: VendorKind; label: string }[] = [
@@ -612,6 +626,7 @@ export interface AiDraftView {
   confidence: AiConfidence;
   reasoning: string;
   providerId: string | null;
+  providerName: string | null;
   createdAt: string;
 }
 

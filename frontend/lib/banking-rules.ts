@@ -6,11 +6,13 @@ import type {
 
 // ── Categories ──────────────────────────────────────────────────────
 export const listCategories = () => apiClient.get<Category[]>('/categories');
-export const createCategory = (data: { name: string; kind: CategoryKind; sortOrder?: number; isActive?: boolean }) =>
+export const createCategory = (data: { name: string; kind: CategoryKind; sortOrder?: number; isActive?: boolean; parentId?: string | null }) =>
   apiClient.post<Category>('/categories', data);
-export const updateCategory = (id: string, data: Partial<{ name: string; kind: CategoryKind; sortOrder: number; isActive: boolean }>) =>
+export const updateCategory = (id: string, data: Partial<{ name: string; kind: CategoryKind; sortOrder: number; isActive: boolean; parentId: string | null }>) =>
   apiClient.patch<Category>(`/categories/${id}`, data);
 export const deleteCategory = (id: string) => apiClient.delete<{ ok: true }>(`/categories/${id}`);
+export const splitCategory = (id: string) =>
+  apiClient.post<{ alreadyGroup: boolean; child: { id: string; name: string; parentId: string } | null; migratedCount: number }>(`/categories/${id}/split`);
 
 // ── Vendors ──────────────────────────────────────────────────────────
 export const listVendors = (includeInactive = false) =>
