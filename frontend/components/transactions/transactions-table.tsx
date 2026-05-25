@@ -351,7 +351,7 @@ export function TransactionsTable({
     { key: "description", label: "Description", sortable: true, width: "2fr" },
     { key: "category", label: "Category", sortable: false, width: "1fr" },
     { key: "amount", label: "Amount", align: "right", sortable: true, width: "1fr" },
-    { key: "runningBalance", label: "Balance", align: "right", sortable: true, width: "1fr" },
+    { key: "runningBalance", label: "Balance", align: "right", sortable: false, width: "1fr" },
   ];
   if (mode === "global") {
     cols.push({ key: "vendor", label: "Vendor", sortable: false, width: "1fr" });

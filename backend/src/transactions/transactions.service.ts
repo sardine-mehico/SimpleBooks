@@ -115,7 +115,38 @@ export class TransactionsService {
       this.prisma.transaction.count({ where }),
     ]);
 
-    return { items, totalCount, page, pageSize };
+    // Compute per-row running balance via window function over the UNFILTERED
+    // per-account history. We use raw SQL because Prisma's query builder can't
+    // express SUM(...) OVER (PARTITION BY ... ORDER BY ...). The window runs over
+    // all rows of the relevant accounts so the balance is correct for the
+    // visible page regardless of date/category/q filters or pagination.
+    //
+    // Same-day order tiebreaker is (id ASC) — deterministic but arbitrary;
+    // for same-day rows the per-row balance may not match the bank's statement
+    // ordering. Documented in CLAUDE.md known-gotchas.
+    const visibleIds = items.map((i) => i.id);
+    let balancesById = new Map<string, string>();
+    if (visibleIds.length > 0) {
+      const accountIds = Array.from(new Set(items.map((i) => i.accountId)));
+      const balanceRows = await this.prisma.$queryRaw<Array<{ id: string; running_balance: string }>>`
+        SELECT id, running_balance::text AS running_balance FROM (
+          SELECT t.id, a."openingBalance" + SUM(t.amount) OVER (
+            PARTITION BY t."accountId" ORDER BY t.date ASC, t.id ASC
+          ) AS running_balance
+          FROM "Transaction" t
+          JOIN "Account" a ON a.id = t."accountId"
+          WHERE t."accountId" = ANY(${accountIds}::text[])
+        ) AS x
+        WHERE id = ANY(${visibleIds}::text[])
+      `;
+      balancesById = new Map(balanceRows.map((r) => [r.id, r.running_balance]));
+    }
+    const itemsWithBalance = items.map((i) => ({
+      ...i,
+      runningBalance: balancesById.get(i.id) ?? null,
+    }));
+
+    return { items: itemsWithBalance, totalCount, page, pageSize };
   }
 
   async stats(accountIds?: string[]) {
