@@ -170,8 +170,10 @@ export class TransactionImportsService {
           `Import sanity check failed: expected ${expectedLanded} rows to land ` +
           `(${batchHashes.size} distinct hashes in batch minus ${preexisting} ` +
           `already in DB) but ${landedForThisImport} actually landed for importId ` +
-          `${importRow.id}. This means rows were silently dropped by the database. ` +
-          `The import has been rolled back.`,
+          `${importRow.id}. Rows were silently dropped — likely a concurrent ` +
+          `import of the same data, or a database-level constraint we don't ` +
+          `know about. The import has been rolled back; retry if you believe ` +
+          `it was a transient race.`,
         );
       }
 
