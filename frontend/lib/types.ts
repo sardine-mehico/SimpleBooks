@@ -596,6 +596,7 @@ export type AiProvider = {
   isPrimary: boolean;
   sortOrder: number;
   requestsPerMinute: number;
+  isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 };

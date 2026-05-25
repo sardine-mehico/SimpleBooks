@@ -4,7 +4,7 @@ import type { AiProvider } from './types';
 export const listAiProviders = () => apiClient.get<AiProvider[]>('/ai-providers');
 export const createAiProvider = (data: { name: string; model: string; apiBaseUrl: string; apiKey: string; isPrimary?: boolean; requestsPerMinute?: number }) =>
   apiClient.post<AiProvider>('/ai-providers', data);
-export const updateAiProvider = (id: string, data: Partial<{ name: string; model: string; apiBaseUrl: string; apiKey: string; requestsPerMinute: number }>) =>
+export const updateAiProvider = (id: string, data: Partial<{ name: string; model: string; apiBaseUrl: string; apiKey: string; requestsPerMinute: number; isEnabled: boolean }>) =>
   apiClient.patch<AiProvider>(`/ai-providers/${id}`, data);
 export const setAiProviderPrimary = (id: string) =>
   apiClient.patch<AiProvider>(`/ai-providers/${id}/set-primary`, {});
