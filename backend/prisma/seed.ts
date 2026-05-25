@@ -526,11 +526,10 @@ async function main() {
     { name: 'Other — Uncategorised review', kind: 'OTHER' as const, sortOrder: 999 },
   ];
   for (const c of CATEGORIES) {
-    await prisma.category.upsert({
-      where: { name: c.name },
-      update: {},
-      create: c,
-    });
+    const existing = await prisma.category.findFirst({ where: { name: c.name, parentId: null } });
+    if (!existing) {
+      await prisma.category.create({ data: c });
+    }
   }
 
   // ── Vendors (Banking Phase B) ────────────────────────────────────────────

@@ -528,16 +528,21 @@ enum EventSource {
 
 model Category {
   id        String       @id @default(uuid())
-  name      String       @unique
+  name      String       // was @unique — replaced by service-layer sibling-scoped check
   kind      CategoryKind
   isActive  Boolean      @default(true)
   sortOrder Int          @default(100)
+  parentId  String?      // NEW — self-referential FK; null for top-level
+  parent    Category?    @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Category[]   @relation("CategoryHierarchy")
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
   transactions      Transaction[]
   transactionSplits TransactionSplit[]
   rules             Rule[]
+
+  @@index([parentId])
 }
 
 model Vendor {
@@ -626,9 +631,12 @@ model AiProvider {
   apiKey     String                          // stored plain (matches existing customSmtpPassword pattern)
   isPrimary  Boolean  @default(false)
   sortOrder  Int      @default(1000)
+  requestsPerMinute Int @default(15)   // per-provider self-pacing ceiling. Tier hints: ~15 free, ~60 paid lite, ~1000 paid.
+  isEnabled  Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   calls      AiCall[]
+  events     CategorisationEvent[]
   @@index([isPrimary, sortOrder])
 }
 
@@ -649,11 +657,15 @@ model CategorisationEvent {
   acceptedAiSuggestion Boolean?
   reasoning String?
 
+  providerId String?
+  provider   AiProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
   createdAt     DateTime    @default(now())
 
   @@index([transactionId])
   @@index([source, createdAt])
   @@index([ruleId])
+  @@index([providerId])
 }
 
 enum AiCallPurpose {
