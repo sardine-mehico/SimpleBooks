@@ -53,6 +53,10 @@ run('Overdraft balance does not flip the amount/balance assignment', () => {
   );
   const s = sniffCsv(buf);
   assert.deepEqual(s.mapping.columns, ['date', 'amount', 'description', 'balance']);
+  assert.ok(
+    s.reasoning.some((r) => r.includes('arithmetic identity score')),
+    'expected arithmetic-identity code path to fire; reasoning: ' + JSON.stringify(s.reasoning),
+  );
 });
 
 run('Swapped column order is correctly identified by arithmetic check', () => {
@@ -64,4 +68,23 @@ run('Swapped column order is correctly identified by arithmetic check', () => {
   );
   const s = sniffCsv(buf);
   assert.deepEqual(s.mapping.columns, ['date', 'balance', 'description', 'amount']);
+  assert.ok(
+    s.reasoning.some((r) => r.includes('arithmetic identity score')),
+    'expected arithmetic-identity code path to fire; reasoning: ' + JSON.stringify(s.reasoning),
+  );
+});
+
+run('Forward-chronological CSV is identified by arithmetic check', () => {
+  // Oldest first; the forward branch of identityScore should fire.
+  const buf = Buffer.from(
+    '07/05/2026,"-538.43","row1","+10384.42"\n' +
+    '08/05/2026,"-1750.00","row2","+8634.42"\n' +
+    '09/05/2026,"+422.04","row3","+9056.46"\n',
+  );
+  const s = sniffCsv(buf);
+  assert.deepEqual(s.mapping.columns, ['date', 'amount', 'description', 'balance']);
+  assert.ok(
+    s.reasoning.some((r) => r.includes('arithmetic identity score')),
+    'expected arithmetic-identity code path to fire; reasoning: ' + JSON.stringify(s.reasoning),
+  );
 });
