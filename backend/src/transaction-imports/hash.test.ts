@@ -1,22 +1,16 @@
 import { strict as assert } from 'node:assert';
-import { createHash } from 'node:crypto';
 import { rowImportHash } from './hash';
-import { normaliseDesc } from './csv-parser.service';
 
 function run(name: string, fn: () => void) {
   try { fn(); console.log(`PASS ${name}`); }
   catch (e) { console.error(`FAIL ${name}`); console.error(e); process.exitCode = 1; }
 }
 
-function expectedHash(date: string, amount: string, desc: string, ordinal: number): string {
-  const payload = [date, amount, normaliseDesc(desc), String(ordinal)].join('|');
-  return createHash('sha256').update(payload).digest('hex');
-}
-
-run('Hash includes ordinal in payload', () => {
+run('Hash includes ordinal in payload (golden value)', () => {
+  // Golden: sha256("2024-11-25|667.33|m residential|1")
+  // Recompute with: echo -n "2024-11-25|667.33|m residential|1" | sha256sum
   const got = rowImportHash('2024-11-25', '667.33', 'M RESIDENTIAL', 1);
-  const want = expectedHash('2024-11-25', '667.33', 'M RESIDENTIAL', 1);
-  assert.equal(got, want);
+  assert.equal(got, '92509273e53497d801639bef7cf992ad2fe90c494b883df0555eca5d35eaf3fd');
 });
 
 run('Same row with different ordinals produces different hashes', () => {
