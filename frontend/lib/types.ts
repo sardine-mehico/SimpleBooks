@@ -315,7 +315,6 @@ export type Transaction = {
   date: string;
   amount: string;
   description: string;
-  runningBalance?: string | null;
   importHash: string;
   importId?: string | null;
   categoryId?: string | null;

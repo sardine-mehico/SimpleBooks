@@ -20,11 +20,6 @@ function fmtAmount(amount: string | number): string {
   return `${sign}$${Math.abs(n).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtBalance(amount: string | number | null | undefined): string {
-  if (amount == null) return "—";
-  return `$${Number(amount).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 export function TransactionEditModal({
   transaction,
   categories,
@@ -140,10 +135,6 @@ export function TransactionEditModal({
             <div className="col-span-2">
               <div className="text-slate-500">Description</div>
               <div className="text-slate-800">{transaction.description}</div>
-            </div>
-            <div>
-              <div className="text-slate-500">Balance</div>
-              <div className="font-mono text-slate-800">{fmtBalance(transaction.runningBalance)}</div>
             </div>
             <div>
               <div className="text-slate-500">Account</div>
