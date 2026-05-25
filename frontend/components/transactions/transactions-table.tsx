@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Filter, ChevronUp, ChevronDown, ChevronsUpDown, Sparkles, Trash2, X, RefreshCw, Check } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -32,7 +32,7 @@ import { BulkAiCategoriseDialog } from "./bulk-ai-categorise-dialog";
 import { TransactionRowMenu } from "./transaction-row-menu";
 import { ApplyPaymentModal } from "@/components/payments/apply-payment-modal";
 
-type SortKey = "date" | "amount" | "description";
+type SortKey = "date" | "amount" | "description" | "runningBalance";
 
 // Category select value encoding:
 //   '__any__'              => Any category (no filter)
@@ -345,13 +345,13 @@ export function TransactionsTable({
     router.replace(`${pathname}?${params.toString()}`);
   }
 
-  const cols: Array<{ key: SortKey | "account" | "category" | "vendor" | "actions" | "select" | "computedBalance"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
+  const cols: Array<{ key: SortKey | "account" | "category" | "vendor" | "actions" | "select"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
     { key: "select", label: "", sortable: false, width: "40px" },
     { key: "date", label: "Date", sortable: true, width: "110px" },
     { key: "description", label: "Description", sortable: true, width: "2fr" },
     { key: "category", label: "Category", sortable: false, width: "1fr" },
     { key: "amount", label: "Amount", align: "right", sortable: true, width: "1fr" },
-    { key: "computedBalance", label: "Balance", align: "right", sortable: false, width: "1fr" },
+    { key: "runningBalance", label: "Balance", align: "right", sortable: true, width: "1fr" },
   ];
   if (mode === "global") {
     cols.push({ key: "vendor", label: "Vendor", sortable: false, width: "1fr" });
@@ -376,33 +376,6 @@ export function TransactionsTable({
   const sortedCategories = [...categories].sort((a, b) =>
     a.sortOrder !== b.sortOrder ? a.sortOrder - b.sortOrder : a.name.localeCompare(b.name),
   );
-
-  const rowsWithBalance = useMemo(() => {
-    // Sort chronologically (oldest first, id-asc as deterministic tiebreaker),
-    // running cumulative sum forward from each row's account openingBalance.
-    // Returned shape is the same array of rows with a synthetic
-    // `computedBalance` field. Same-day order is arbitrary but deterministic.
-    const openingByAccountId = new Map<string, number>(
-      accounts.map((a) => [a.id, Number(a.openingBalance)]),
-    );
-    const chrono = [...rows].sort((a, b) => {
-      if (a.accountId !== b.accountId) return a.accountId < b.accountId ? -1 : 1;
-      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-      return a.id < b.id ? -1 : 1;
-    });
-    const runningByAccount = new Map<string, number>();
-    const balanceById = new Map<string, number>();
-    for (const t of chrono) {
-      const current = runningByAccount.get(t.accountId) ?? (openingByAccountId.get(t.accountId) ?? 0);
-      const next = current + Number(t.amount);
-      runningByAccount.set(t.accountId, next);
-      balanceById.set(t.id, next);
-    }
-    return rows.map((t) => ({
-      ...t,
-      computedBalance: balanceById.get(t.id) ?? (openingByAccountId.get(t.accountId) ?? 0),
-    }));
-  }, [rows, accounts]);
 
   return (
     <div className="space-y-4">
@@ -623,7 +596,7 @@ export function TransactionsTable({
           {!loading && rows.length === 0 && (
             <li className="px-5 py-10 text-center text-sm text-slate-400">No transactions for this filter.</li>
           )}
-          {rowsWithBalance.map((t) => {
+          {rows.map((t) => {
             const highlight = searchParams.highlight === t.id;
             const isSelected = selectedIds.has(t.id);
             return (
@@ -654,7 +627,9 @@ export function TransactionsTable({
                   </div>
                   <div className="text-right"><TransactionAmountCell amount={t.amount} /></div>
                   <div className="text-right font-mono tabular-nums text-slate-500">
-                    {`$${Number(t.computedBalance).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    {t.runningBalance != null
+                      ? `$${Number(t.runningBalance).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : "—"}
                   </div>
                   {mode === "global" && (
                     <div className="text-xs text-slate-500">{t.vendor?.name ?? "—"}</div>
