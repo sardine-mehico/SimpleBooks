@@ -119,6 +119,7 @@ export class AiCategoriserService {
         newCategoryId: categoryId,
         newVendorId: vendorId,
         reasoning,
+        providerId: result.providerId,
       },
     });
 
@@ -178,6 +179,7 @@ export class AiCategoriserService {
             oldVendorId: tx.vendorId,
             newVendorId: draft.vendorId,
             reasoning: draft.reasoning,
+            providerId: draft.providerId,
           },
         });
       } else if (effective.action === 'edit') {
@@ -197,6 +199,7 @@ export class AiCategoriserService {
             oldVendorId: tx.vendorId,
             newVendorId: chosenVen,
             reasoning: draft.reasoning,
+            providerId: draft.providerId,
           },
         });
       } else {
@@ -207,6 +210,7 @@ export class AiCategoriserService {
             source: 'AI_REJECTED',
             newCategoryId: draft.categoryId,
             reasoning: draft.reasoning,
+            providerId: draft.providerId,
           },
         });
       }
@@ -375,7 +379,7 @@ export class AiCategoriserService {
       vendorName: ven?.name ?? null,
       confidence: 'med',
       reasoning: draft.reasoning ?? '',
-      providerId: null,
+      providerId: draft.providerId,
       createdAt: draft.createdAt.toISOString(),
     };
   }
