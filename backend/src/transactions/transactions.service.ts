@@ -19,7 +19,24 @@ export class TransactionsService {
     });
     if (!tx) throw new NotFoundException();
     const [withBalance] = await this.attachComputedBalance([tx]);
-    return withBalance;
+    const latest = await this.prisma.categorisationEvent.findFirst({
+      where: {
+        transactionId: id,
+        source: { in: ['USER', 'AI_APPLIED', 'RULE'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        provider: { select: { name: true } },
+        rule: { select: { name: true } },
+      },
+    });
+    const categorisationProvenance = latest ? {
+      source: latest.source,
+      at: latest.createdAt.toISOString(),
+      providerName: latest.provider?.name ?? null,
+      ruleName: latest.rule?.name ?? null,
+    } : null;
+    return { ...withBalance, categorisationProvenance };
   }
 
   /**
