@@ -33,3 +33,11 @@ run('Description normalisation is applied before hashing', () => {
   const h2 = rowImportHash('2024-01-01', '5.00', 'foo bar', 1);
   assert.equal(h1, h2);
 });
+
+run('Amount normalisation: "10" and "10.00" produce the same hash', () => {
+  // Locks in the contract that ordinals.ts and hash.ts agree on amount
+  // canonicalisation even if the parser ever changes its output format.
+  const h1 = rowImportHash('2024-01-01', '10', 'X', 1);
+  const h2 = rowImportHash('2024-01-01', '10.00', 'X', 1);
+  assert.equal(h1, h2);
+});
