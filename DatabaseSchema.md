@@ -366,7 +366,7 @@ A bank account the user tracks. Opening balance + opening date anchor the runnin
 | Column | Type | Constraints |
 |---|---|---|
 | `id` | UUID | PK |
-| `name` | string | |
+| `name` | string | **UNIQUE** (`@unique`, btree index `Account_name_key`). The application service enforces case-insensitive uniqueness on the trimmed value before insert/update; the DB constraint is the case-sensitive backstop. |
 | `bank` | string | |
 | `accountNumber` | string? | |
 | `accountTypeId` | UUID | FK → `AccountType.id` (ON DELETE **RESTRICT**) |

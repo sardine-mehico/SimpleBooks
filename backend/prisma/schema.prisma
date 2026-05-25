@@ -391,7 +391,7 @@ model AccountType {
 // across all transactions. Soft-delete only (isActive).
 model Account {
   id             String      @id @default(uuid())
-  name           String
+  name           String      @unique
   bank           String
   accountNumber  String?
   accountTypeId  String

@@ -37,10 +37,12 @@ export function AccountForm({
   const [openingDate, setOpeningDate] = useState(initial?.openingDate?.slice(0, 10) ?? localIsoDate(new Date()));
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     try {
       const payload = {
         name: name.trim(),
@@ -54,6 +56,15 @@ export function AccountForm({
       if (isEdit) await updateAccount(initial!.id, payload);
       else await createAccount(payload);
       router.push(isEdit ? `/accounts/${initial!.id}` : "/accounts");
+    } catch (e) {
+      // api.ts throws "<status> <path>: <body>"; pull NestJS's friendly message field if present.
+      const raw = (e as Error).message;
+      const bodyMatch = raw.match(/^\d+\s+\S+:\s*(.+)$/s);
+      let display = raw;
+      if (bodyMatch) {
+        try { display = JSON.parse(bodyMatch[1]).message ?? raw; } catch {}
+      }
+      setError(display);
     } finally {
       setSaving(false);
     }
@@ -81,6 +92,11 @@ export function AccountForm({
       rightActions={archiveBtn ?? undefined}
     >
       <Card className="p-6">
+        {error && (
+          <div className="mb-4 rounded-[0.3rem] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
         <form id="account-form" onSubmit={onSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Name" required>
             <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />

@@ -588,7 +588,7 @@ Bank accounts the user tracks. Backend module: `accounts`. Route prefix: `/accou
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `id` | UUID | auto | |
-| `name` | string | **yes** | |
+| `name` | string | **yes** | unique (case-insensitive, includes archived accounts). Service trims whitespace and rejects collisions with `BadRequestException("An account named \"X\" already exists. Account names must be unique.")`. DB-level `@unique` on the trimmed value is the backstop. |
 | `bank` | string | **yes** | |
 | `accountNumber` | string | no | |
 | `accountTypeId` | FK → AccountType | **yes** | |
@@ -599,7 +599,7 @@ Bank accounts the user tracks. Backend module: `accounts`. Route prefix: `/accou
 | `createdAt` / `updatedAt` | datetime | auto | |
 
 #### List page — `/accounts`
-- **Columns:** Account · Bank · Type · Current balance · Transactions count · Status.
+- **Columns:** Account · Current balance · Transactions count · Bank · Type · Status. (Balance + transaction count sit immediately after the account name so the most-watched numbers are next to their label.)
 - **Default sort:** `isActive` desc (Active first), tie-breaker `name` asc.
 
 #### Edit page — `/accounts/[id]` (and `/accounts/new`)

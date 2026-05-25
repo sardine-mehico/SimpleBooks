@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAccountDto, UpdateAccountDto } from './dto';
@@ -6,6 +6,26 @@ import { CreateAccountDto, UpdateAccountDto } from './dto';
 @Injectable()
 export class AccountsService {
   constructor(private prisma: PrismaService) {}
+
+  // Case-insensitive name uniqueness. Active and archived accounts share the
+  // namespace — restoring an archive with the same name as a new account
+  // would otherwise fail at the DB unique index anyway, so we may as well
+  // give a clean error up front.
+  private async assertNameAvailable(name: string, excludeId?: string) {
+    const trimmed = name.trim();
+    const clash = await this.prisma.account.findFirst({
+      where: {
+        name: { equals: trimmed, mode: 'insensitive' },
+        ...(excludeId ? { NOT: { id: excludeId } } : {}),
+      },
+      select: { id: true, name: true },
+    });
+    if (clash) {
+      throw new BadRequestException(
+        `An account named "${clash.name}" already exists. Account names must be unique.`,
+      );
+    }
+  }
 
   async list(includeInactive = false) {
     const rows = await this.prisma.account.findMany({
@@ -56,10 +76,11 @@ export class AccountsService {
     };
   }
 
-  create(data: CreateAccountDto) {
+  async create(data: CreateAccountDto) {
+    await this.assertNameAvailable(data.name);
     return this.prisma.account.create({
       data: {
-        name: data.name,
+        name: data.name.trim(),
         bank: data.bank,
         accountNumber: data.accountNumber,
         accountTypeId: data.accountTypeId,
@@ -73,10 +94,11 @@ export class AccountsService {
 
   async update(id: string, data: UpdateAccountDto) {
     await this.get(id);
+    if (data.name !== undefined) await this.assertNameAvailable(data.name, id);
     return this.prisma.account.update({
       where: { id },
       data: {
-        name: data.name,
+        name: data.name?.trim(),
         bank: data.bank,
         accountNumber: data.accountNumber,
         accountTypeId: data.accountTypeId,

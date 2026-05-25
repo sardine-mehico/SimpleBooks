@@ -20,20 +20,6 @@ const columns: Column<Account>[] = [
     sortValue: (r) => r.name,
   },
   {
-    key: "bank",
-    label: "Bank",
-    render: (r) => <span className="text-slate-600">{r.bank}</span>,
-    width: "1fr",
-    sortValue: (r) => r.bank,
-  },
-  {
-    key: "type",
-    label: "Type",
-    render: (r) => <span className="text-slate-600">{r.accountType?.name ?? "—"}</span>,
-    width: "0.8fr",
-    sortValue: (r) => r.accountType?.name ?? "",
-  },
-  {
     key: "balance",
     label: "Current balance",
     align: "right",
@@ -56,6 +42,20 @@ const columns: Column<Account>[] = [
     ),
     width: "0.7fr",
     sortValue: (r) => r._count?.transactions ?? 0,
+  },
+  {
+    key: "bank",
+    label: "Bank",
+    render: (r) => <span className="text-slate-600">{r.bank}</span>,
+    width: "1fr",
+    sortValue: (r) => r.bank,
+  },
+  {
+    key: "type",
+    label: "Type",
+    render: (r) => <span className="text-slate-600">{r.accountType?.name ?? "—"}</span>,
+    width: "0.8fr",
+    sortValue: (r) => r.accountType?.name ?? "",
   },
   {
     key: "status",
