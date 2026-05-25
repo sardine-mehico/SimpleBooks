@@ -381,7 +381,7 @@ Relations: `transactions Transaction[]`, `imports TransactionImport[]`.
 ---
 
 ### Transaction
-A single bank-statement line. `amount` is SIGNED (negative = debit, positive = credit). `runningBalance` is the bank-supplied figure when the CSV exposes it; nullable so formats without a balance column still fit.
+A single bank-statement line. `amount` is SIGNED (negative = debit, positive = credit). Per-row running balance is **not stored** — it is computed server-side at query time via a SQL window function (`Account.openingBalance + SUM(amount) OVER (PARTITION BY accountId ORDER BY date, id)`) over the unfiltered, unpaginated per-account history and attached to each visible row. See CLAUDE.md gotchas.
 
 Phase B promoted several forward-compat columns to real FKs and added new columns. The `vendorCustomerId` rename to `vendorId` is non-additive — see Known Operational Caveats.
 
@@ -392,14 +392,13 @@ Phase B promoted several forward-compat columns to real FKs and added new column
 | `date` | date | |
 | `amount` | decimal(14,2) | SIGNED — negative = debit, positive = credit |
 | `description` | string | |
-| `runningBalance` | decimal(14,2)? | bank-supplied; nullable |
 | `categoryId` | UUID? | FK → `Category.id` (ON DELETE **RESTRICT**) — Phase B |
 | `vendorId` | UUID? | FK → `Vendor.id` (ON DELETE **SET NULL**) — renamed from `vendorCustomerId` in Phase B |
 | `ruleId` | UUID? | FK → `Rule.id` (ON DELETE **SET NULL**) — the rule that last categorised this row |
 | `categorisedAt` | datetime? | stamped when categoryId is first set or changed by the engine |
 | `notes` | string? | |
 | `paymentReviewDismissedAt` | datetime? | **(Phase D)** Set by the "Not a customer payment" button on the Payments queue. Excludes the row from the default payment-review list; cleared by the Undismiss action. |
-| `importHash` | string | dedupe key — sha256 of `date\|amount.toFixed(2)\|normaliseDesc(description)\|runningBalance` |
+| `importHash` | string | dedupe key — sha256 of `date\|amount.toFixed(2)\|normaliseDesc(description)` |
 | `importId` | UUID? | FK → `TransactionImport.id` (ON DELETE **SET NULL**) |
 | `createdAt` / `updatedAt` | datetime | |
 

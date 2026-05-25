@@ -634,7 +634,6 @@ Read-only list of bank-statement lines. Backend module: `transactions`. Route pr
 | `date` | Transaction date (not import date) |
 | `description` | As imported from the CSV |
 | `amount` | SIGNED decimal — negative = debit, positive = credit |
-| `runningBalance` | Bank-supplied balance after this row; may be null |
 | `accountId` | Parent account |
 | `importHash` | Dedupe key; not shown in UI |
 
@@ -673,7 +672,9 @@ Two-step flow launched from the account detail page:
 3. **Commit** — `POST /transaction-imports/commit` (multipart, 10 MB limit). Inserts rows, deduplicates by `@@unique([accountId, importHash])`, creates a `TransactionImport` record, returns an `ImportReport`.
 4. **`<ImportReportPopup>`** — displays the import summary (rows total / imported / skipped / failed, plus the optional `ruleCategorisation` section). The same component renders on the persisted log detail page at `/settings/import-logs/[id]`.
 
-Duplicate detection hash: sha256 of `date|amount.toFixed(2)|normaliseDesc(description)|runningBalance ?? ''`, uniqued per account.
+Duplicate detection hash: sha256 of `date|amount.toFixed(2)|normaliseDesc(description)`, uniqued per account.
+
+Per-row Balance is computed server-side as `Account.openingBalance + Σ(amount)` and returned by `/transactions` — see CLAUDE.md gotchas.
 
 ---
 
