@@ -77,8 +77,28 @@ export class TransactionImportsService {
     // Compute importHashes for every row up-front.
     const hashed = rows.map((r) => ({
       ...r,
-      importHash: rowImportHash(r.date, r.amount, r.description, r.runningBalance),
+      importHash: rowImportHash(r.date, r.amount, r.description),
     }));
+
+    // Read the parsed rows' balance column for validation only. If present and
+    // arithmetic doesn't hold (balance[last] - balance[first] vs Σ amount[1..]),
+    // emit a warning so the user can spot incomplete/duplicate-source files.
+    function computeBalanceMismatch(): string | null {
+      const withBalance = rows.filter((r) => r.runningBalance !== null);
+      if (withBalance.length < 2) return null;
+      // rows are returned in CSV file order, which for CBA-style exports is
+      // newest-first; sort chronologically before computing the delta.
+      const chrono = [...withBalance].sort((a, b) => a.date.localeCompare(b.date));
+      const first = Number(chrono[0].runningBalance);
+      const last = Number(chrono[chrono.length - 1].runningBalance);
+      const sumAmounts = chrono.slice(1).reduce((acc, r) => acc + Number(r.amount), 0);
+      const diff = last - first - sumAmounts;
+      if (Math.abs(diff) > 0.01) {
+        return `Balance arithmetic mismatch: bank's running balance moved by $${(last - first).toFixed(2)} across ${chrono.length} rows, but the amounts sum to $${sumAmounts.toFixed(2)} (off by $${diff.toFixed(2)}). The file may be incomplete or have duplicate rows.`;
+      }
+      return null;
+    }
+    const balanceWarning = computeBalanceMismatch();
 
     const warnings: string[] = [];
 
@@ -93,6 +113,7 @@ export class TransactionImportsService {
         `This exact file was already imported on ${prior.importedAt.toISOString().slice(0, 10)} (import ${prior.id}). Only new rows will be inserted.`,
       );
     }
+    if (balanceWarning) warnings.push(balanceWarning);
 
     const importedAt = new Date();
 
@@ -120,7 +141,6 @@ export class TransactionImportsService {
           date: new Date(r.date),
           amount: new Prisma.Decimal(r.amount),
           description: r.description,
-          runningBalance: r.runningBalance ? new Prisma.Decimal(r.runningBalance) : null,
           importHash: r.importHash,
           importId: importRow.id,
         })),
