@@ -1,7 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import { ArrayMinSize, IsArray, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 
-const VALID_SORT_KEYS = ['date', 'amount', 'description', 'runningBalance'] as const;
+const VALID_SORT_KEYS = ['date', 'amount', 'description'] as const;
 export type TransactionSortKey = (typeof VALID_SORT_KEYS)[number];
 
 const VALID_CATEGORY_KINDS = ['INCOME', 'EXPENSE', 'TRANSFER', 'OTHER'] as const;
