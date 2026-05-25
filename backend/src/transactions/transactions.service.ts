@@ -249,6 +249,12 @@ export class TransactionsService {
   async setCategory(transactionId: string, data: { categoryId?: string; vendorId?: string; notes?: string }) {
     const tx = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
     if (!tx) throw new NotFoundException();
+    if (data.categoryId) {
+      const childCount = await this.prisma.category.count({ where: { parentId: data.categoryId } });
+      if (childCount > 0) {
+        throw new BadRequestException('Cannot assign a parent category to a transaction. Pick a subcategory.');
+      }
+    }
     const updated = await this.prisma.$transaction(async (db) => {
       const updated = await db.transaction.update({
         where: { id: transactionId },
