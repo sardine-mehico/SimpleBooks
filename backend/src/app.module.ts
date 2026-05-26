@@ -33,6 +33,7 @@ import { CategorisationEventsModule } from './categorisation-events/categorisati
 import { AiProvidersModule } from './ai-providers/ai-providers.module';
 import { AiModule } from './ai/ai.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ReportsModule } from './reports/reports.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
 
@@ -77,6 +78,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
     AiProvidersModule,
     AiModule,
     PaymentsModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}
