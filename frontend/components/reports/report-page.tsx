@@ -178,6 +178,19 @@ export function ReportPage({
               centerTotal={fmtMoney(selectedParent.total)}
               baseColor={drilldownColor}
             />
+          ) : selectedParent ? (
+            <div className="flex h-72 flex-col items-center justify-center gap-1 rounded-lg bg-slate-50 px-6 text-center text-sm">
+              <div className="font-medium text-slate-700">{selectedParent.name}</div>
+              <div className="text-2xl font-semibold text-slate-900">${fmtMoney(selectedParent.total)}</div>
+              <div className="mt-2 italic text-slate-500">no subcategories yet</div>
+              <div className="text-xs text-slate-400">
+                add some from <span className="font-mono">/categories</span> using the
+                {" "}
+                <span className="inline-block rounded border border-slate-300 px-1 text-slate-600">+ Sub</span>
+                {" "}
+                button on this parent
+              </div>
+            </div>
           ) : (
             <div className="flex h-72 flex-col items-center justify-center rounded-lg bg-slate-50 text-sm text-slate-400">
               <div>Click a category slice on the left</div>

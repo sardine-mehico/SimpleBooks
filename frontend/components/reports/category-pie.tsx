@@ -37,7 +37,13 @@ export function CategoryPie({
       const n = Math.max(1, data.length - 1);
       return data.map((_, i) => lighten(baseColor, 0.1 + (i / n) * 0.4));
     }
-    return data.map((_, i) => PALETTE[i % PALETTE.length]);
+    // Uncategorised gets a fixed slate-300 so it's visually distinct from the
+    // first palette colour even when there are 9+ slices (palette is length 8).
+    let paletteIdx = 0;
+    return data.map((d) => {
+      if (d.id === '__uncategorised__') return '#CBD5E1'; // slate-300
+      return PALETTE[paletteIdx++ % PALETTE.length];
+    });
   }, [data, baseColor]);
 
   if (data.length === 0) {
