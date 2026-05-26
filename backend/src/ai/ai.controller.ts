@@ -28,6 +28,19 @@ export class AiController {
     return this.categoriser.bulkSuggest(dto);
   }
 
+  // Literal paths must come BEFORE the :runId parameterised ones — Nest matches
+  // in declaration order, so otherwise "active" would bind to :runId.
+  @Get('bulk-suggest/active')
+  bulkActive() {
+    return this.categoriser.getActiveQueue();
+  }
+
+  @Post('bulk-suggest/active/cancel')
+  @HttpCode(200)
+  bulkActiveCancel() {
+    return this.categoriser.cancelActiveQueue();
+  }
+
   @Get('bulk-suggest/:runId/status')
   bulkStatus(@Param('runId') runId: string) {
     return this.categoriser.getBulkStatus(runId);

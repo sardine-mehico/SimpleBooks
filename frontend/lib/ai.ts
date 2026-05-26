@@ -27,6 +27,21 @@ export function bulkSuggestCancel(runId: string) {
   return api<void>(`/ai/bulk-suggest/${runId}/cancel`, { method: 'POST' });
 }
 
+export type ActiveBulkQueue = {
+  runId: string | null;
+  totals: { totalQueued: number; done: number; ok: number; cached: number; failed: number };
+  pending: Array<{ id: string; date: string; amount: string; description: string; accountName: string | null }>;
+  pendingCount: number;
+};
+
+export function getActiveBulkQueue() {
+  return api<ActiveBulkQueue>('/ai/bulk-suggest/active');
+}
+
+export function cancelActiveBulkQueue() {
+  return api<{ runId: string | null; cancelled: number }>('/ai/bulk-suggest/active/cancel', { method: 'POST' });
+}
+
 export function listReviewQueue() {
   return api<AiDraftView[]>('/ai/review-queue');
 }

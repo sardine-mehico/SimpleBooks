@@ -12,15 +12,17 @@ export interface BulkRun {
   createdAt: number;
   abort: AbortController;
   lastError?: string;   // verbatim message from the most recent failure
+  pendingTxIds: Set<string>;  // transactions not yet processed (drained by the runner)
 }
 
 const runs = new Map<string, BulkRun>();
 
 export const BulkRuns = {
-  create(id: string, totalQueued: number): BulkRun {
+  create(id: string, totalQueued: number, txIds: string[]): BulkRun {
     const run: BulkRun = {
       id, totalQueued, done: 0, ok: 0, cached: 0, failed: 0,
       cancelled: false, createdAt: Date.now(), abort: new AbortController(),
+      pendingTxIds: new Set(txIds),
     };
     runs.set(id, run);
     return run;
@@ -35,5 +37,16 @@ export const BulkRuns = {
   sweep() {
     const cutoff = Date.now() - 60 * 60 * 1000;
     for (const [id, r] of runs) if (r.createdAt < cutoff) runs.delete(id);
+  },
+  // Most-recent active run if any — used by the Queue UI which doesn't track runIds.
+  // "Active" = has unfinished work (pending size > 0) and not cancelled.
+  active(): BulkRun | null {
+    let latest: BulkRun | null = null;
+    for (const r of runs.values()) {
+      if (r.cancelled) continue;
+      if (r.pendingTxIds.size === 0) continue;
+      if (!latest || r.createdAt > latest.createdAt) latest = r;
+    }
+    return latest;
   },
 };

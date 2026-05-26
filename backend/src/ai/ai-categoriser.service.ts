@@ -239,10 +239,11 @@ export class AiCategoriserService {
     }
 
     const runId = randomUUID();
-    const run = BulkRuns.create(runId, ids.length);
+    const txIdArr = ids.map((x) => x.id);
+    const run = BulkRuns.create(runId, txIdArr.length, txIdArr);
 
     // Fire and forget; status polled via BulkRuns.get.
-    void this.runBulk(run, ids.map((x) => x.id), query.force ?? false);
+    void this.runBulk(run, txIdArr, query.force ?? false);
     return { runId, totalQueued: run.totalQueued };
   }
 
@@ -250,7 +251,10 @@ export class AiCategoriserService {
     const r = BulkRuns.get(run.id)!;
     const limit = pLimit(BULK_CONCURRENCY);
     await Promise.all(txIds.map((id) => limit(async () => {
-      if (r.cancelled) return;
+      if (r.cancelled) {
+        r.pendingTxIds.delete(id);
+        return;
+      }
       try {
         const result = await this.suggest(id, { force, timeoutMs: BULK_TIMEOUT_MS });
         if (result.kind === 'fresh') r.ok++;
@@ -264,8 +268,64 @@ export class AiCategoriserService {
         r.lastError = e?.message ?? String(e);
       } finally {
         r.done++;
+        r.pendingTxIds.delete(id);
       }
     })));
+  }
+
+  // Used by GET /ai/bulk-suggest/active to drive the AI Review "Queue" tab.
+  // Returns the most-recent in-flight run with pending transactions enriched
+  // (date, amount, description) so the UI can render them in a list. Capped at
+  // QUEUE_DISPLAY_CAP to keep the payload bounded on huge batches.
+  async getActiveQueue(): Promise<{
+    runId: string | null;
+    totals: { totalQueued: number; done: number; ok: number; cached: number; failed: number };
+    pending: Array<{ id: string; date: string; amount: string; description: string; accountName: string | null }>;
+    pendingCount: number;
+  }> {
+    const run = BulkRuns.active();
+    if (!run) {
+      return { runId: null, totals: { totalQueued: 0, done: 0, ok: 0, cached: 0, failed: 0 }, pending: [], pendingCount: 0 };
+    }
+    const pendingIds = Array.from(run.pendingTxIds);
+    const QUEUE_DISPLAY_CAP = 200;
+    const displayIds = pendingIds.slice(0, QUEUE_DISPLAY_CAP);
+    const rows = await this.prisma.transaction.findMany({
+      where: { id: { in: displayIds } },
+      include: { account: { select: { name: true } } },
+    });
+    // Preserve the original pendingIds order so the user sees items in the order they were queued.
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const pending = displayIds
+      .map((id) => byId.get(id))
+      .filter((r): r is NonNullable<typeof r> => r != null)
+      .map((r) => ({
+        id: r.id,
+        date: r.date.toISOString().slice(0, 10),
+        amount: r.amount.toString(),
+        description: r.description,
+        accountName: r.account?.name ?? null,
+      }));
+    return {
+      runId: run.id,
+      totals: {
+        totalQueued: run.totalQueued,
+        done: run.done,
+        ok: run.ok,
+        cached: run.cached,
+        failed: run.failed,
+      },
+      pending,
+      pendingCount: pendingIds.length,
+    };
+  }
+
+  cancelActiveQueue(): { runId: string | null; cancelled: number } {
+    const run = BulkRuns.active();
+    if (!run) return { runId: null, cancelled: 0 };
+    const remaining = run.pendingTxIds.size;
+    BulkRuns.cancel(run.id);
+    return { runId: run.id, cancelled: remaining };
   }
 
   getBulkStatus(runId: string) {
