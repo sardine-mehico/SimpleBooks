@@ -74,9 +74,14 @@ export function ReportPage({
     };
   }, [kind, from, to, selectedAccountIds.join(",")]);
 
+  const UNCAT_ID = "__uncategorised__";
   const parentSlices = useMemo(() => {
     if (!report) return [];
-    return report.parents.map((p) => ({ id: p.id, name: p.name, total: Number(p.total) }));
+    const slices = report.parents.map((p) => ({ id: p.id, name: p.name, total: Number(p.total) }));
+    if (Number(report.uncategorised) > 0) {
+      slices.push({ id: UNCAT_ID, name: "Uncategorised", total: Number(report.uncategorised) });
+    }
+    return slices;
   }, [report]);
 
   const selectedParent = useMemo(() => {
@@ -161,7 +166,10 @@ export function ReportPage({
             title="By category"
             data={parentSlices}
             centerTotal={report ? fmtMoney(report.grandTotal) : "—"}
-            onSelect={(id) => setSelectedParentId((prev) => (prev === id ? null : id))}
+            onSelect={(id) => {
+              if (id === UNCAT_ID) return;
+              setSelectedParentId((prev) => (prev === id ? null : id));
+            }}
           />
           {selectedParent && selectedParent.children.length > 0 ? (
             <CategoryPie

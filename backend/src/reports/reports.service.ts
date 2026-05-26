@@ -55,7 +55,7 @@ export class ReportsService {
 
     // Account filter fragment.
     const accountFilter = accountIds && accountIds.length > 0
-      ? Prisma.sql`AND t."accountId" = ANY(${accountIds}::uuid[])`
+      ? Prisma.sql`AND t."accountId" = ANY(${accountIds}::text[])`
       : Prisma.empty;
 
     type CatRow = {

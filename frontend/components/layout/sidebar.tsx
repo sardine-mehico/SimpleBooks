@@ -69,7 +69,12 @@ const nav: Group[] = [
     kind: "group",
     label: "Reports",
     icon: ChartBar,
-    items: [{ label: "Statements", href: "/statements" }],
+    defaultOpen: true,
+    items: [
+      { label: "Expense Report", href: "/reports/expense" },
+      { label: "Income Report", href: "/reports/income" },
+      { label: "Statements", href: "/statements" },
+    ],
   },
   { kind: "link", label: "Settings", href: "/settings", icon: GearSix },
 ];
@@ -86,6 +91,8 @@ const subIcons: Record<string, any> = {
   "/vendors": Storefront,
   "/rules": Scales,
   "/statements": FileText,
+  "/reports/expense": ChartBar,
+  "/reports/income": ChartBar,
 };
 
 export function Sidebar() {
