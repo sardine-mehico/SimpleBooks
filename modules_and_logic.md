@@ -912,6 +912,37 @@ On backend boot, `PaymentsService.onModuleInit` runs an idempotent one-shot back
 
 ---
 
+## Reports
+
+### Reports — `/reports/expense`, `/reports/income`
+
+Two report pages, same shape and code path, differing only on the category-kind filter (EXPENSE vs INCOME). Both render inside a single white Card matching the edit-form chrome.
+
+#### Filters (top of the card)
+- **Date range:** two `<Input type="date">` fields. Defaults to financial-year-to-date based on `Preferences.financialYearStart`.
+- **Accounts:** pill-style multi-select with checkbox popover. All accounts pre-selected; "Select all" and "Clear" shortcuts in the popover header.
+
+#### Charts (middle of the card)
+- **Left donut**: category totals across all selected accounts in the period. Clickable slices. Center label shows grand total. Uncategorised transactions appear as their own slate-colored slice so the visual angles match the center total (otherwise the pie would appear 100% categorised even when most transactions are uncategorised).
+- **Right donut**: appears when a left-donut slice is clicked. Shows that category's subcategory totals. Hues are 5 lighter shades derived from the parent slice's base color so the visual grouping is preserved. Click the left slice again to deselect / hide the drill-down. Clicking the uncategorised slice is a no-op (no children to drill into).
+
+#### Table (bottom of the card)
+Two columns — Category, Total. Parents in bold; children indented with a `↳` leading glyph. Uncategorised row in italic slate if non-zero. Bold "Total" footer with a top border. Tabular nums for right-aligned currency.
+
+#### Export to Excel
+Top-right of the page header. Dynamic-imports ExcelJS, rasterizes the left donut SVG to a PNG via canvas, builds a workbook with title + period + embedded chart + data table with `$#,##0.00` formatting.
+
+#### Out of scope (v1)
+P&L (income minus expense in one view), dashboard tile, PDF export, comparison mode, saved date-range presets, refunds / reverse-charges sign handling.
+
+#### Key files
+- Backend: [backend/src/reports/](backend/src/reports/)
+- Frontend page entries: [frontend/app/reports/expense/page.tsx](frontend/app/reports/expense/page.tsx), [frontend/app/reports/income/page.tsx](frontend/app/reports/income/page.tsx)
+- Frontend shared component: [frontend/components/reports/report-page.tsx](frontend/components/reports/report-page.tsx)
+- Excel export: [frontend/lib/export-excel.ts](frontend/lib/export-excel.ts)
+
+---
+
 ## Cross-module conventions
 
 - **DTOs are the source of truth** for input validation. Both HTTP controllers and the Telegram bot run inputs through the same `class-validator` DTOs — never duplicate rules.
