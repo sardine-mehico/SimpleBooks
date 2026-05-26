@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRuleDto, RuleStateDto, UpdateRuleDto } from './dto';
@@ -8,6 +8,13 @@ const PRIORITY_GAP = 10;
 @Injectable()
 export class RulesService {
   constructor(private prisma: PrismaService) {}
+
+  private async assertCategoryIsLeaf(categoryId: string) {
+    const childCount = await this.prisma.category.count({ where: { parentId: categoryId } });
+    if (childCount > 0) {
+      throw new BadRequestException('Cannot point a rule at a parent category. Pick a subcategory.');
+    }
+  }
 
   async list(filter: { state?: RuleStateDto[]; isActive?: boolean } = {}) {
     const where: Prisma.RuleWhereInput = {};
@@ -38,6 +45,7 @@ export class RulesService {
   }
 
   async create(data: CreateRuleDto) {
+    if (data.categoryId) await this.assertCategoryIsLeaf(data.categoryId);
     const maxPriority = (await this.prisma.rule.aggregate({ _max: { priority: true } }))._max.priority ?? (1000 - PRIORITY_GAP);
     return this.prisma.rule.create({
       data: {
@@ -64,6 +72,7 @@ export class RulesService {
 
   async update(id: string, data: UpdateRuleDto) {
     const existing = await this.get(id);
+    if (data.categoryId !== undefined) await this.assertCategoryIsLeaf(data.categoryId);
 
     // Phase C: Save = ratification for AI drafts.
     const ratify = existing.state === 'AI_DRAFTED';

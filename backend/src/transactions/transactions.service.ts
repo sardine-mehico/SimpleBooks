@@ -181,6 +181,12 @@ export class TransactionsService {
   async setSplits(transactionId: string, splits: Array<{ categoryId: string; amount: number; notes?: string }>) {
     const tx = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
     if (!tx) throw new NotFoundException();
+    const parentCategoryCount = await this.prisma.category.count({
+      where: { id: { in: splits.map(s => s.categoryId) }, children: { some: {} } },
+    });
+    if (parentCategoryCount > 0) {
+      throw new BadRequestException('Cannot assign a parent category to a split. Pick a subcategory.');
+    }
     const expected = Number(tx.amount);
     const total = splits.reduce((acc, s) => acc + Number(s.amount), 0);
     if (Math.abs(expected - total) > 0.005) {
