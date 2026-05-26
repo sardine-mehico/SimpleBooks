@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Clock, Scissors } from "lucide-react";
 import { setTransactionCategory } from "@/lib/banking-rules";
+import { getTransaction } from "@/lib/banking";
 import { applyAiSuggestion } from "@/lib/ai";
-import type { AiDraftView, Category, Transaction, Vendor } from "@/lib/types";
+import type { AiDraftView, CategorisationProvenance, Category, Transaction, Vendor } from "@/lib/types";
 import { AiSuggestionBanner } from "./ai-suggestion-banner";
 import { TransactionHistoryDrawer } from "./transaction-history-drawer";
 
@@ -58,6 +59,24 @@ export function TransactionEditModal({
   const [activeDraft, setActiveDraft] = useState<AiDraftView | null>(null);
   const [aiEditMode, setAiEditMode] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [provenance, setProvenance] = useState<CategorisationProvenance>(
+    transaction.categorisationProvenance ?? null
+  );
+
+  useEffect(() => {
+    // Fetch fresh to populate categorisationProvenance which the list endpoint doesn't include.
+    if (!transaction.id) return;
+    let cancelled = false;
+    getTransaction(transaction.id)
+      .then((fresh) => {
+        if (cancelled) return;
+        if (fresh.categorisationProvenance !== undefined) {
+          setProvenance(fresh.categorisationProvenance ?? null);
+        }
+      })
+      .catch(() => { /* leave provenance as is */ });
+    return () => { cancelled = true; };
+  }, [transaction.id]);
 
   useEffect(() => {
     if (!activeDraft || aiEditMode) return;
@@ -179,6 +198,15 @@ export function TransactionEditModal({
                   ))}
                 </SelectContent>
               </Select>
+              {provenance && (
+                <div className="mt-1 text-xs italic text-slate-500">
+                  {provenance.source === 'AI_APPLIED'
+                    ? `Categorised by AI${provenance.providerName ? ` (${provenance.providerName})` : ''} on ${new Date(provenance.at).toLocaleString()}`
+                    : provenance.source === 'RULE'
+                    ? `Categorised by rule${provenance.ruleName ? ` "${provenance.ruleName}"` : ''} on ${new Date(provenance.at).toLocaleString()}`
+                    : `Categorised by user on ${new Date(provenance.at).toLocaleString()}`}
+                </div>
+              )}
             </Field>
             <Field label="Vendor">
               <Select value={vendorId || "__none__"} onValueChange={(v) => setVendorId(v === "__none__" ? "" : v)}>

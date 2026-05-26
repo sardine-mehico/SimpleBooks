@@ -57,6 +57,9 @@ export const listTransactions = (params: {
   return apiClient.get<TransactionListResponse>(`/transactions${qs ? '?' + qs : ''}`);
 };
 
+export const getTransaction = (id: string) =>
+  apiClient.get<Transaction>(`/transactions/${id}`);
+
 export const getTransactionStats = (accountIds?: string[]) => {
   const qs = accountIds?.length ? `?accountIds=${accountIds.join(',')}` : '';
   return apiClient.get<{ total: number; categorised: number; uncategorised: number }>(`/transactions/stats${qs}`);
