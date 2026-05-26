@@ -731,3 +731,15 @@ export type ApplyPaymentResponse = {
     amountOutstanding: string;
   }>;
 };
+
+export type ReportChildRow = { id: string; name: string; total: string };
+export type ReportParentRow = { id: string; name: string; total: string; children: ReportChildRow[] };
+export type ReportResponse = {
+  kind: 'EXPENSE' | 'INCOME';
+  from: string;
+  to: string;
+  accountIds: string[] | null;
+  parents: ReportParentRow[];
+  uncategorised: string;
+  grandTotal: string;
+};
