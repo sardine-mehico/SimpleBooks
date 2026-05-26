@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { applyAiSuggestion, bulkSuggestStatus, listReviewQueue } from "@/lib/ai";
+import { listCategories } from "@/lib/banking-rules";
 import type { AiDraftView, BulkRunStatus, Category, Transaction, Vendor } from "@/lib/types";
 import { api } from "@/lib/api";
+import { CategoryFormDialog } from "@/components/categories/category-form-dialog";
 import { TransactionEditModal } from "./transaction-edit-modal";
 
 type FullTransaction = Transaction & {
@@ -16,6 +18,7 @@ type FullTransaction = Transaction & {
 };
 
 export function AiReviewList({ categories, vendors }: { categories: Category[]; vendors: Vendor[] }) {
+  const router = useRouter();
   const sp = useSearchParams();
   const runId = sp.get("runId");
   const [runStatus, setRunStatus] = useState<BulkRunStatus | null>(null);
@@ -24,6 +27,14 @@ export function AiReviewList({ categories, vendors }: { categories: Category[]; 
   const [busy, setBusy] = useState<string | null>(null);
   const [editingTx, setEditingTx] = useState<FullTransaction | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [parents, setParents] = useState<Category[]>([]);
+
+  useEffect(() => {
+    listCategories().then((cs) =>
+      setParents(cs.filter((c) => c.parentId === null && c.kind !== 'TRANSFER')),
+    );
+  }, []);
 
   useEffect(() => {
     if (!runId) return;
@@ -85,6 +96,11 @@ export function AiReviewList({ categories, vendors }: { categories: Category[]; 
       <div className="flex items-center gap-2">
         <Link href="/transactions" className="text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /></Link>
         <h1 className="text-lg font-semibold">AI Review ({grouped.length} pending)</h1>
+        <div className="ml-auto">
+          <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4" /> Add Category
+          </Button>
+        </div>
       </div>
 
       {grouped.length === 0 && (
@@ -115,6 +131,9 @@ export function AiReviewList({ categories, vendors }: { categories: Category[]; 
                 <span className="ml-2 rounded bg-white/60 px-1.5 py-0.5 text-[10px] uppercase">{d.confidence}</span>
               </div>
               {d.reasoning && <div className="mt-1 italic text-xs opacity-80">&ldquo;{d.reasoning}&rdquo;</div>}
+              <div className="mt-1 text-xs text-slate-500 italic">
+                Suggested by {d.providerName ?? 'AI'} · {new Date(d.createdAt).toLocaleString()}
+              </div>
               <div className="mt-2 flex gap-2">
                 <Button size="sm" onClick={() => act(d, 'accept')} disabled={busy === d.eventId || !d.categoryId}>Accept</Button>
                 <Button size="sm" variant="outline" onClick={() => openEdit(d)} disabled={busy === d.eventId || !tx}>Edit</Button>
@@ -140,6 +159,21 @@ export function AiReviewList({ categories, vendors }: { categories: Category[]; 
           }}
         />
       )}
+
+      <CategoryFormDialog
+        key={dialogOpen ? "open" : "closed"}
+        open={dialogOpen}
+        parents={parents}
+        defaultParentId={null}
+        onClose={() => setDialogOpen(false)}
+        onSaved={() => {
+          setDialogOpen(false);
+          router.refresh();
+          listCategories().then((cs) =>
+            setParents(cs.filter((c) => c.parentId === null && c.kind !== 'TRANSFER')),
+          );
+        }}
+      />
     </div>
   );
 }
