@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
@@ -52,7 +52,52 @@ export function TransactionEditModal({
   const router = useRouter();
   const hasSplits = !!transaction.splits && transaction.splits.length > 0;
 
-  const [categoryId, setCategoryId] = useState<string>(transaction.categoryId ?? "");
+  // Two-stage category selection: parent + subcategory.
+  // Initial derivation from the transaction's current categoryId:
+  //   - if the current category has a parentId, parent = that parent, sub = current
+  //   - if the current category has no parentId (top-level leaf), parent = current, sub = ''
+  //   - if no category: both empty
+  const initialCategory = transaction.categoryId
+    ? categories.find((c) => c.id === transaction.categoryId)
+    : null;
+  const initialParentId = initialCategory
+    ? (initialCategory.parentId ?? initialCategory.id)
+    : "";
+  const initialSubId = initialCategory && initialCategory.parentId
+    ? initialCategory.id
+    : "";
+  const [parentCategoryId, setParentCategoryId] = useState<string>(initialParentId);
+  const [subcategoryId, setSubcategoryId] = useState<string>(initialSubId);
+
+  // Build a map of parent id → its active children. Used to (a) decide whether the
+  // Subcategory dropdown is meaningful, and (b) populate its options.
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, Category[]>();
+    for (const c of categories) {
+      if (c.parentId) {
+        const arr = map.get(c.parentId) ?? [];
+        arr.push(c);
+        map.set(c.parentId, arr);
+      }
+    }
+    return map;
+  }, [categories]);
+
+  const topLevelCategories = useMemo(
+    () => categories.filter((c) => c.parentId === null && c.isActive),
+    [categories],
+  );
+  const childrenOfSelectedParent = useMemo(
+    () => parentCategoryId ? (childrenByParent.get(parentCategoryId) ?? []).filter((c) => c.isActive) : [],
+    [parentCategoryId, childrenByParent],
+  );
+  // True when the selected top-level has children (i.e. is a group); the user
+  // MUST then pick a subcategory because transactions can't attach to a parent.
+  const parentRequiresSub = childrenOfSelectedParent.length > 0;
+
+  // The categoryId that will be persisted: subcategory if the parent has children,
+  // otherwise the parent itself (which is a standalone leaf in that case).
+  const categoryId = parentRequiresSub ? subcategoryId : parentCategoryId;
   const [vendorId, setVendorId] = useState<string>(transaction.vendorId ?? "");
   const [notes, setNotes] = useState<string>(transaction.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -179,7 +224,13 @@ export function TransactionEditModal({
               onEditMode={(draft) => {
                 setActiveDraft(draft);
                 setAiEditMode(true);
-                if (draft.categoryId) setCategoryId(draft.categoryId);
+                if (draft.categoryId) {
+                  const cat = categories.find((c) => c.id === draft.categoryId);
+                  if (cat) {
+                    setParentCategoryId(cat.parentId ?? cat.id);
+                    setSubcategoryId(cat.parentId ? cat.id : "");
+                  }
+                }
                 if (draft.vendorId)   setVendorId(draft.vendorId);
               }}
               onDraftLoaded={setActiveDraft}
@@ -187,13 +238,22 @@ export function TransactionEditModal({
           )}
 
           {/* Editable block */}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <Field label="Category">
-              <Select value={categoryId || "__none__"} onValueChange={(v) => setCategoryId(v === "__none__" ? "" : v)}>
+              <Select
+                value={parentCategoryId || "__none__"}
+                onValueChange={(v) => {
+                  const next = v === "__none__" ? "" : v;
+                  setParentCategoryId(next);
+                  // Reset subcategory whenever the parent changes — the previous
+                  // subcategoryId would point at a child of the old parent.
+                  setSubcategoryId("");
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="— uncategorised —" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">— uncategorised —</SelectItem>
-                  {categories.filter((c) => c.isActive).map((c) => (
+                  {topLevelCategories.map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -206,6 +266,31 @@ export function TransactionEditModal({
                     ? `Categorised by rule${provenance.ruleName ? ` "${provenance.ruleName}"` : ''} on ${new Date(provenance.at).toLocaleString()}`
                     : `Categorised by user on ${new Date(provenance.at).toLocaleString()}`}
                 </div>
+              )}
+            </Field>
+            <Field label="Subcategory">
+              {parentRequiresSub ? (
+                <Select
+                  value={subcategoryId || "__none__"}
+                  onValueChange={(v) => setSubcategoryId(v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger><SelectValue placeholder="— pick one —" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— pick one —</SelectItem>
+                    {childrenOfSelectedParent.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value="__none__" disabled>
+                  <SelectTrigger>
+                    <SelectValue placeholder={parentCategoryId ? "— no subcategories —" : "— pick a category first —"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">{parentCategoryId ? "no subcategories" : "pick a category first"}</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             </Field>
             <Field label="Vendor">
@@ -233,7 +318,12 @@ export function TransactionEditModal({
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="button" onClick={onSave} disabled={saving}>
+          <Button
+            type="button"
+            onClick={onSave}
+            disabled={saving || (parentRequiresSub && !subcategoryId)}
+            title={parentRequiresSub && !subcategoryId ? "Pick a subcategory — this category is a group, not a leaf" : undefined}
+          >
             {saving ? "Saving…" : aiReviewMode ? "Save and Accept" : "Save"}
           </Button>
         </DialogFooter>
