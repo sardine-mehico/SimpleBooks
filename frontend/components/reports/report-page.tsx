@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { getExpenseReport, getIncomeReport } from "@/lib/reports";
 import { CategoryPie, PIE_PALETTE } from "./category-pie";
 import { TotalsTable } from "./totals-table";
 import { AccountMultiSelect } from "./account-multi-select";
-import { exportReportToExcel, svgToPng } from "@/lib/export-excel";
+import { exportReportToExcel } from "@/lib/export-excel";
 
 function fyStartDate(financialYearStart: number): string {
   const now = new Date();
@@ -48,7 +48,6 @@ export function ReportPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const chartContainerRef = useRef<HTMLDivElement>(null);
 
   // Refetch whenever filters change.
   useEffect(() => {
@@ -104,10 +103,7 @@ export function ReportPage({
     if (!report) return;
     setExporting(true);
     try {
-      // Grab the first SVG inside the chart container (the left pie).
-      const svg = chartContainerRef.current?.querySelector("svg") as SVGSVGElement | null;
-      const png = svg ? await svgToPng(svg, 800, 560) : null;
-      await exportReportToExcel(report, png);
+      await exportReportToExcel(report);
     } finally {
       setExporting(false);
     }
@@ -161,7 +157,7 @@ export function ReportPage({
         <hr className="border-slate-100" />
 
         {/* Charts */}
-        <div ref={chartContainerRef} className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <CategoryPie
             title="By category"
             data={parentSlices}
