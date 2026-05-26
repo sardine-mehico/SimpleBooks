@@ -492,9 +492,10 @@ Lookup catalog for transaction categories. Seeded with 15 rows. Self-referential
 | `isActive` | bool | default `true` |
 | `sortOrder` | int | default `100`; controls dropdown ordering (lower = first) |
 | `parentId` | UUID? | nullable, FK → `Category.id` (ON DELETE **RESTRICT**). `null` for top-level rows. A row with `parentId` set is a leaf "subcategory"; a row with at least one child is a "group" and cannot itself carry transactions. |
+| `customerId` | UUID? | FK → `Customer.id` (ON DELETE SET NULL). Optional link used by the Payments matcher to boost invoices for this customer (+30 in `scoreInvoice`). |
 | `createdAt` / `updatedAt` | datetime | |
 
-Indexes: `@@index([parentId])`.
+Indexes: `@@index([parentId])`, `@@index([customerId])`.
 
 Relations: `transactions Transaction[]`, `splits TransactionSplit[]`, `rules Rule[]`, `parent Category?` (self), `children Category[]` (self).
 

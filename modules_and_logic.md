@@ -570,6 +570,13 @@ Lists transactions with unresolved `AI_DRAFT` (no subsequent `AI_APPLIED` / `AI_
 - **`[+ Add Category]` button** top-right of the page header (lucide `Plus` icon, outline-button style matching other page-header actions). Opens the shared `<CategoryFormDialog>` so the user can extend the taxonomy without leaving the review flow. On save the page re-fetches so the new category is immediately available to the next row's Edit dropdown.
 - **Provenance caption** under each draft row — `Suggested by <ProviderName> · <date>` (e.g. `Suggested by Google Gemini · 25 May 2026, 5:32 PM`). The endpoint joins `CategorisationEvent → AiProvider` via the new `providerId` FK and returns `providerName` per row. Falls back to `Suggested by AI · <date>` when `providerId` is null (events written before the column existed, or after a provider was deleted — FK is `SET NULL`).
 
+#### Tabs (Review / Queue)
+The page is split into two tabs:
+- **Review** — pending AI drafts awaiting human accept/reject. Same UX as before (banner per draft with Accept/Edit/Reject). Header surfaces the count.
+- **Queue** — live view of an in-flight bulk-suggest run. Polls `GET /ai/bulk-suggest/active` every 2s while a run is active (10s when idle). Renders a totals strip (`Total queued · Done · OK · Cached · Failed`) and a table of the first 200 pending transactions (date, amount, description, account). A rose-tinted **Cancel All** button on the page header behind a `confirm()` dialog hits `POST /ai/bulk-suggest/active/cancel`. Per-transaction cancel is intentionally not implemented — narrow value for a 70-tx batch that runs ~5 min.
+
+The Review tab also shows a small live spinner + pending count in the Queue tab's label so users notice activity without switching tabs.
+
 ### AI Drafts tab — `/rules`
 
 The rules page gains an "AI Drafts" tab alongside the main list. Each draft row shows name, condition summary, AI reasoning, and inline actions:
@@ -670,6 +677,15 @@ Each transaction row has a three-dots (`MoreHorizontal`) actions menu with three
 2. **Split** — opens the split modal directly.
 3. **Create rule** — opens the rule-creation flow pre-populated from this transaction.
 
+#### Category + Subcategory
+The category field is rendered as two cascading dropdowns: **Category** (top-level rows only) followed by **Subcategory** (children of the picked parent). Layout is `md:grid-cols-3` (Category | Subcategory | Vendor) on desktop, stacked on mobile.
+
+- When the picked parent has children: Subcategory dropdown is enabled with that parent's children. Save is disabled with a tooltip until a subcategory is picked — transactions can't attach to a parent (the existing `setCategory` service guard would reject the request anyway).
+- When the picked parent is a standalone leaf (no children): Subcategory shows a disabled "no subcategories" hint. The parent's own id is submitted as `categoryId`.
+- When nothing is picked: Subcategory shows "pick a category first".
+
+Initial state derives from the transaction's current `categoryId`: if its row has a `parentId`, the parent + sub are pre-filled; if it's a top-level leaf, the parent is pre-filled with sub empty.
+
 ---
 
 ### CSV Import flow (via `<ImportCsvButton>`)
@@ -720,6 +736,12 @@ Lookup catalog for transaction categories. Backend module: `categories`. Route p
 - `POST /categories/:id/split` — idempotent. Converts a leaf with transactions into a group: creates a `"<Parent> (general)"` child with the same kind / `isActive`, reassigns every transaction pointing at the parent to the new child, and returns the new child row. No-op (returns 200 with the existing row) when called on a category that already has children.
 - Kind controls badge colour in the UI — see DesignSystem.md for token values.
 - `sortOrder` controls the order categories appear in dropdowns throughout the app (transaction category picker, split modal, rule editor). Lower = first. Dropdowns surface **leaves only** with their parent breadcrumb (e.g. `Banking > Bank Fees`).
+
+#### Linked customer (INCOME categories only)
+When the effective kind is INCOME (top-level INCOME or any subcategory under an INCOME parent), `CategoryFormDialog` shows a "Linked customer (optional)" Select with helper text:
+> Boosts this customer's invoices by +30 in the Payments matcher when a transaction is categorised here.
+
+The selected `Customer.id` is persisted to `Category.customerId`. The Payments matcher's `scoreInvoice` fires its +30 `categoryCustomerMatch` signal when the transaction's category links to the same customer as the invoice. For non-INCOME categories the field is hidden and `customerId` is sent as null on save.
 
 ---
 
