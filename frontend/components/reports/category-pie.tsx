@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
 // Cycling palette of 8 distinct hues — picked from the project's accent palette
@@ -32,6 +32,8 @@ export function CategoryPie({
   baseColor?: string;
   onSelect?: (id: string) => void;
 }) {
+  const [hovered, setHovered] = useState<{ name: string; total: number } | null>(null);
+
   const sliceColors = useMemo(() => {
     if (baseColor) {
       const n = Math.max(1, data.length - 1);
@@ -69,21 +71,41 @@ export function CategoryPie({
               outerRadius="85%"
               paddingAngle={1}
               onClick={onSelect ? (entry: any) => onSelect(entry.id) : undefined}
+              onMouseEnter={(entry: any) => setHovered({ name: entry.name, total: entry.total })}
+              onMouseLeave={() => setHovered(null)}
               cursor={onSelect ? 'pointer' : 'default'}
             >
               {data.map((_, i) => (
                 <Cell key={i} fill={sliceColors[i]} stroke="white" strokeWidth={2} />
               ))}
             </Pie>
-            <Tooltip
-              formatter={(value: any, name: any) => [`$${Number(value).toFixed(2)}`, name]}
-              contentStyle={{ borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12 }}
-            />
+            {/* Default Recharts tooltip disabled — we render our own center label
+                that swaps the "Total" view for the hovered slice's name + value,
+                so the tooltip never overlaps anything. */}
+            <Tooltip content={() => null} cursor={false} />
           </PieChart>
         </ResponsiveContainer>
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <div className="text-xs uppercase tracking-wider text-slate-400">Total</div>
-          <div className="text-xl font-semibold text-slate-900">${centerTotal}</div>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+          {hovered ? (
+            <>
+              <div className="line-clamp-2 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                {hovered.name}
+              </div>
+              <div className="mt-0.5 text-xl font-semibold text-slate-900 tabular-nums">
+                ${hovered.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div className="mt-0.5 text-[10px] text-slate-400">
+                {data.length > 0
+                  ? `${((hovered.total / data.reduce((s, d) => s + d.total, 0)) * 100).toFixed(1)}% of total`
+                  : ''}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-xs uppercase tracking-wider text-slate-400">Total</div>
+              <div className="text-xl font-semibold text-slate-900 tabular-nums">${centerTotal}</div>
+            </>
+          )}
         </div>
       </div>
     </div>
