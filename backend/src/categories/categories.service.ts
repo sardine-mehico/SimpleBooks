@@ -64,6 +64,7 @@ export class CategoriesService {
         isActive: data.isActive ?? true,
         sortOrder: data.sortOrder ?? 100,
         parentId,
+        customerId: data.customerId ?? null,
       },
     });
   }
@@ -101,6 +102,7 @@ export class CategoriesService {
         ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
         ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
         ...(data.parentId !== undefined ? { parentId: nextParentId } : {}),
+        ...(data.customerId !== undefined ? { customerId: data.customerId ?? null } : {}),
       },
     });
   }

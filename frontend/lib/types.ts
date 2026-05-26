@@ -441,6 +441,7 @@ export type Category = {
   createdAt: string;
   updatedAt: string;
   parentId: string | null;
+  customerId: string | null;
   _count?: {
     transactions: number;
     transactionSplits: number;

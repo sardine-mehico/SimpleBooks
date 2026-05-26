@@ -43,6 +43,7 @@ model Customer {
   invoices       Invoice[]
   recurringRules RecurringRule[]
   vendors        Vendor[]
+  categories     Category[]
 }
 
 enum SendVia {
@@ -532,9 +533,11 @@ model Category {
   kind      CategoryKind
   isActive  Boolean      @default(true)
   sortOrder Int          @default(100)
-  parentId  String?      // NEW — self-referential FK; null for top-level
+  parentId  String?      // self-referential FK; null for top-level
   parent    Category?    @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children  Category[]   @relation("CategoryHierarchy")
+  customerId String?     // optional link to a Customer — used by Payments scorer to boost invoices for this customer
+  customer  Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -543,6 +546,7 @@ model Category {
   rules             Rule[]
 
   @@index([parentId])
+  @@index([customerId])
 }
 
 model Vendor {

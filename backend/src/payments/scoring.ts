@@ -4,6 +4,10 @@ export interface ScoreTransaction {
   description: string;
   unallocated: Decimal;
   date: Date;
+  // categoryCustomerId is the FK the user has set on the transaction's Category
+  // (Category.customerId). When this matches invoice.customerId, +30 fires — a
+  // strong signal that the user has manually identified the payer.
+  categoryCustomerId?: string | null;
 }
 
 export interface ScoreInvoice {
@@ -11,6 +15,7 @@ export interface ScoreInvoice {
   amountOutstanding: Decimal;
   invoiceDate: Date;
   status: 'DRAFT' | 'SENT' | 'VIEWED' | 'PARTIAL_PAID' | 'PAID' | 'VOID';
+  customerId: string;
 }
 
 export interface ScoreCustomer {
@@ -23,6 +28,7 @@ export interface ScoreSignals {
   customerToken: boolean;
   datePlausible: boolean;
   partialBonus: boolean;
+  categoryCustomerMatch: boolean;
 }
 
 export interface ScoreResult {
@@ -44,6 +50,7 @@ export function scoreInvoice(
     customerToken: false,
     datePlausible: false,
     partialBonus: false,
+    categoryCustomerMatch: false,
   };
 
   // Signal 1: invoice number in description (+60)
@@ -79,9 +86,17 @@ export function scoreInvoice(
     signals.partialBonus = true;
   }
 
+  // Signal 6: tx.category.customerId === invoice.customerId (+30).
+  // Strong signal — the user has manually labelled the transaction's category as
+  // belonging to this customer, so any of that customer's invoices should rank high.
+  if (tx.categoryCustomerId && tx.categoryCustomerId === invoice.customerId) {
+    signals.categoryCustomerMatch = true;
+  }
+
   const total =
     (signals.invoiceNumber ? 60 : 0) +
     (signals.exactAmount ? 40 : 0) +
+    (signals.categoryCustomerMatch ? 30 : 0) +
     (signals.customerToken ? 15 : 0) +
     (signals.datePlausible ? 10 : 0) +
     (signals.partialBonus ? 5 : 0);

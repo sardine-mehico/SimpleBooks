@@ -6,10 +6,11 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CATEGORY_KINDS, type Category, type CategoryKind } from "@/lib/types";
+import { CATEGORY_KINDS, type Category, type CategoryKind, type Customer } from "@/lib/types";
 import { createCategory, updateCategory } from "@/lib/banking-rules";
 
 type ParentOption = Pick<Category, "id" | "name" | "kind">;
+type CustomerOption = Pick<Customer, "id" | "name">;
 
 type Props = {
   open: boolean;
@@ -18,6 +19,7 @@ type Props = {
   initial?: Category;
   defaultParentId?: string | null;
   parents: ParentOption[];
+  customers?: CustomerOption[];
 };
 
 export function CategoryFormDialog({
@@ -27,6 +29,7 @@ export function CategoryFormDialog({
   initial,
   defaultParentId,
   parents,
+  customers,
 }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
   const [kind, setKind] = useState<CategoryKind>(initial?.kind ?? "EXPENSE");
@@ -34,6 +37,7 @@ export function CategoryFormDialog({
     initial?.parentId ?? defaultParentId ?? null,
   );
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
+  const [customerId, setCustomerId] = useState<string | null>(initial?.customerId ?? null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,13 +45,22 @@ export function CategoryFormDialog({
   const parentKind = isSubcategory
     ? parents.find((p) => p.id === parentId)?.kind ?? null
     : null;
+  const effectiveKind = parentKind ?? kind;
+  const showCustomerLink = effectiveKind === "INCOME" && customers !== undefined;
 
   async function submit() {
     setSubmitting(true);
     setError(null);
     try {
-      const effectiveKind = parentKind ?? kind;
-      const payload = { name: name.trim(), kind: effectiveKind, isActive, parentId };
+      const payload = {
+        name: name.trim(),
+        kind: effectiveKind,
+        isActive,
+        parentId,
+        // Only send customerId on INCOME categories; clear it when the kind isn't INCOME
+        // (e.g., the user just toggled the parent to an EXPENSE group).
+        customerId: effectiveKind === "INCOME" ? customerId : null,
+      };
       const saved = initial
         ? await updateCategory(initial.id, payload)
         : await createCategory(payload);
@@ -122,6 +135,27 @@ export function CategoryFormDialog({
             />
             Active
           </label>
+
+          {showCustomerLink && (
+            <Field label="Linked customer (optional)">
+              <Select
+                value={customerId ?? "__none__"}
+                onValueChange={(v) => setCustomerId(v === "__none__" ? null : v)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">(none)</SelectItem>
+                  {customers!.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="mt-1 text-xs text-slate-500">
+                Boosts this customer's invoices by +30 in the Payments matcher when a
+                transaction is categorised here.
+              </div>
+            </Field>
+          )}
 
           {error && (
             <div className="rounded-[0.3rem] border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">

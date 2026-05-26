@@ -11,18 +11,29 @@ function makePrisma(state: any) {
       findUnique: jest.fn(async ({ where }: any) => {
         const tx = find(state.transactions, where);
         if (!tx) return null;
+        const category = tx.categoryId
+          ? find(state.categories ?? [], { id: tx.categoryId })
+          : null;
         return {
           ...tx,
           allocations: state.allocations.filter((a: any) => a.transactionId === tx.id),
           vendor: tx.vendorId ? find(state.vendors, { id: tx.vendorId }) : null,
           account: find(state.accounts, { id: tx.accountId }),
+          category: category ? { customerId: category.customerId ?? null } : null,
         };
       }),
     },
     invoice: {
       findMany: jest.fn(async ({ where }: any) => {
         let rows = state.invoices.slice();
-        if (where?.customerId) rows = rows.filter((r: any) => r.customerId === where.customerId);
+        // customerId filter: accepts either a string or { in: [...] }
+        if (where?.customerId) {
+          if (typeof where.customerId === 'string') {
+            rows = rows.filter((r: any) => r.customerId === where.customerId);
+          } else if (Array.isArray(where.customerId?.in)) {
+            rows = rows.filter((r: any) => where.customerId.in.includes(r.customerId));
+          }
+        }
         if (where?.status?.in) rows = rows.filter((r: any) => where.status.in.includes(r.status));
         return rows.map((r: any) => ({
           ...r,

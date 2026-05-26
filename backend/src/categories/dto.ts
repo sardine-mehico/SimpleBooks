@@ -14,6 +14,7 @@ export class CreateCategoryDto {
   @Type(() => Number) @IsInt() @Min(0) @IsOptional() sortOrder?: number;
   @IsBoolean() @IsOptional() isActive?: boolean;
   @ValidateIf((o) => o.parentId !== null) @IsUUID() @IsOptional() parentId?: string | null;
+  @ValidateIf((o) => o.customerId !== null) @IsUUID() @IsOptional() customerId?: string | null;
 }
 
 export class UpdateCategoryDto {
@@ -22,4 +23,5 @@ export class UpdateCategoryDto {
   @Type(() => Number) @IsInt() @Min(0) @IsOptional() sortOrder?: number;
   @IsBoolean() @IsOptional() isActive?: boolean;
   @ValidateIf((o) => o.parentId !== null) @IsUUID() @IsOptional() parentId?: string | null;
+  @ValidateIf((o) => o.customerId !== null) @IsUUID() @IsOptional() customerId?: string | null;
 }

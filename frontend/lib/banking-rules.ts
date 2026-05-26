@@ -6,9 +6,9 @@ import type {
 
 // ── Categories ──────────────────────────────────────────────────────
 export const listCategories = () => apiClient.get<Category[]>('/categories');
-export const createCategory = (data: { name: string; kind: CategoryKind; sortOrder?: number; isActive?: boolean; parentId?: string | null }) =>
+export const createCategory = (data: { name: string; kind: CategoryKind; sortOrder?: number; isActive?: boolean; parentId?: string | null; customerId?: string | null }) =>
   apiClient.post<Category>('/categories', data);
-export const updateCategory = (id: string, data: Partial<{ name: string; kind: CategoryKind; sortOrder: number; isActive: boolean; parentId: string | null }>) =>
+export const updateCategory = (id: string, data: Partial<{ name: string; kind: CategoryKind; sortOrder: number; isActive: boolean; parentId: string | null; customerId: string | null }>) =>
   apiClient.patch<Category>(`/categories/${id}`, data);
 export const deleteCategory = (id: string) => apiClient.delete<{ ok: true }>(`/categories/${id}`);
 export const splitCategory = (id: string) =>

@@ -19,6 +19,7 @@ export class PaymentsService {
         allocations: true,
         vendor: true,
         account: true,
+        category: { select: { customerId: true } },
       } as any,
     });
     if (!tx) throw new NotFoundException('Transaction not found');
@@ -29,13 +30,22 @@ export class PaymentsService {
     );
     const unallocated = new Decimal((tx as any).amount.toString()).sub(allocSum);
 
-    const customerId: string | null = (tx as any).vendor?.customerId ?? null;
-    if (!customerId) {
+    // Candidate customer pool: union of vendor.customerId and category.customerId.
+    // The +30 categoryCustomerMatch signal only does meaningful ranking work when
+    // multiple customers' invoices appear in the candidate list, so we include
+    // both linkages and let the scorer discriminate.
+    const candidateCustomerIds = new Set<string>();
+    const vendorCustomerId: string | null = (tx as any).vendor?.customerId ?? null;
+    const categoryCustomerId: string | null = (tx as any).category?.customerId ?? null;
+    if (vendorCustomerId) candidateCustomerIds.add(vendorCustomerId);
+    if (categoryCustomerId) candidateCustomerIds.add(categoryCustomerId);
+    if (candidateCustomerIds.size === 0) {
       return { candidates: [], bundleSuggestion: null };
     }
 
     const invoices = await this.prisma.invoice.findMany({
-      where: { customerId, status: { in: OPEN_STATUSES as any } },
+      where: { customerId: { in: Array.from(candidateCustomerIds) }, status: { in: OPEN_STATUSES as any } },
+      include: { customer: true } as any,
     } as any);
 
     const candidates: ScoredInvoiceView[] = invoices.map((inv: any) => {
@@ -44,12 +54,14 @@ export class PaymentsService {
           description: (tx as any).description,
           unallocated,
           date: (tx as any).date,
+          categoryCustomerId,
         },
         {
           invoiceNumber: inv.invoiceNumber,
           amountOutstanding: new Decimal(inv.amountOutstanding.toString()),
           invoiceDate: inv.invoiceDate,
           status: inv.status,
+          customerId: inv.customerId,
         },
         { displayName: inv.customer?.name ?? '' },
       );

@@ -8,6 +8,7 @@ function tx(over: Partial<ScoreTransaction> = {}): ScoreTransaction {
     description: over.description ?? '',
     unallocated: over.unallocated ?? new Decimal('999.99'),
     date: over.date ?? new Date('2024-01-01'),
+    categoryCustomerId: over.categoryCustomerId ?? null,
   };
 }
 
@@ -17,6 +18,7 @@ function invoice(over: Partial<ScoreInvoice> = {}): ScoreInvoice {
     amountOutstanding: over.amountOutstanding ?? new Decimal('100.00'),
     invoiceDate: over.invoiceDate ?? new Date('2026-01-01'),
     status: over.status ?? 'SENT',
+    customerId: over.customerId ?? 'cust-default',
   };
 }
 
@@ -126,17 +128,46 @@ describe('scoreInvoice — signal isolation', () => {
     const s = scoreInvoice(tx(), invoice({ status: 'SENT' }), customer({ displayName: 'X' }));
     expect(s.signals.partialBonus).toBe(false);
   });
+
+  it('category.customerId matches invoice.customerId: +30', () => {
+    const s = scoreInvoice(
+      tx({ categoryCustomerId: 'cust-acme' }),
+      invoice({ customerId: 'cust-acme' }),
+      customer({ displayName: 'X' }),
+    );
+    expect(s.signals.categoryCustomerMatch).toBe(true);
+    expect(s.total).toBe(30);
+  });
+
+  it('category.customerId set but mismatched: 0 (does not over-credit unrelated invoices)', () => {
+    const s = scoreInvoice(
+      tx({ categoryCustomerId: 'cust-acme' }),
+      invoice({ customerId: 'cust-beta' }),
+      customer({ displayName: 'X' }),
+    );
+    expect(s.signals.categoryCustomerMatch).toBe(false);
+    expect(s.total).toBe(0);
+  });
+
+  it('category.customerId null: signal does not fire', () => {
+    const s = scoreInvoice(
+      tx({ categoryCustomerId: null }),
+      invoice({ customerId: 'cust-acme' }),
+      customer({ displayName: 'X' }),
+    );
+    expect(s.signals.categoryCustomerMatch).toBe(false);
+  });
 });
 
 describe('scoreInvoice — combinations', () => {
-  it('all six signals fire: 60+40+15+10+5 = 130', () => {
+  it('all six signals fire: 60+40+30+15+10+5 = 160', () => {
     const d = new Date('2026-01-10');
     const s = scoreInvoice(
-      tx({ description: 'INV-1011 OFFICE CLEANERS', unallocated: new Decimal('100.00'), date: d }),
-      invoice({ invoiceNumber: 1011, amountOutstanding: new Decimal('100.00'), invoiceDate: new Date('2026-01-01'), status: 'PARTIAL_PAID' }),
+      tx({ description: 'INV-1011 OFFICE CLEANERS', unallocated: new Decimal('100.00'), date: d, categoryCustomerId: 'cust-1' }),
+      invoice({ invoiceNumber: 1011, amountOutstanding: new Decimal('100.00'), invoiceDate: new Date('2026-01-01'), status: 'PARTIAL_PAID', customerId: 'cust-1' }),
       customer({ displayName: 'Office Cleaners Maddington' }),
     );
-    expect(s.total).toBe(130);
+    expect(s.total).toBe(160);
   });
 
   it('case-insensitive customer token', () => {

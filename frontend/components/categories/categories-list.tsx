@@ -12,14 +12,14 @@ import {
   type FilterFieldDef,
 } from "@/components/data/filtered-list";
 import type { Column } from "@/components/data/list-table";
-import { CATEGORY_KINDS, type Category } from "@/lib/types";
+import { CATEGORY_KINDS, type Category, type Customer } from "@/lib/types";
 import { CategoryFormDialog } from "@/components/categories/category-form-dialog";
 import { deleteCategory, splitCategory } from "@/lib/banking-rules";
 
 // A row in the tree-flattened list carries its depth so the Name cell can indent.
 type TreeRow = Category & { _depth: 0 | 1 };
 
-export function CategoriesList({ initial }: { initial: Category[] }) {
+export function CategoriesList({ initial, customers }: { initial: Category[]; customers: Customer[] }) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogInitial, setDialogInitial] = useState<Category | undefined>(undefined);
@@ -227,6 +227,7 @@ export function CategoriesList({ initial }: { initial: Category[] }) {
         initial={dialogInitial}
         defaultParentId={dialogDefaultParent}
         parents={topLevel}
+        customers={customers}
         onClose={() => {
           setDialogOpen(false);
           setDialogInitial(undefined);
