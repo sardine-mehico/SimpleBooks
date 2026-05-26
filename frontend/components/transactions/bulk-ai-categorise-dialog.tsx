@@ -137,7 +137,25 @@ export function BulkAiCategoriseDialog({
             <Button variant="ghost" onClick={handleClose}>Cancel</Button>
             <Button onClick={start} disabled={busy}>{busy ? 'Starting…' : 'Start'}</Button>
           </>}
-          {runId && !done && <Button variant="ghost" onClick={handleClose}>Cancel run</Button>}
+          {runId && !done && (
+            <>
+              <Button variant="ghost" onClick={handleClose}>Cancel run</Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  // Close dialog (cancel-on-close is gated to !done — we're not done,
+                  // but the user wants to leave the dialog WITHOUT cancelling, so
+                  // skip the cancel by clearing local state first.
+                  setRunId(null);
+                  setStatus(null);
+                  onClose();
+                  router.push(`/transactions/ai-review?runId=${runId}&tab=queue`);
+                }}
+              >
+                View in Queue
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

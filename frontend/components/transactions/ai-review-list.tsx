@@ -31,7 +31,7 @@ export function AiReviewList({ categories, vendors }: { categories: Category[]; 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [parents, setParents] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [tab, setTab] = useState<'review' | 'queue'>('review');
+  const [tab, setTab] = useState<'review' | 'queue'>(sp.get('tab') === 'queue' ? 'queue' : 'review');
   const [queue, setQueue] = useState<ActiveBulkQueue | null>(null);
   const [cancellingQueue, setCancellingQueue] = useState(false);
 
