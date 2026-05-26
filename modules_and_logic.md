@@ -499,12 +499,14 @@ Configuration page for external LLM providers. Backend module: `ai-providers`. S
 | `apiBaseUrl` | string | **yes** | e.g. "https://api.openai.com/v1" |
 | `apiKey` | string | **yes** | Stored plain; eye-icon toggle to show/hide in the UI |
 | `isPrimary` | bool | auto | Exactly one provider (or none) is primary at a time |
+| `isEnabled` | bool | no | Default `true`. Per-card switch in the header; disabled providers are skipped entirely by `AiClientService` (filtered at `findMany`). |
 | `sortOrder` | int | auto | Lower = tried earlier in the fallback chain. Managed via `[↑]` / `[↓]` arrows on backup cards. |
 | `requestsPerMinute` | int | **yes** | Default `15`. Per-provider self-pacing ceiling used by `AiClientService.pace()` — bulk and inline calls share a single per-provider gate so the effective outbound rate stays under this RPM. Tier hint shown next to the input: `~15 free, ~60 paid lite, ~1000 paid`. |
 
 #### Page layout
 One card per provider. Each card contains Name / Model / API Base URL / API Key fields, with:
 - Per-card dirty tracking — Save button per card is enabled only when the card has unsaved changes.
+- **Enable/disable switch** in the card header (left of the PRIMARY / Set Primary controls). Toggling fires `PATCH /ai-providers/:id` with `{ isEnabled }` immediately — no Save click needed (same pattern as Set Primary). When disabled: the card dims to `opacity-60`, a `Disabled` badge appears next to the provider name, but inputs stay editable so users can update keys/RPM while paused. The Test button stays clickable when disabled (verify the key before re-enabling).
 - Eye-icon button to reveal/hide the API key value.
 - Trash button to delete the provider.
 - **"Set Primary" link** on non-primary cards; replaced by a **PRIMARY** badge (`bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white`) on the primary card.
@@ -517,7 +519,8 @@ Bottom section — **Rule drafting**:
 #### Logic
 - Setting a provider primary via `PATCH /ai-providers/:id/set-primary` atomically clears `isPrimary` on all other rows.
 - Deleting the primary provider auto-promotes the oldest remaining provider (`createdAt` asc) as the new primary. If no providers remain, there is no primary.
-- Provider chain order for AI calls: primary first, then backups ordered by `sortOrder` asc, `createdAt` asc for ties.
+- Provider chain order for AI calls: primary first, then backups ordered by `sortOrder` asc, `createdAt` asc for ties. `isEnabled=false` rows are filtered out of the chain before sorting — a disabled provider is invisible to `AiClientService`, doesn't count as a failed attempt, and doesn't appear in `AiCall` logs.
+- `isEnabled` is independent of `isPrimary`. If the only enabled provider is non-primary, the chain still works. If **no** providers are enabled, AI endpoints return the same `no-providers` error as an empty chain.
 
 ---
 
@@ -554,6 +557,7 @@ Banner slot sits between the read-only block and the editable block.
   - **Reject** — `POST /ai/apply { action: 'reject' }`; banner hides; modal stays open for manual categorisation.
 - **No providers configured**: thin amber notice with link to `/settings/ai-setup`.
 - **Chain exhausted**: red banner with provider's last error; `[Retry]` re-fires with `force: true`.
+- **Provenance caption under the Category dropdown** — single line summarising the most recent categorising event on the transaction. One of `Categorised by AI (<ProviderName>) on <date>` / `Categorised by user on <date>` / `Categorised by rule "<RuleName>" on <date>` / `Not yet categorised`. Loaded server-side via `GET /transactions/:id`, which exposes a `categorisationProvenance` field derived from the latest `CategorisationEvent` (the `providerId` FK supplies the provider name for AI events). Pre-existing AI events with `providerId IS NULL` fall back to `Categorised by AI on <date>` (no provider name).
 
 ### Bulk categorisation — `/transactions`
 
@@ -562,6 +566,9 @@ The transactions table bulk-actions menu includes "Categorise with AI". Clicking
 ### AI Review queue — `/transactions/ai-review`
 
 Lists transactions with unresolved `AI_DRAFT` (no subsequent `AI_APPLIED` / `AI_REJECTED`). Loaded via `GET /ai/review-queue` (cap 500). Each row shows the suggestion banner inline with `[Accept] [Edit] [Reject]`. Edit opens the standard transaction edit modal. Toolbar batch action: `[Approve all "high" ▼]` — confirmation dialog, then `apply(accept)` over every visible high-confidence row.
+
+- **`[+ Add Category]` button** top-right of the page header (lucide `Plus` icon, outline-button style matching other page-header actions). Opens the shared `<CategoryFormDialog>` so the user can extend the taxonomy without leaving the review flow. On save the page re-fetches so the new category is immediately available to the next row's Edit dropdown.
+- **Provenance caption** under each draft row — `Suggested by <ProviderName> · <date>` (e.g. `Suggested by Google Gemini · 25 May 2026, 5:32 PM`). The endpoint joins `CategorisationEvent → AiProvider` via the new `providerId` FK and returns `providerName` per row. Falls back to `Suggested by AI · <date>` when `providerId` is null (events written before the column existed, or after a provider was deleted — FK is `SET NULL`).
 
 ### AI Drafts tab — `/rules`
 
@@ -683,30 +690,36 @@ Per-row Balance is computed server-side as `Account.openingBalance + Σ(amount)`
 
 ### Categories
 
-Lookup catalog for transaction categories. Backend module: `categories`. Route prefix: `/categories`.
+Lookup catalog for transaction categories. Backend module: `categories`. Route prefix: `/categories`. Categories form a **one-level-deep tree**: a top-level row may optionally have child rows (subcategories). Parents are pure grouping — only leaves carry transactions, splits, and rules.
 
 #### Fields
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `id` | UUID | auto | |
-| `name` | string | **yes** | UNIQUE |
-| `kind` | enum `CategoryKind` | **yes** | `INCOME` / `EXPENSE` / `TRANSFER` / `OTHER` |
+| `name` | string | **yes** | Unique **per parent** (case-insensitive). `Fees` may exist under both `Banking` and `Education`. |
+| `kind` | enum `CategoryKind` | **yes** | `INCOME` / `EXPENSE` / `TRANSFER` / `OTHER`. Subcategories must match their parent's kind. |
+| `parentId` | UUID? | no | Null for top-level rows. Set to point at the parent for subcategories. Two-level cap — a row that already has children cannot itself be made a child. |
 | `isActive` | boolean | no | default `true` |
 | `sortOrder` | int | no | default `100`; lower = earlier in dropdowns |
 | `createdAt` / `updatedAt` | datetime | auto | |
 
 #### List page — `/categories`
+- **Tree rendering** — 1-deep. Top-level rows render flush; subcategories render indented under their parent. Parent rows show a Group badge + child count and an inline `[+ Sub]` button on the right.
+- **Tree mode disables column sorting** — an explicit exception to the "every column sortable" rule in DesignSystem.md. The header cells are plain labels; the tree is sorted alphabetically within each level (parents A→Z, then children A→Z under each parent).
 - **Columns:** Name · Kind · Sort Order · Status.
-- **Default sort:** `isActive` desc, tie-breaker `sortOrder` asc, then `name` asc.
+- **`[+ Sub]` button on every top-level row** — opens the shared `<CategoryFormDialog>` pre-filled to add a subcategory under that row (kind inherited, parent fixed). On a top-level row that is currently a leaf with transactions, the button first calls `POST /categories/:id/split` to convert the leaf to a group (auto-creating `"<Parent> (general)"` and migrating its transactions), then opens the modal for the real subcategory. For leaves with zero transactions the split step is skipped.
+- **`<CategoryFormDialog>`** (`frontend/components/categories/category-form-dialog.tsx`) is the shared create/edit modal — also used from `/transactions/ai-review` via the `[+ Add Category]` button. The legacy `/categories/new` and `/categories/[id]/edit` routes remain for direct linking, but the inline dialog is the primary surface.
 
 #### Edit page — `/categories/[id]` (and `/categories/new`)
-- **Row 1:** Name (required) · Kind (required, select)
-- **Row 2:** Sort Order · Active (switch)
+- **Row 1:** Name (required) · Kind (required, select; read-only when editing a subcategory — inherited from parent)
+- **Row 2:** Parent (select; optional; locks kind to the parent's kind when set) · Sort Order · Active (switch)
 
 #### Logic
-- Delete blocked with 409 if any `Transaction`, `TransactionSplit`, or `Rule` references the category.
+- Delete blocked with 409 if any `Transaction`, `TransactionSplit`, or `Rule` references the category, or if the row has children (reparent or delete subcategories first).
+- Assigning a parent (group) row as a transaction's category is rejected by the backend with 400 (`Cannot assign transactions to a parent category. Pick a subcategory.`).
+- `POST /categories/:id/split` — idempotent. Converts a leaf with transactions into a group: creates a `"<Parent> (general)"` child with the same kind / `isActive`, reassigns every transaction pointing at the parent to the new child, and returns the new child row. No-op (returns 200 with the existing row) when called on a category that already has children.
 - Kind controls badge colour in the UI — see DesignSystem.md for token values.
-- `sortOrder` controls the order categories appear in dropdowns throughout the app (transaction category picker, split modal, rule editor). Lower = first.
+- `sortOrder` controls the order categories appear in dropdowns throughout the app (transaction category picker, split modal, rule editor). Lower = first. Dropdowns surface **leaves only** with their parent breadcrumb (e.g. `Banking > Bank Fees`).
 
 ---
 

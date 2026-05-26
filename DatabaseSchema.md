@@ -482,20 +482,28 @@ Edge labels:
 ## Banking — Phase B
 
 ### Category
-Lookup catalog for transaction categories. Seeded with 15 rows.
+Lookup catalog for transaction categories. Seeded with 15 rows. Self-referential — a category may optionally have a `parentId` pointing at another `Category` row (one level of nesting only).
 
 | Column | Type | Constraints |
 |---|---|---|
 | `id` | UUID | PK |
-| `name` | string | UNIQUE |
-| `kind` | enum `CategoryKind` | `INCOME`, `EXPENSE`, `TRANSFER`, `OTHER` |
+| `name` | string | Not globally unique. Per-parent uniqueness (case-insensitive) is enforced in `CategoriesService` (mirrors the `Account` pattern from commit `602aa83`). |
+| `kind` | enum `CategoryKind` | `INCOME`, `EXPENSE`, `TRANSFER`, `OTHER`. Subcategories must match their parent's kind (service-enforced). |
 | `isActive` | bool | default `true` |
 | `sortOrder` | int | default `100`; controls dropdown ordering (lower = first) |
+| `parentId` | UUID? | nullable, FK → `Category.id` (ON DELETE **RESTRICT**). `null` for top-level rows. A row with `parentId` set is a leaf "subcategory"; a row with at least one child is a "group" and cannot itself carry transactions. |
 | `createdAt` / `updatedAt` | datetime | |
 
-Relations: `transactions Transaction[]`, `splits TransactionSplit[]`, `rules Rule[]`.
+Indexes: `@@index([parentId])`.
 
-Delete blocked with 409 if any `Transaction`, `TransactionSplit`, or `Rule` references the row (FK `RESTRICT`).
+Relations: `transactions Transaction[]`, `splits TransactionSplit[]`, `rules Rule[]`, `parent Category?` (self), `children Category[]` (self).
+
+Server rules:
+- Name uniqueness is **per-parent, case-insensitive** — the previous global `@unique` on `name` was removed. `Fees` may exist as a child under both `Banking` and `Education`.
+- Two-level cap: setting `parentId` on a row that already has children is rejected (`CategoriesService.assertParentValid`). Subcategories cannot themselves have subcategories.
+- Assigning a group (a category with ≥1 child) as a transaction's `categoryId` is rejected by `TransactionsService.setCategory` — groups are pure rollup nodes.
+- Delete blocked with 409 if any `Transaction`, `TransactionSplit`, or `Rule` references the row (FK `RESTRICT`), and additionally if `children.count > 0` (reparent or delete children first).
+- `POST /categories/:id/split` converts a leaf with transactions into a group by auto-creating `"<Parent> (general)"` as the first child and reassigning all transactions to it inside one Prisma transaction. Idempotent — a no-op on rows that already have children.
 
 ---
 
@@ -588,9 +596,10 @@ Append-only audit log. One row per change to a transaction's category, vendor, o
 | `oldVendorId` | UUID? | vendor before the change |
 | `newVendorId` | UUID? | vendor after the change |
 | `acceptedAiSuggestion` | bool? | set when `source = AI_SUGGESTION`; Phase C reads these rows as few-shot examples |
+| `providerId` | UUID? | FK → `AiProvider.id` (ON DELETE **SET NULL**). Set on `AI_DRAFT` / `AI_APPLIED` / `AI_REJECTED` events to record which provider produced the suggestion. Null on USER / RULE / VENDOR_MATCH events, and on AI events that pre-date this column (no backfill). Deleting a provider preserves the audit row, just loses the link. |
 | `createdAt` | datetime | default `now()` — no `updatedAt`; rows are immutable |
 
-Indexes: `@@index([transactionId])`, `@@index([source, createdAt])`, `@@index([ruleId])`.
+Indexes: `@@index([transactionId])`, `@@index([source, createdAt])`, `@@index([ruleId])`, `@@index([providerId])`.
 
 ---
 
@@ -607,6 +616,7 @@ Configuration record for an external LLM provider.
 | `apiBaseUrl` | string | |
 | `apiKey` | string | **Stored as plain text — same boilerplate trade-off as `MailConfiguration.password` and `BillingCompany.customSmtpPassword`. Revisit before production.** |
 | `isPrimary` | bool | default `false`. At most one row has `isPrimary=true` at any time; enforced by the service. |
+| `isEnabled` | bool | default `true`. Filters at the chain level — `AiClientService.complete()` calls `findMany({ where: { isEnabled: true }, ... })`. Disabled providers are skipped entirely (don't fire, don't count as failed attempts, don't appear in `AiCall` logs). Independent of `isPrimary`. |
 | `sortOrder` | int | default `1000`. **(Phase C)** Consulted only for `isPrimary=false` rows — lower value = tried earlier in the provider chain. |
 | `requestsPerMinute` | int | default `15`. Per-provider self-pacing ceiling enforced by `AiClientService`. Tier hints surfaced in the UI: `~15 free, ~60 paid lite, ~1000 paid`. Range 1–10000. |
 | `createdAt` / `updatedAt` | datetime | |
@@ -616,6 +626,7 @@ Indexes: `@@index([isPrimary, sortOrder])` (Phase C).
 Server rules:
 - Setting any provider as primary atomically unsets `isPrimary` on all others.
 - Deleting the current primary auto-promotes the oldest remaining provider (by `createdAt` asc) as the new primary.
+- `isEnabled` is independent of `isPrimary`. If the only enabled provider is non-primary, the chain still works. If **all** enabled providers are disabled (or none exist), `complete()` returns `{ ok: false, error: 'no-providers' }`.
 
 ---
 

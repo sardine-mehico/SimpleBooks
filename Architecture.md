@@ -220,6 +220,14 @@ Both paths matter — App Router pages fetch on the server *and* the client.
 
 Both layers compose: pacing prevents 429s under steady-state load; the backoff is defence-in-depth for transient bursts and for the moment a provider's per-minute window flips over.
 
+### AI provider enable/disable
+
+`AiProvider.isEnabled` (default `true`) gates participation in the provider chain. `AiClientService.complete()` reads providers via `findMany({ where: { isEnabled: true }, ... })` — disabled rows are filtered out before sorting, so they don't fire, don't count as a failed attempt, and produce no `AiCall` log rows. Toggled per-card from `/settings/ai-setup` with an immediate `PATCH /ai-providers/:id { isEnabled }` (no Save click). Independent of `isPrimary`: if the only enabled provider is non-primary, the chain still runs; if **no** providers are enabled, `complete()` returns the same `{ ok: false, error: 'no-providers' }` shape as an empty chain.
+
+### AI categorisation provenance
+
+Each AI-sourced `CategorisationEvent` (`AI_DRAFT` / `AI_APPLIED` / `AI_REJECTED`) records the producing provider via `CategorisationEvent.providerId` (nullable FK to `AiProvider`, `ON DELETE SET NULL`). `AiCategoriserService` passes the resolved `providerId` from `AiClientService.complete()`'s result into the event row at write time. Two read surfaces consume the FK: `GET /ai/review-queue` returns `providerName` per draft (rendered as the `Suggested by <Provider>` caption); `GET /transactions/:id` returns a `categorisationProvenance` block derived from the latest event (rendered under the Category dropdown on the edit modal). Old events without `providerId` (pre-column, or after a provider was deleted) fall back to a no-provider caption.
+
 ### Build & run
 | Task | Command |
 |---|---|
