@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Clock, Scissors } from "lucide-react";
+import { AlertTriangle, Clock, Pencil, Scissors } from "lucide-react";
 import { setTransactionCategory } from "@/lib/banking-rules";
-import { getTransaction } from "@/lib/banking";
+import { createTransaction, getTransaction, updateTransactionFields } from "@/lib/banking";
 import { applyAiSuggestion } from "@/lib/ai";
 import type { AiDraftView, CategorisationProvenance, Category, Transaction, Vendor } from "@/lib/types";
 import { AiSuggestionBanner } from "./ai-suggestion-banner";
@@ -28,37 +29,46 @@ function fmtBalance(amount: string | number | null | undefined): string {
 
 export function TransactionEditModal({
   transaction,
+  accounts,
   categories,
   vendors,
   onClose,
   onManageSplits,
   aiReviewMode = false,
   onAiReviewResolved,
+  onCreated,
 }: {
-  transaction: Transaction & {
+  // Undefined ⇒ create mode (Add Transaction). Otherwise edit mode.
+  transaction?: Transaction & {
     splits?: Array<{ id: string; categoryId: string; amount: string | number; notes?: string | null }>;
     account?: { id: string; name: string };
   };
+  // Required in create mode (so the Account dropdown has options); optional in edit
+  // mode but needed when the user clicks the unlock icon to change accounts.
+  accounts?: Array<{ id: string; name: string; isActive?: boolean }>;
   categories: Category[];
   vendors: Vendor[];
   onClose: () => void;
-  onManageSplits: () => void;
+  onManageSplits?: () => void;
   // When true the modal is launched from the AI Review queue: the AiSuggestionBanner
   // is hidden (the parent already shows the suggestion) and Save resolves the
   // pending AI draft via /ai/apply so the row disappears from the queue.
   aiReviewMode?: boolean;
   onAiReviewResolved?: () => void;
+  // Fires after a successful create — typically used to refresh the list.
+  onCreated?: () => void;
 }) {
   const router = useRouter();
-  const hasSplits = !!transaction.splits && transaction.splits.length > 0;
+  const isCreate = !transaction;
+  const hasSplits = !isCreate && !!transaction!.splits && transaction!.splits.length > 0;
 
   // Two-stage category selection: parent + subcategory.
   // Initial derivation from the transaction's current categoryId:
   //   - if the current category has a parentId, parent = that parent, sub = current
   //   - if the current category has no parentId (top-level leaf), parent = current, sub = ''
-  //   - if no category: both empty
-  const initialCategory = transaction.categoryId
-    ? categories.find((c) => c.id === transaction.categoryId)
+  //   - if no category (create mode or uncategorised): both empty
+  const initialCategory = transaction?.categoryId
+    ? categories.find((c) => c.id === transaction!.categoryId)
     : null;
   const initialParentId = initialCategory
     ? (initialCategory.parentId ?? initialCategory.id)
@@ -68,6 +78,14 @@ export function TransactionEditModal({
     : "";
   const [parentCategoryId, setParentCategoryId] = useState<string>(initialParentId);
   const [subcategoryId, setSubcategoryId] = useState<string>(initialSubId);
+
+  // Core fields. Locked behind `unlocked` in edit mode; always editable in create mode.
+  const [unlocked, setUnlocked] = useState<boolean>(isCreate);
+  const todayLocal = new Date().toISOString().slice(0, 10);
+  const [txDate, setTxDate] = useState<string>(transaction?.date.slice(0, 10) ?? todayLocal);
+  const [txAmount, setTxAmount] = useState<string>(transaction ? String(transaction.amount) : "");
+  const [txDescription, setTxDescription] = useState<string>(transaction?.description ?? "");
+  const [accountId, setAccountId] = useState<string>(transaction?.accountId ?? (accounts?.[0]?.id ?? ""));
 
   // Build a map of parent id → its active children. Used to (a) decide whether the
   // Subcategory dropdown is meaningful, and (b) populate its options.
@@ -98,19 +116,19 @@ export function TransactionEditModal({
   // The categoryId that will be persisted: subcategory if the parent has children,
   // otherwise the parent itself (which is a standalone leaf in that case).
   const categoryId = parentRequiresSub ? subcategoryId : parentCategoryId;
-  const [vendorId, setVendorId] = useState<string>(transaction.vendorId ?? "");
-  const [notes, setNotes] = useState<string>(transaction.notes ?? "");
+  const [vendorId, setVendorId] = useState<string>(transaction?.vendorId ?? "");
+  const [notes, setNotes] = useState<string>(transaction?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [activeDraft, setActiveDraft] = useState<AiDraftView | null>(null);
   const [aiEditMode, setAiEditMode] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [provenance, setProvenance] = useState<CategorisationProvenance>(
-    transaction.categorisationProvenance ?? null
+    transaction?.categorisationProvenance ?? null
   );
 
   useEffect(() => {
     // Fetch fresh to populate categorisationProvenance which the list endpoint doesn't include.
-    if (!transaction.id) return;
+    if (!transaction?.id) return;
     let cancelled = false;
     getTransaction(transaction.id)
       .then((fresh) => {
@@ -121,7 +139,7 @@ export function TransactionEditModal({
       })
       .catch(() => { /* leave provenance as is */ });
     return () => { cancelled = true; };
-  }, [transaction.id]);
+  }, [transaction?.id]);
 
   useEffect(() => {
     if (!activeDraft || aiEditMode) return;
@@ -133,27 +151,60 @@ export function TransactionEditModal({
   async function onSave() {
     setSaving(true);
     try {
+      if (isCreate) {
+        // Manual create — single POST with everything.
+        const amountNum = Number(txAmount);
+        if (!Number.isFinite(amountNum)) throw new Error('Amount must be a number');
+        if (!accountId) throw new Error('Pick an account');
+        if (!txDate) throw new Error('Date is required');
+        if (!txDescription.trim()) throw new Error('Description is required');
+        await createTransaction({
+          accountId,
+          date: txDate,
+          amount: amountNum,
+          description: txDescription.trim(),
+          categoryId: categoryId || undefined,
+          vendorId: vendorId || undefined,
+          notes: notes || undefined,
+        });
+        onCreated?.();
+        router.refresh();
+        onClose();
+        return;
+      }
+
+      const txId = transaction!.id;
+      // If core fields were unlocked AND changed, save them first via PATCH /:id.
+      if (unlocked) {
+        const coreChanges: Record<string, string | number> = {};
+        if (accountId && accountId !== transaction!.accountId) coreChanges.accountId = accountId;
+        if (txDate && txDate !== transaction!.date.slice(0, 10)) coreChanges.date = txDate;
+        const amountNum = Number(txAmount);
+        if (Number.isFinite(amountNum) && String(amountNum) !== String(Number(transaction!.amount))) {
+          coreChanges.amount = amountNum;
+        }
+        if (txDescription !== transaction!.description) coreChanges.description = txDescription;
+        if (Object.keys(coreChanges).length > 0) {
+          await updateTransactionFields(txId, coreChanges);
+        }
+      }
+
       if (aiReviewMode) {
         // From the AI Review queue we always resolve the pending draft via /ai/apply.
-        // The server resolves accept-vs-edit based on whether chosen values match the
-        // AI's pick, so an unchanged save accepts and an edited save edits — both
-        // remove the row from the review queue.
-        await applyAiSuggestion(transaction.id, {
+        await applyAiSuggestion(txId, {
           action: 'edit',
           chosenCategoryId: categoryId,
           chosenVendorId: vendorId || null,
         });
         onAiReviewResolved?.();
       } else if (aiEditMode && activeDraft) {
-        // Server-side resolves accept-vs-edit based on whether chosen values
-        // match the AI's pick (decided server-side per spec).
-        await applyAiSuggestion(transaction.id, {
+        await applyAiSuggestion(txId, {
           action: 'edit',
           chosenCategoryId: categoryId,
           chosenVendorId: vendorId || null,
         });
       } else {
-        await setTransactionCategory(transaction.id, {
+        await setTransactionCategory(txId, {
           categoryId: categoryId || undefined,
           vendorId: vendorId || undefined,
           notes,
@@ -170,55 +221,124 @@ export function TransactionEditModal({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader className="flex flex-row items-center justify-between">
-          <DialogTitle>Edit transaction</DialogTitle>
-          <button
-            type="button"
-            className="text-xs text-slate-500 hover:text-slate-800"
-            onClick={() => setHistoryOpen(true)}
-          >
-            <Clock className="inline h-3 w-3" /> History
-          </button>
+          <DialogTitle>{isCreate ? "Add transaction" : "Edit transaction"}</DialogTitle>
+          {!isCreate && (
+            <button
+              type="button"
+              className="text-xs text-slate-500 hover:text-slate-800"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <Clock className="inline h-3 w-3" /> History
+            </button>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
-          {hasSplits && (
+          {!isCreate && hasSplits && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
-                This transaction has {transaction.splits!.length} splits. Setting a single Category here will reset the
+                This transaction has {transaction!.splits!.length} splits. Setting a single Category here will reset the
                 splits. To keep the breakdown, use <strong>Manage splits</strong> instead.
               </div>
             </div>
           )}
 
-          {/* Read-only block */}
-          <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
-            <div>
-              <div className="text-slate-500">Date</div>
-              <div className="font-mono text-slate-800">{transaction.date.slice(0, 10)}</div>
+          {/* Core fields — editable when create OR unlocked, otherwise read-only with pencil to unlock. */}
+          {(isCreate || unlocked) ? (
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-wider text-slate-500">
+                <span>{isCreate ? "Transaction details" : "Edit details"}</span>
+                {!isCreate && (
+                  <button
+                    type="button"
+                    onClick={() => setUnlocked(false)}
+                    className="text-xs normal-case tracking-normal text-slate-500 hover:text-slate-800"
+                  >
+                    cancel
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Field label="Date">
+                  <Input type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)} />
+                </Field>
+                <Field label="Amount (signed)">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={txAmount}
+                    onChange={(e) => setTxAmount(e.target.value)}
+                    placeholder="e.g. -12.50 or 514.08"
+                  />
+                </Field>
+                <div className="md:col-span-2">
+                  <Field label="Description">
+                    <Input
+                      value={txDescription}
+                      onChange={(e) => setTxDescription(e.target.value)}
+                      maxLength={500}
+                    />
+                  </Field>
+                </div>
+                <Field label="Account">
+                  {accounts && accounts.length > 0 ? (
+                    <Select value={accountId || "__none__"} onValueChange={(v) => setAccountId(v === "__none__" ? "" : v)}>
+                      <SelectTrigger><SelectValue placeholder="— pick one —" /></SelectTrigger>
+                      <SelectContent>
+                        {accounts.filter((a) => a.isActive !== false).map((a) => (
+                          <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="text-xs italic text-slate-400 py-1.5">
+                      {transaction?.account?.name ?? "—"} (no accounts list provided)
+                    </div>
+                  )}
+                </Field>
+              </div>
             </div>
-            <div>
-              <div className="text-slate-500">Amount</div>
-              <div className="font-mono text-slate-800">{fmtAmount(transaction.amount)}</div>
+          ) : (
+            <div className="relative rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+              <button
+                type="button"
+                onClick={() => setUnlocked(true)}
+                aria-label="Edit transaction details"
+                className="absolute right-2 top-2 rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                title="Edit date / amount / description / account"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <div className="grid grid-cols-2 gap-3 pr-6">
+                <div>
+                  <div className="text-slate-500">Date</div>
+                  <div className="font-mono text-slate-800">{transaction!.date.slice(0, 10)}</div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Amount</div>
+                  <div className="font-mono text-slate-800">{fmtAmount(transaction!.amount)}</div>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-slate-500">Description</div>
+                  <div className="text-slate-800">{transaction!.description}</div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Balance</div>
+                  <div className="font-mono text-slate-800">{fmtBalance(transaction!.runningBalance)}</div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Account</div>
+                  <div className="text-slate-800">{transaction!.account?.name ?? "—"}</div>
+                </div>
+              </div>
             </div>
-            <div className="col-span-2">
-              <div className="text-slate-500">Description</div>
-              <div className="text-slate-800">{transaction.description}</div>
-            </div>
-            <div>
-              <div className="text-slate-500">Balance</div>
-              <div className="font-mono text-slate-800">{fmtBalance(transaction.runningBalance)}</div>
-            </div>
-            <div>
-              <div className="text-slate-500">Account</div>
-              <div className="text-slate-800">{transaction.account?.name ?? "—"}</div>
-            </div>
-          </div>
+          )}
 
-          {!aiReviewMode && (
+          {!isCreate && !aiReviewMode && (
             <AiSuggestionBanner
-              transactionId={transaction.id}
-              auto={!transaction.categoryId}
+              transactionId={transaction!.id}
+              auto={!transaction!.categoryId}
               onAccepted={() => { router.refresh(); onClose(); }}
               onRejected={() => { setActiveDraft(null); setAiEditMode(false); }}
               onEditMode={(draft) => {
@@ -309,11 +429,13 @@ export function TransactionEditModal({
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} maxLength={2000} />
           </Field>
 
-          <div>
-            <Button type="button" variant="outline" size="sm" onClick={onManageSplits}>
-              <Scissors className="h-3.5 w-3.5" /> Manage splits
-            </Button>
-          </div>
+          {!isCreate && onManageSplits && (
+            <div>
+              <Button type="button" variant="outline" size="sm" onClick={onManageSplits}>
+                <Scissors className="h-3.5 w-3.5" /> Manage splits
+              </Button>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -327,13 +449,15 @@ export function TransactionEditModal({
             {saving ? "Saving…" : aiReviewMode ? "Save and Accept" : "Save"}
           </Button>
         </DialogFooter>
-        <TransactionHistoryDrawer
-          transactionId={transaction.id}
-          open={historyOpen}
-          onClose={() => setHistoryOpen(false)}
-          categories={categories}
-          vendors={vendors}
-        />
+        {!isCreate && (
+          <TransactionHistoryDrawer
+            transactionId={transaction!.id}
+            open={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            categories={categories}
+            vendors={vendors}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

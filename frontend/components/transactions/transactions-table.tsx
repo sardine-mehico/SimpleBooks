@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Filter, ChevronUp, ChevronDown, ChevronsUpDown, Sparkles, Trash2, X, RefreshCw, Check } from "lucide-react";
+import { Filter, ChevronUp, ChevronDown, ChevronsUpDown, Sparkles, Trash2, X, RefreshCw, Check, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ import {
 import { Pagination } from "@/components/data/pagination";
 import { cn } from "@/lib/utils";
 import { TransactionAmountCell } from "./transaction-amount-cell";
+import { TransactionEditModal } from "./transaction-edit-modal";
 import { listTransactions, bulkDeleteTransactions } from "@/lib/banking";
 import { bulkSuggest } from "@/lib/ai";
 import { CATEGORY_KINDS } from "@/lib/types";
@@ -151,6 +152,7 @@ export function TransactionsTable({
   const [filterOpen, setFilterOpen] = useState(false);
   const [showRecategorise, setShowRecategorise] = useState(false);
   const [bulkAiOpen, setBulkAiOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [bulkAiInitial, setBulkAiInitial] = useState<{ runId: string; totalQueued: number } | null>(null);
   const [applyTx, setApplyTx] = useState<PaymentQueueItem | null>(null);
 
@@ -391,6 +393,9 @@ export function TransactionsTable({
           {loading ? "Loading…" : `${totalCount.toLocaleString("en-AU")} transaction${totalCount === 1 ? "" : "s"}`}
         </div>
         <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" /> Add Transaction
+          </Button>
           <Button type="button" variant="outline" onClick={() => setShowRecategorise(true)}>
             Re-categorise
           </Button>
@@ -649,6 +654,7 @@ export function TransactionsTable({
                   <div className="flex justify-end">
                     <TransactionRowMenu
                       transaction={t}
+                      accounts={accounts}
                       categories={categories}
                       vendors={vendors}
                       onApplyToInvoices={(tx) => setApplyTx(toQueueItem(tx))}
@@ -682,6 +688,16 @@ export function TransactionsTable({
         onClose={() => { setBulkAiOpen(false); setBulkAiInitial(null); }}
         initialRunId={bulkAiInitial}
       />
+      {addOpen && (
+        <TransactionEditModal
+          // transaction omitted → create mode
+          accounts={accounts}
+          categories={categories}
+          vendors={vendors}
+          onClose={() => setAddOpen(false)}
+          onCreated={() => { router.refresh(); }}
+        />
+      )}
       {applyTx && (
         <ApplyPaymentModal
           context="transaction"

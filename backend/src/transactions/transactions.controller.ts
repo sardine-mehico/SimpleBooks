@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { BulkDeleteDto, ListTransactionsDto, SetCategoryDto, SetSplitsDto } from './dto';
+import { BulkDeleteDto, CreateTransactionDto, ListTransactionsDto, SetCategoryDto, SetSplitsDto, UpdateTransactionDto } from './dto';
 
 @Controller('transactions')
 export class TransactionsController {
@@ -37,6 +37,17 @@ export class TransactionsController {
   @HttpCode(200)
   bulkDelete(@Body() dto: BulkDeleteDto) {
     return this.service.bulkDelete(dto.ids ?? []);
+  }
+
+  @Post()
+  @HttpCode(201)
+  create(@Body() dto: CreateTransactionDto) {
+    return this.service.create(dto);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateTransactionDto) {
+    return this.service.updateFields(id, dto);
   }
 
   @Post(':id/splits') setSplits(@Param('id') id: string, @Body() dto: SetSplitsDto) {

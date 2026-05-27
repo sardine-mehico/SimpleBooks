@@ -12,9 +12,10 @@ import { deleteTransaction } from "@/lib/banking";
 import type { Category, Transaction, Vendor } from "@/lib/types";
 
 export function TransactionRowMenu({
-  transaction, categories, vendors, onApplyToInvoices,
+  transaction, accounts, categories, vendors, onApplyToInvoices,
 }: {
   transaction: Transaction & { splits?: any[]; account?: { id: string; name: string } };
+  accounts?: Array<{ id: string; name: string; isActive?: boolean }>;
   categories: Category[];
   vendors: Vendor[];
   onApplyToInvoices?: (t: Transaction) => void;
@@ -68,6 +69,7 @@ export function TransactionRowMenu({
       {showEdit && (
         <TransactionEditModal
           transaction={transaction}
+          accounts={accounts}
           categories={categories}
           vendors={vendors}
           onClose={() => setShowEdit(false)}

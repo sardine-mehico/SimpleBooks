@@ -95,6 +95,24 @@ export const deleteTransaction = (id: string) =>
 export const bulkDeleteTransactions = (ids: string[]) =>
   apiClient.post<{ deleted: number }>('/transactions/bulk-delete', { ids });
 
+export const createTransaction = (data: {
+  accountId: string;
+  date: string;          // YYYY-MM-DD
+  amount: number;        // signed
+  description: string;
+  categoryId?: string;
+  vendorId?: string;
+  notes?: string;
+}) => apiClient.post<Transaction>('/transactions', data);
+
+export const updateTransactionFields = (id: string, data: Partial<{
+  accountId: string;
+  date: string;
+  amount: number;
+  description: string;
+  notes: string;
+}>) => apiClient.patch<Transaction>(`/transactions/${id}`, data);
+
 // Import logs
 export const listImportLogs = (params: { accountId?: string; dateFrom?: string; dateTo?: string; page?: number; pageSize?: number } = {}) => {
   const search = new URLSearchParams();

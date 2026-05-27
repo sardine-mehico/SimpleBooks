@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { ListTransactionsDto } from './dto';
+import { CreateTransactionDto, ListTransactionsDto, UpdateTransactionDto } from './dto';
 
 @Injectable()
 export class TransactionsService {
@@ -306,6 +307,68 @@ export class TransactionsService {
         });
       }
       return updated;
+    });
+    const [withBalance] = await this.attachComputedBalance([updated]);
+    return withBalance;
+  }
+
+  // Manually create a transaction (UI "Add Transaction" button). CSV imports use
+  // a deterministic importHash for dedupe; manual creates get a synthetic
+  // `manual:<uuid>` hash so they never collide with an imported row and never
+  // dedupe against each other.
+  async create(data: CreateTransactionDto) {
+    if (data.categoryId) {
+      const childCount = await this.prisma.category.count({ where: { parentId: data.categoryId } });
+      if (childCount > 0) {
+        throw new BadRequestException('Cannot assign a parent category to a transaction. Pick a subcategory.');
+      }
+    }
+    const tx = await this.prisma.transaction.create({
+      data: {
+        accountId: data.accountId,
+        date: new Date(data.date),
+        amount: new Prisma.Decimal(data.amount.toFixed ? data.amount.toFixed(2) : String(data.amount)),
+        description: data.description,
+        categoryId: data.categoryId ?? null,
+        vendorId: data.vendorId ?? null,
+        notes: data.notes ?? null,
+        categorisedAt: data.categoryId ? new Date() : null,
+        importHash: `manual:${randomUUID()}`,
+        importId: null,
+      },
+    });
+    if (data.categoryId || data.vendorId) {
+      await this.prisma.categorisationEvent.create({
+        data: {
+          transactionId: tx.id,
+          source: 'USER',
+          newCategoryId: data.categoryId ?? null,
+          newVendorId: data.vendorId ?? null,
+        },
+      });
+    }
+    const [withBalance] = await this.attachComputedBalance([tx]);
+    return withBalance;
+  }
+
+  // Generic update for core fields (date/amount/description/account/notes).
+  // Category/vendor changes still go through setCategory because they emit a
+  // distinct CategorisationEvent and clear ruleId. Mixing them here would
+  // confuse the audit semantics.
+  async updateFields(id: string, data: UpdateTransactionDto) {
+    const existing = await this.prisma.transaction.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException();
+    const updated = await this.prisma.transaction.update({
+      where: { id },
+      data: {
+        ...(data.accountId !== undefined ? { accountId: data.accountId } : {}),
+        ...(data.date !== undefined ? { date: new Date(data.date) } : {}),
+        ...(data.amount !== undefined
+          ? { amount: new Prisma.Decimal(data.amount.toFixed ? data.amount.toFixed(2) : String(data.amount)) }
+          : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.notes !== undefined ? { notes: data.notes } : {}),
+      },
     });
     const [withBalance] = await this.attachComputedBalance([updated]);
     return withBalance;
