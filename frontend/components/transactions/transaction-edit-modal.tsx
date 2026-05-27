@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Clock, Pencil, Scissors } from "lucide-react";
-import { setTransactionCategory } from "@/lib/banking-rules";
+import { createCategory, setTransactionCategory } from "@/lib/banking-rules";
 import { createTransaction, getTransaction, updateTransactionFields } from "@/lib/banking";
 import { applyAiSuggestion } from "@/lib/ai";
 import type { AiDraftView, CategorisationProvenance, Category, Transaction, Vendor } from "@/lib/types";
@@ -109,13 +109,47 @@ export function TransactionEditModal({
     () => parentCategoryId ? (childrenByParent.get(parentCategoryId) ?? []).filter((c) => c.isActive) : [],
     [parentCategoryId, childrenByParent],
   );
-  // True when the selected top-level has children (i.e. is a group); the user
-  // MUST then pick a subcategory because transactions can't attach to a parent.
-  const parentRequiresSub = childrenOfSelectedParent.length > 0;
 
-  // The categoryId that will be persisted: subcategory if the parent has children,
-  // otherwise the parent itself (which is a standalone leaf in that case).
-  const categoryId = parentRequiresSub ? subcategoryId : parentCategoryId;
+  // Special case: when the picked parent is a TRANSFER-kind category, the
+  // "subcategory" position renders accounts instead of regular child categories.
+  // The user picks the destination/source account; on save we find-or-create a
+  // TRANSFER subcategory under that parent whose name matches the picked account.
+  const selectedParentCategory = parentCategoryId
+    ? categories.find((c) => c.id === parentCategoryId)
+    : null;
+  const isTransferMode = selectedParentCategory?.kind === 'TRANSFER';
+
+  // Initialise transferAccountId by matching the current subcategory's name to an account.
+  // (When editing an existing transfer-categorised row, the subcategory will be an
+  // auto-created child named after the other account.)
+  const initialTransferAccountId = (() => {
+    if (!initialCategory?.parentId) return '';
+    const parent = categories.find((c) => c.id === initialCategory.parentId);
+    if (parent?.kind !== 'TRANSFER') return '';
+    const target = (accounts ?? []).find(
+      (a) => a.name.trim().toLowerCase() === initialCategory.name.trim().toLowerCase(),
+    );
+    return target?.id ?? '';
+  })();
+  const [transferAccountId, setTransferAccountId] = useState<string>(initialTransferAccountId);
+
+  // Accounts available as transfer targets — exclude the transaction's own account.
+  const transferDestinationAccounts = useMemo(() => {
+    if (!accounts) return [];
+    const ownAccountId = transaction?.accountId ?? accountId;
+    return accounts.filter((a) => a.id !== ownAccountId && (a.isActive ?? true));
+  }, [accounts, transaction?.accountId, accountId]);
+
+  // True when the user must pick a child (either a real subcategory under a group
+  // parent, or a destination account under a TRANSFER parent).
+  const parentRequiresSub = childrenOfSelectedParent.length > 0 || isTransferMode;
+
+  // The categoryId used for render-time logic (disabled checks, AI-edit diff). In
+  // transfer mode, this stays empty here — the actual persisted id is resolved
+  // inside onSave via find-or-create against the chosen destination account.
+  const categoryId = isTransferMode
+    ? ''
+    : (parentRequiresSub ? subcategoryId : parentCategoryId);
   const [vendorId, setVendorId] = useState<string>(transaction?.vendorId ?? "");
   const [notes, setNotes] = useState<string>(transaction?.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -151,6 +185,29 @@ export function TransactionEditModal({
   async function onSave() {
     setSaving(true);
     try {
+      // Resolve the effective categoryId. In transfer mode, the visual "Other account"
+      // picker yields an accountId — we find-or-create a TRANSFER-kind subcategory
+      // named after that account under the chosen transfer parent.
+      let effectiveCategoryId = categoryId;
+      if (isTransferMode && transferAccountId) {
+        const acct = accounts?.find((a) => a.id === transferAccountId);
+        if (!acct) throw new Error('Selected account not found');
+        const target = acct.name.trim();
+        const existing = childrenOfSelectedParent.find(
+          (c) => c.name.trim().toLowerCase() === target.toLowerCase(),
+        );
+        if (existing) {
+          effectiveCategoryId = existing.id;
+        } else {
+          const created = await createCategory({
+            name: target,
+            kind: 'TRANSFER',
+            parentId: parentCategoryId,
+          });
+          effectiveCategoryId = created.id;
+        }
+      }
+
       if (isCreate) {
         // Manual create — single POST with everything.
         const amountNum = Number(txAmount);
@@ -163,7 +220,7 @@ export function TransactionEditModal({
           date: txDate,
           amount: amountNum,
           description: txDescription.trim(),
-          categoryId: categoryId || undefined,
+          categoryId: effectiveCategoryId || undefined,
           vendorId: vendorId || undefined,
           notes: notes || undefined,
         });
@@ -193,19 +250,19 @@ export function TransactionEditModal({
         // From the AI Review queue we always resolve the pending draft via /ai/apply.
         await applyAiSuggestion(txId, {
           action: 'edit',
-          chosenCategoryId: categoryId,
+          chosenCategoryId: effectiveCategoryId,
           chosenVendorId: vendorId || null,
         });
         onAiReviewResolved?.();
       } else if (aiEditMode && activeDraft) {
         await applyAiSuggestion(txId, {
           action: 'edit',
-          chosenCategoryId: categoryId,
+          chosenCategoryId: effectiveCategoryId,
           chosenVendorId: vendorId || null,
         });
       } else {
         await setTransactionCategory(txId, {
-          categoryId: categoryId || undefined,
+          categoryId: effectiveCategoryId || undefined,
           vendorId: vendorId || undefined,
           notes,
         });
@@ -365,9 +422,10 @@ export function TransactionEditModal({
                 onValueChange={(v) => {
                   const next = v === "__none__" ? "" : v;
                   setParentCategoryId(next);
-                  // Reset subcategory whenever the parent changes — the previous
-                  // subcategoryId would point at a child of the old parent.
+                  // Reset both child-selectors whenever the parent changes — the
+                  // previous values pertain to the old parent.
                   setSubcategoryId("");
+                  setTransferAccountId("");
                 }}
               >
                 <SelectTrigger><SelectValue placeholder="— uncategorised —" /></SelectTrigger>
@@ -388,8 +446,32 @@ export function TransactionEditModal({
                 </div>
               )}
             </Field>
-            <Field label="Subcategory">
-              {parentRequiresSub ? (
+            <Field label={isTransferMode ? "Other account" : "Subcategory"}>
+              {isTransferMode ? (
+                transferDestinationAccounts.length > 0 ? (
+                  <Select
+                    value={transferAccountId || "__none__"}
+                    onValueChange={(v) => setTransferAccountId(v === "__none__" ? "" : v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="— pick the other account —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— pick the other account —</SelectItem>
+                      {transferDestinationAccounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Select value="__none__" disabled>
+                    <SelectTrigger>
+                      <SelectValue placeholder="— no other accounts available —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">no other accounts available</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )
+              ) : parentRequiresSub ? (
                 <Select
                   value={subcategoryId || "__none__"}
                   onValueChange={(v) => setSubcategoryId(v === "__none__" ? "" : v)}
@@ -443,8 +525,17 @@ export function TransactionEditModal({
           <Button
             type="button"
             onClick={onSave}
-            disabled={saving || (parentRequiresSub && !subcategoryId)}
-            title={parentRequiresSub && !subcategoryId ? "Pick a subcategory — this category is a group, not a leaf" : undefined}
+            disabled={
+              saving ||
+              (parentRequiresSub && (isTransferMode ? !transferAccountId : !subcategoryId))
+            }
+            title={
+              parentRequiresSub && (isTransferMode ? !transferAccountId : !subcategoryId)
+                ? (isTransferMode
+                    ? "Pick the other account for this transfer"
+                    : "Pick a subcategory — this category is a group, not a leaf")
+                : undefined
+            }
           >
             {saving ? "Saving…" : aiReviewMode ? "Save and Accept" : "Save"}
           </Button>
