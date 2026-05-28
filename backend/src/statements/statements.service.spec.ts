@@ -39,11 +39,11 @@ function makePrisma(state: {
       }),
     },
     allocation: {
-      findMany: jest.fn(async ({ where }: any) => {
+      findMany: jest.fn(async ({ where, include }: any) => {
         const allocs = (state.allocations ?? []).slice();
         const txs = state.transactions ?? [];
         const invs = state.invoices ?? [];
-        return allocs.filter((a: any) => {
+        const filtered = allocs.filter((a: any) => {
           const tx = find(txs, { id: a.transactionId });
           const inv = find(invs, { id: a.invoiceId });
           if (!tx || !inv) return false;
@@ -54,10 +54,11 @@ function makePrisma(state: {
           if (where?.transaction?.date?.gte && !(tx.date >= where.transaction.date.gte)) return false;
           if (where?.transaction?.date?.lte && !(tx.date <= where.transaction.date.lte)) return false;
           return true;
-        }).map((a: any) => ({
-          ...a,
-          transaction: find(txs, { id: a.transactionId }),
-        }));
+        });
+        if (include?.transaction) {
+          return filtered.map((a: any) => ({ ...a, transaction: find(txs, { id: a.transactionId }) }));
+        }
+        return filtered.map((a: any) => ({ ...a }));
       }),
     },
     preferences: {
@@ -88,7 +89,7 @@ describe('StatementsService.getStatement', () => {
         { id: 'a1', transactionId: 'tx1', invoiceId: 'i1', amount: new Decimal('1492.33') },
       ],
     });
-    const svc = new StatementsService(prisma);
+    const svc = new StatementsService(prisma, null as any, null as any);
     const r = await svc.getStatement({
       customerId: 'cust1', billingCompanyId: 'co1',
       dateFrom: '2024-07-01', dateTo: '2025-06-30',
@@ -116,7 +117,7 @@ describe('StatementsService.getStatement body rows', () => {
         { id: 'a2', transactionId: 'tx1', invoiceId: 'i2', amount: new Decimal('746.16') },
       ],
     });
-    const svc = new StatementsService(prisma);
+    const svc = new StatementsService(prisma, null as any, null as any);
     const r = await svc.getStatement({
       customerId: 'cust1', billingCompanyId: 'co1',
       dateFrom: '2024-07-01', dateTo: '2025-06-30',
@@ -144,7 +145,7 @@ describe('StatementsService.getStatement body rows', () => {
         { id: 'a1', transactionId: 'tx1', invoiceId: 'i1', amount: new Decimal('500.00') },
       ],
     });
-    const r = await new StatementsService(prisma).getStatement({
+    const r = await new StatementsService(prisma, null as any, null as any).getStatement({
       customerId: 'cust1', billingCompanyId: 'co1',
       dateFrom: null, dateTo: null,
     });
@@ -169,7 +170,7 @@ describe('StatementsService.getStatement body rows', () => {
         { id: 'a2', transactionId: 'tx1', invoiceId: 'i2', amount: new Decimal('100.00') },
       ],
     });
-    const r = await new StatementsService(prisma).getStatement({
+    const r = await new StatementsService(prisma, null as any, null as any).getStatement({
       customerId: 'cust1', billingCompanyId: 'co1',
       dateFrom: null, dateTo: null,
     });
@@ -187,7 +188,7 @@ describe('StatementsService.getStatement body rows', () => {
           totalAmount: new Decimal('50.00'), invoiceDate: new Date('2020-01-01') },
       ],
     });
-    const r = await new StatementsService(prisma).getStatement({
+    const r = await new StatementsService(prisma, null as any, null as any).getStatement({
       customerId: 'cust1', billingCompanyId: 'co1',
       dateFrom: null, dateTo: null,
     });

@@ -99,7 +99,10 @@ export class StatementsService {
       if (fromInstant) bodyAllocWhere.transaction.date.gte = fromInstant;
       if (toInstant) bodyAllocWhere.transaction.date.lte = toInstant;
     }
-    const bodyAllocs = await this.prisma.allocation.findMany({ where: bodyAllocWhere });
+    const bodyAllocs = await this.prisma.allocation.findMany({
+      where: bodyAllocWhere,
+      include: { transaction: true },
+    });
 
     type TxBucket = { transactionId: string; date: Date; payment: Decimal };
     const txBuckets = new Map<string, TxBucket>();
