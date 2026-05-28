@@ -33,6 +33,15 @@ export type SendInvoiceOverrides = {
   attachPdf?: boolean;
 };
 
+export type SendStatementOverrides = {
+  from?: string;
+  to?: string;
+  cc?: string;
+  bcc?: string;
+  subject?: string;
+  html?: string;
+};
+
 // Mint a 32-byte URL-safe random token (~43 chars, 256 bits of entropy).
 // Stored on `Invoice.publicToken` with @unique — the customer-facing
 // /i/:token route looks it up directly, no HMAC needed.
@@ -88,19 +97,15 @@ export class MailService {
     return { messageId: info.messageId };
   }
 
-  // Resolve the outbound SMTP config for an invoice:
+  // Resolve the outbound SMTP config for a billing company:
   //   CUSTOM_SMTP on the billing company → that company's own credentials
   //   GENERAL_SMTP (default)             → the singleton MailConfiguration row
   // Returns null when nothing is configured (e.g. brand-new install where
   // MailConfiguration.smtpServer is still empty). The caller treats that as a
   // fast-fail rather than connecting to an empty host.
-  private async resolveConfigForInvoice(invoiceId: string): Promise<SmtpConfig | null> {
-    const inv = await this.prisma.invoice.findUnique({
-      where: { id: invoiceId },
-      include: { billingCompany: true },
-    });
-    if (!inv) return null;
-    const co = inv.billingCompany;
+  private async resolveConfigForCompany(billingCompanyId: string | null): Promise<SmtpConfig | null> {
+    if (!billingCompanyId) return this.resolveSystemConfig();
+    const co = await this.prisma.billingCompany.findUnique({ where: { id: billingCompanyId } });
     if (
       co?.sendVia === 'CUSTOM_SMTP' &&
       co.customSmtpServer &&
@@ -115,6 +120,10 @@ export class MailService {
         password: co.customSmtpPassword ?? '',
       };
     }
+    return this.resolveSystemConfig();
+  }
+
+  private async resolveSystemConfig(): Promise<SmtpConfig | null> {
     const sys = await this.prisma.mailConfiguration.findFirst();
     if (!sys || !sys.smtpServer) return null;
     return {
@@ -124,6 +133,15 @@ export class MailService {
       user: sys.user,
       password: sys.password,
     };
+  }
+
+  private async resolveConfigForInvoice(invoiceId: string): Promise<SmtpConfig | null> {
+    const inv = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { billingCompanyId: true },
+    });
+    if (!inv) return null;
+    return this.resolveConfigForCompany(inv.billingCompanyId);
   }
 
   // Render the email template + PDF and dispatch the invoice email. Throws on
@@ -233,6 +251,43 @@ export class MailService {
       `INV-${inv.invoiceNumber} sent to ${to}: messageId=${info.messageId}` +
         (overrides.attachPdf ? ' (+PDF attachment)' : ''),
     );
+    return { messageId: info.messageId };
+  }
+
+  async sendStatement(args: {
+    customer: { id: string; billingEmail1: string | null };
+    billingCompany: { id: string; name: string; accountsEmail: string | null; invoiceBcc: string };
+    pdfBuffer: Buffer;
+    pdfFilename: string;
+    overrides: SendStatementOverrides;
+  }): Promise<{ messageId: string }> {
+    const to = args.overrides.to?.trim() || args.customer.billingEmail1;
+    if (!to) throw new Error('Customer has no primary billing email');
+
+    const cfg = await this.resolveConfigForCompany(args.billingCompany.id);
+    if (!cfg) {
+      throw new Error(
+        'No SMTP configured for this billing company (set to General SMTP but Settings / Mail Configuration is empty).',
+      );
+    }
+    const transport = this.buildTransport(cfg);
+
+    const from = args.overrides.from?.trim() || args.billingCompany.accountsEmail || cfg.user || 'noreply@simplebooks.dev';
+    const cc = args.overrides.cc?.trim() || undefined;
+    const bcc = args.overrides.bcc?.trim() || args.billingCompany.invoiceBcc || undefined;
+    const subject = args.overrides.subject ?? `Statement from ${args.billingCompany.name}`;
+    const html = args.overrides.html ?? `<p>Please find your statement attached.</p>`;
+
+    const info = await transport.sendMail({
+      from,
+      to,
+      cc,
+      bcc,
+      subject,
+      html: html || undefined,
+      attachments: [{ filename: args.pdfFilename, content: args.pdfBuffer }],
+    });
+    this.log.log(`Statement sent to ${to}: messageId=${info.messageId}`);
     return { messageId: info.messageId };
   }
 }

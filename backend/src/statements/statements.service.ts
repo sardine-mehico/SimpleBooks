@@ -2,7 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { localStartOfDay, localEndOfDay } from '../util/dates';
-import type { StatementResponse, StatementRow } from './types';
+import type { StatementResponse, StatementRow, StatementSendContext } from './types';
+import { PdfService } from '../pdf/pdf.service';
+import { MailService, SendStatementOverrides } from '../mail/mail.service';
 
 type GetParams = {
   customerId: string;
@@ -29,9 +31,24 @@ function fmtDdMmYyyy(d: Date): string {
   return `${day}/${m}/${y}`;
 }
 
+function formatRangeForSubject(dateFrom: string | null, dateTo: string | null): string {
+  if (!dateFrom && !dateTo) return 'All transactions';
+  if (dateFrom && dateTo) return `${dateFrom} – ${dateTo}`;
+  if (dateFrom) return `from ${dateFrom}`;
+  return `to ${dateTo}`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
+}
+
 @Injectable()
 export class StatementsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private pdf: PdfService,
+    private mail: MailService,
+  ) {}
 
   async getStatement(params: GetParams): Promise<StatementResponse> {
     const { customerId, billingCompanyId } = params;
@@ -192,6 +209,63 @@ export class StatementsService {
         balanceDue: balanceDue.toFixed(2),
       },
     };
+  }
+
+  async getSendContext(params: GetParams): Promise<StatementSendContext> {
+    const payload = await this.getStatement(params);
+    const subject = `Statement for ${payload.customer.name} · ${formatRangeForSubject(payload.dateFrom, payload.dateTo)}`;
+    const paymentBlock = payload.billingCompany.paymentDetails
+      ? `<p style="margin: 16px 0;">${escapeHtml(payload.billingCompany.paymentDetails)}</p>`
+      : '';
+    const html =
+      `<p>Hi ${escapeHtml(payload.customer.name)},</p>` +
+      `<p>Please find your statement from ${escapeHtml(payload.billingCompany.name)} attached. ` +
+      `The balance due is <strong>$${payload.summary.balanceDue}</strong>.</p>` +
+      paymentBlock +
+      `<p>Thank you.<br/>${escapeHtml(payload.billingCompany.name)}</p>`;
+    return {
+      from: payload.billingCompany.accountsEmail ?? '',
+      to: payload.customer.billingEmail1 ?? '',
+      cc: payload.customer.billingEmail2 ?? '',
+      bcc: payload.billingCompany.invoiceBcc ?? '',
+      subject,
+      html,
+    };
+  }
+
+  async send(params: GetParams, overrides: SendStatementOverrides): Promise<{ messageId: string }> {
+    const payload = await this.getStatement(params);
+    const { buffer, filename } = await this.pdf.renderStatement({
+      customer: {
+        customerNumber: payload.customer.customerNumber,
+        name: payload.customer.name,
+        address: payload.customer.address,
+        billingEmail1: payload.customer.billingEmail1,
+      },
+      billingCompany: {
+        name: payload.billingCompany.name,
+        abn: payload.billingCompany.abn,
+        address: payload.billingCompany.address,
+        accountsEmail: payload.billingCompany.accountsEmail,
+      },
+      dateFrom: payload.dateFrom,
+      dateTo: payload.dateTo,
+      openingBalance: payload.openingBalance,
+      rows: payload.rows,
+      summary: payload.summary,
+    });
+    return this.mail.sendStatement({
+      customer: { id: payload.customer.id, billingEmail1: payload.customer.billingEmail1 },
+      billingCompany: {
+        id: payload.billingCompany.id,
+        name: payload.billingCompany.name,
+        accountsEmail: payload.billingCompany.accountsEmail,
+        invoiceBcc: payload.billingCompany.invoiceBcc,
+      },
+      pdfBuffer: buffer,
+      pdfFilename: filename,
+      overrides,
+    });
   }
 
   private async computeOpeningBalance(params: {

@@ -1,8 +1,8 @@
-import { Controller, Get, Header, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Header, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { StatementsService } from './statements.service';
 import { PdfService } from '../pdf/pdf.service';
-import { StatementQueryDto } from './dto';
+import { SendStatementDto, StatementQueryDto } from './dto';
 
 @Controller('statements')
 export class StatementsController {
@@ -14,6 +14,16 @@ export class StatementsController {
   @Get()
   get(@Query() q: StatementQueryDto) {
     return this.statements.getStatement({
+      customerId: q.customerId,
+      billingCompanyId: q.billingCompanyId,
+      dateFrom: q.dateFrom ?? null,
+      dateTo: q.dateTo ?? null,
+    });
+  }
+
+  @Get('send-context')
+  sendContext(@Query() q: StatementQueryDto) {
+    return this.statements.getSendContext({
       customerId: q.customerId,
       billingCompanyId: q.billingCompanyId,
       dateFrom: q.dateFrom ?? null,
@@ -52,5 +62,25 @@ export class StatementsController {
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
     res.setHeader('Content-Length', String(buffer.byteLength));
     res.end(buffer);
+  }
+
+  @Post('send')
+  send(@Body() dto: SendStatementDto) {
+    return this.statements.send(
+      {
+        customerId: dto.customerId,
+        billingCompanyId: dto.billingCompanyId,
+        dateFrom: dto.dateFrom ?? null,
+        dateTo: dto.dateTo ?? null,
+      },
+      {
+        from: dto.fromEmail,
+        to: dto.toEmail,
+        cc: dto.ccEmail,
+        bcc: dto.bccEmail,
+        subject: dto.subject,
+        html: dto.html,
+      },
+    );
   }
 }
