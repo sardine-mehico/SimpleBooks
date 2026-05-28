@@ -73,10 +73,9 @@ export function ImportReportPopup({ data, onClose }: { data: ImportReport; onClo
       {data.ruleCategorisation && (
         <Section title="Categorisation" count={data.ruleCategorisation.ruleMatched} defaultOpen={true}>
           <div className="space-y-2 px-4 py-3 text-xs">
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div><div className="text-slate-500">Vendor matched</div><div className="font-semibold tabular-nums">{data.ruleCategorisation.vendorMatched}</div></div>
-              <div><div className="text-slate-500">Rule matched</div><div className="font-semibold tabular-nums text-emerald-700">{data.ruleCategorisation.ruleMatched}</div></div>
-              <div><div className="text-slate-500">Ambiguous vendor</div><div className="font-semibold tabular-nums text-amber-700">{data.ruleCategorisation.ambiguousVendor}</div></div>
+            <div className="text-center">
+              <div className="text-slate-500">Rule matched</div>
+              <div className="font-semibold tabular-nums text-emerald-700">{data.ruleCategorisation.ruleMatched}</div>
             </div>
             {data.ruleCategorisation.perRule.length > 0 && (
               <div className="border-t border-slate-100 pt-2">

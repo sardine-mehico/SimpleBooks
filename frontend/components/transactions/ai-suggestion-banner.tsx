@@ -122,7 +122,6 @@ export function AiSuggestionBanner({
           <Sparkles className="h-4 w-4" />
           <span className="font-medium">AI suggests:</span>
           <span>{draft.categoryName ?? '— uncategorised —'}</span>
-          {draft.vendorName && <span className="text-xs opacity-80">· Vendor: {draft.vendorName}</span>}
           <span className="ml-2 rounded bg-white/60 px-1.5 py-0.5 text-[10px] uppercase">{draft.confidence}</span>
         </div>
         {draft.reasoning && <div className="mt-1 italic text-xs opacity-80">"{draft.reasoning}"</div>}

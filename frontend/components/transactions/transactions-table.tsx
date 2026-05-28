@@ -27,11 +27,12 @@ import { TransactionEditModal } from "./transaction-edit-modal";
 import { listTransactions, bulkDeleteTransactions } from "@/lib/banking";
 import { bulkSuggest } from "@/lib/ai";
 import { CATEGORY_KINDS } from "@/lib/types";
-import type { Account, Category, CategoryKind, Customer, PaymentQueueItem, Transaction, Vendor } from "@/lib/types";
+import type { Account, Category, CategoryKind, Customer, PaymentQueueItem, Tag, Transaction } from "@/lib/types";
 import { RecategoriseDialog } from "./recategorise-dialog";
 import { BulkAiCategoriseDialog } from "./bulk-ai-categorise-dialog";
 import { TransactionRowMenu } from "./transaction-row-menu";
 import { ApplyPaymentModal } from "@/components/payments/apply-payment-modal";
+import { TagMultiSelect } from "@/components/tags/tag-multi-select";
 
 type SortKey = "date" | "amount" | "description";
 
@@ -46,10 +47,9 @@ const VALID_SORT_KEYS: SortKey[] = ["date", "amount", "description"];
 //   '__kind:TRANSFER'      => category.kind = TRANSFER
 //   '<uuid>'               => exact categoryId match
 //
-// Vendor select value encoding:
-//   '__any__'  => Any vendor (no filter)
-//   '__none'   => vendorId IS NULL
-//   '<uuid>'   => exact vendorId match
+// Tag filter URL params:
+//   ?tagIds=<uuid>,<uuid>   => matches transactions with ANY of these tags
+//   ?tagNone=true           => matches transactions with NO tags
 
 function encodeCategoryUrlParams(val: string): Record<string, string | null> {
   if (!val || val === "__any__") {
@@ -80,16 +80,15 @@ function decodeCategoryUrlParams(
   return "__any__";
 }
 
-function encodeVendorUrlParams(val: string): Record<string, string | null> {
-  if (!val || val === "__any__") return { vendorId: null, vendorNone: null };
-  if (val === "__none") return { vendorId: null, vendorNone: "true" };
-  return { vendorId: val, vendorNone: null };
+function encodeTagUrlParams(tagIds: string[], tagNone: boolean): Record<string, string | null> {
+  if (tagNone) return { tagIds: null, tagNone: "true" };
+  if (tagIds.length === 0) return { tagIds: null, tagNone: null };
+  return { tagIds: tagIds.join(","), tagNone: null };
 }
 
-function decodeVendorUrlParams(vendorId: string, vendorNone: string): string {
-  if (vendorId) return vendorId;
-  if (vendorNone === "true") return "__none";
-  return "__any__";
+function decodeTagIdsFromUrl(tagIds: string): string[] {
+  if (!tagIds) return [];
+  return tagIds.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 export function TransactionsTable({
@@ -97,7 +96,7 @@ export function TransactionsTable({
   fixedAccountId,
   accounts,
   categories,
-  vendors,
+  tags,
   customers,
   searchParams,
 }: {
@@ -105,7 +104,7 @@ export function TransactionsTable({
   fixedAccountId?: string;
   accounts: Account[];
   categories: Category[];
-  vendors: Vendor[];
+  tags: Tag[];
   customers: Customer[];
   searchParams: Record<string, string | string[] | undefined>;
 }) {
@@ -137,12 +136,12 @@ export function TransactionsTable({
   const urlCategoryUncategorised = (searchParams.categoryUncategorised as string) || "";
   const urlCategoryKind = (searchParams.categoryKind as string) || "";
   const urlPendingAiReview = (searchParams.pendingAiReview as string) || "";
-  const urlVendorId = (searchParams.vendorId as string) || "";
-  const urlVendorNone = (searchParams.vendorNone as string) || "";
+  const urlTagIdsRaw = (searchParams.tagIds as string) || "";
+  const urlTagNone = (searchParams.tagNone as string) || "";
 
-  // Derived category/vendor single-value for use in the select
   const activeCategoryValue = decodeCategoryUrlParams(urlCategoryId, urlCategoryUncategorised, urlCategoryKind, urlPendingAiReview);
-  const activeVendorValue = decodeVendorUrlParams(urlVendorId, urlVendorNone);
+  const activeTagIds = decodeTagIdsFromUrl(urlTagIdsRaw);
+  const tagFilterActive = activeTagIds.length > 0 || urlTagNone === "true";
 
   const PAGE_SIZE = 200;
 
@@ -165,6 +164,9 @@ export function TransactionsTable({
       (acc: number, a: any) => acc + Number(a.amount),
       0,
     ) ?? 0;
+    const tagsForRow = ((t as any).transactionTags ?? []).map((tt: any) => ({
+      id: tt.tag.id, name: tt.tag.name, color: tt.tag.color ?? null,
+    }));
     return {
       id: t.id,
       date: typeof t.date === "string" ? t.date.slice(0, 10) : new Date(t.date).toISOString().slice(0, 10),
@@ -172,10 +174,9 @@ export function TransactionsTable({
       description: t.description,
       accountId: t.accountId,
       accountName: (t as any).account?.name ?? "",
-      vendorId: (t as any).vendor?.id ?? null,
-      vendorName: (t as any).vendor?.name ?? null,
-      vendorCustomerId: (t as any).vendor?.customerId ?? null,
-      vendorCustomerName: (t as any).vendor?.customer?.name ?? null,
+      linkedCustomerId: null,
+      linkedCustomerName: null,
+      tags: tagsForRow,
       unallocated: String(Number(t.amount) - allocSum),
     };
   }
@@ -191,7 +192,8 @@ export function TransactionsTable({
   const [tempAccountIds, setTempAccountIds] = useState<string[]>(selectedAccountIds);
   const [tempQ, setTempQ] = useState(urlQ);
   const [tempCategoryValue, setTempCategoryValue] = useState(activeCategoryValue || "__any__");
-  const [tempVendorValue, setTempVendorValue] = useState(activeVendorValue || "__any__");
+  const [tempTagIds, setTempTagIds] = useState<string[]>(activeTagIds);
+  const [tempTagNone, setTempTagNone] = useState<boolean>(urlTagNone === "true");
 
   // Re-sync temp state from URL whenever the panel is opened.
   // This ensures Cancel leaves the panel values consistent with the URL.
@@ -202,7 +204,8 @@ export function TransactionsTable({
       setTempAccountIds(selectedAccountIds);
       setTempQ(urlQ);
       setTempCategoryValue(activeCategoryValue);
-      setTempVendorValue(activeVendorValue);
+      setTempTagIds(activeTagIds);
+      setTempTagNone(urlTagNone === "true");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterOpen]);
@@ -228,13 +231,9 @@ export function TransactionsTable({
       catParams.categoryKind = urlCategoryKind as CategoryKind;
     }
 
-    // Decode vendor params for the API call
-    const vendorParams: { vendorId?: string; vendorNone?: boolean } = {};
-    if (urlVendorId) {
-      vendorParams.vendorId = urlVendorId;
-    } else if (urlVendorNone === "true") {
-      vendorParams.vendorNone = true;
-    }
+    const tagParams: { tagIds?: string[]; tagNone?: boolean } = {};
+    if (activeTagIds.length > 0) tagParams.tagIds = activeTagIds;
+    else if (urlTagNone === "true") tagParams.tagNone = true;
 
     listTransactions({
       accountIds: selectedAccountIds.length ? selectedAccountIds : undefined,
@@ -242,7 +241,7 @@ export function TransactionsTable({
       dateTo: dateTo || undefined,
       q: urlQ || undefined,
       ...catParams,
-      ...vendorParams,
+      ...tagParams,
       sortBy,
       sortDir,
       page,
@@ -259,7 +258,7 @@ export function TransactionsTable({
     sortBy, sortDir, page, dateFrom, dateTo,
     selectedAccountIds.join(","), refreshToken,
     urlQ, urlCategoryId, urlCategoryUncategorised, urlCategoryKind, urlPendingAiReview,
-    urlVendorId, urlVendorNone,
+    urlTagIdsRaw, urlTagNone,
   ]);
 
   function patchQuery(next: Record<string, string | null>) {
@@ -285,7 +284,7 @@ export function TransactionsTable({
         : null,
       q: tempQ || null,
       ...encodeCategoryUrlParams(tempCategoryValue),
-      ...encodeVendorUrlParams(tempVendorValue),
+      ...encodeTagUrlParams(tempTagIds, tempTagNone),
       page: "1",
     });
     setFilterOpen(false);
@@ -297,12 +296,13 @@ export function TransactionsTable({
     setTempAccountIds([]);
     setTempQ("");
     setTempCategoryValue("__any__");
-    setTempVendorValue("__any__");
+    setTempTagIds([]);
+    setTempTagNone(false);
     patchQuery({
       dateFrom: null, dateTo: null, accountIds: null,
       q: null,
       categoryId: null, categoryUncategorised: null, categoryKind: null, pendingAiReview: null,
-      vendorId: null, vendorNone: null,
+      tagIds: null, tagNone: null,
       page: "1",
     });
   }
@@ -354,7 +354,7 @@ export function TransactionsTable({
     router.replace(`${pathname}?${params.toString()}`);
   }
 
-  const cols: Array<{ key: SortKey | "account" | "category" | "vendor" | "actions" | "select" | "balance"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
+  const cols: Array<{ key: SortKey | "account" | "category" | "tags" | "actions" | "select" | "balance"; label: string; align?: "right" | "center"; sortable: boolean; width: string }> = [
     { key: "select", label: "", sortable: false, width: "40px" },
     { key: "date", label: "Date", sortable: true, width: "110px" },
     { key: "description", label: "Description", sortable: true, width: "2fr" },
@@ -363,7 +363,7 @@ export function TransactionsTable({
     { key: "balance", label: "Balance", align: "right", sortable: false, width: "1fr" },
   ];
   if (mode === "global") {
-    cols.push({ key: "vendor", label: "Vendor", sortable: false, width: "1fr" });
+    cols.push({ key: "tags", label: "Tags", sortable: false, width: "1fr" });
     cols.push({ key: "account", label: "Account", sortable: false, width: "1fr" });
   }
   cols.push({ key: "actions", label: "", sortable: false, width: "48px" });
@@ -376,10 +376,7 @@ export function TransactionsTable({
     (mode === "global" && selectedAccountIds.length ? 1 : 0) +
     (urlQ ? 1 : 0) +
     (activeCategoryValue && activeCategoryValue !== "__any__" ? 1 : 0) +
-    (activeVendorValue && activeVendorValue !== "__any__" ? 1 : 0);
-
-  // Active vendors only, sorted by name, for the vendor select.
-  const activeVendors = vendors.filter((v) => v.isActive).sort((a, b) => a.name.localeCompare(b.name));
+    (tagFilterActive ? 1 : 0);
 
   // Categories sorted by sortOrder then name, for the category select.
   const sortedCategories = [...categories].sort((a, b) =>
@@ -420,7 +417,7 @@ export function TransactionsTable({
 
       {filterOpen && (
         <Card className="p-4" style={{ background: "rgb(212 215 225 / 79%)" }}>
-          {/* Row 1: Search + Category + Vendor */}
+          {/* Row 1: Search + Category + Tags */}
           <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Search</label>
@@ -457,24 +454,27 @@ export function TransactionsTable({
               </Select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Vendor</label>
-              <Select value={tempVendorValue} onValueChange={setTempVendorValue}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Any vendor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__any__">Any vendor</SelectItem>
-                  <SelectItem value="__none">— No vendor —</SelectItem>
-                  {activeVendors.length > 0 && (
-                    <SelectItem value="__sep_vendors__" disabled>────────────────</SelectItem>
-                  )}
-                  {activeVendors.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Tags</label>
+              <TagMultiSelect
+                tags={tags}
+                selectedIds={tempTagIds}
+                onChange={(next) => {
+                  setTempTagIds(next);
+                  if (next.length > 0) setTempTagNone(false);
+                }}
+                placeholder={tempTagNone ? "— Untagged only —" : "Any tags"}
+              />
+              <label className="mt-1 flex items-center gap-1.5 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={tempTagNone}
+                  onChange={(e) => {
+                    setTempTagNone(e.target.checked);
+                    if (e.target.checked) setTempTagIds([]);
+                  }}
+                />
+                Untagged only
+              </label>
             </div>
           </div>
 
@@ -633,8 +633,14 @@ export function TransactionsTable({
                     ) : (
                       <span className="text-xs text-slate-400">—</span>
                     )}
-                    {mode === "account" && t.vendor && (
-                      <div className="mt-0.5 text-xs text-slate-500">{t.vendor.name}</div>
+                    {mode === "account" && (t.transactionTags?.length ?? 0) > 0 && (
+                      <div className="mt-0.5 flex flex-wrap gap-1">
+                        {t.transactionTags!.map((tt) => (
+                          <span key={tt.tag.id} className="rounded-full bg-slate-100 px-1.5 py-0 text-[10px] text-slate-600">
+                            {tt.tag.name}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
                   <div className="text-right"><TransactionAmountCell amount={t.amount} /></div>
@@ -644,7 +650,17 @@ export function TransactionsTable({
                       : "—"}
                   </div>
                   {mode === "global" && (
-                    <div className="text-xs text-slate-500">{t.vendor?.name ?? "—"}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {(t.transactionTags?.length ?? 0) === 0 ? (
+                        <span className="text-xs text-slate-400">—</span>
+                      ) : (
+                        t.transactionTags!.map((tt) => (
+                          <span key={tt.tag.id} className="rounded-full bg-slate-100 px-1.5 py-0 text-[10px] text-slate-600">
+                            {tt.tag.name}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   )}
                   {mode === "global" && (
                     <div className="text-slate-500">
@@ -656,7 +672,7 @@ export function TransactionsTable({
                       transaction={t}
                       accounts={accounts}
                       categories={categories}
-                      vendors={vendors}
+                      tags={tags}
                       onApplyToInvoices={(tx) => setApplyTx(toQueueItem(tx))}
                     />
                   </div>
@@ -693,7 +709,7 @@ export function TransactionsTable({
           // transaction omitted → create mode
           accounts={accounts}
           categories={categories}
-          vendors={vendors}
+          tags={tags}
           onClose={() => setAddOpen(false)}
           onCreated={() => { router.refresh(); }}
         />

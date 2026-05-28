@@ -21,7 +21,6 @@ export function RuleTestSandbox({ rules, accounts }: { rules: Rule[]; accounts: 
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(
     new Set(rules.filter((r) => r.isActive && (r.state === "USER" || r.state === "APPROVED")).map((r) => r.id))
   );
-  const [applyVendorMatch, setApplyVendorMatch] = useState(true);
   const [output, setOutput] = useState<EngineOutput | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +38,6 @@ export function RuleTestSandbox({ rules, accounts }: { rules: Rule[]; accounts: 
         dateFrom: source === "existing" ? dateFrom || undefined : undefined,
         dateTo: source === "existing" ? dateTo || undefined : undefined,
         ruleIds: Array.from(selectedRuleIds),
-        applyVendorMatch,
       });
       setOutput(result);
     } catch (e) {
@@ -150,10 +148,6 @@ export function RuleTestSandbox({ rules, accounts }: { rules: Rule[]; accounts: 
               </label>
             ))}
           </div>
-          <label className="flex items-center gap-2 text-sm pt-2 border-t border-slate-100">
-            <input type="checkbox" checked={applyVendorMatch} onChange={(e) => setApplyVendorMatch(e.target.checked)} className="h-4 w-4" />
-            <span>Include vendor matching pass</span>
-          </label>
         </Card>
       </div>
 
@@ -167,26 +161,21 @@ export function RuleTestSandbox({ rules, accounts }: { rules: Rule[]; accounts: 
 
       {output && (
         <Card className="overflow-hidden p-0">
-          <div className="grid grid-cols-2 gap-3 border-b border-slate-100 p-4 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 border-b border-slate-100 p-4 md:grid-cols-4">
             <Stat label="Tested" value={output.stats.total} />
-            <Stat label="Vendor matched" value={output.stats.vendorMatched} />
             <Stat label="Rule matched" value={output.stats.ruleMatched} tone="ok" />
             <Stat label="No rule match" value={output.stats.unchanged} />
             <Stat label="Skipped split" value={output.stats.preservedSplits} tone="warn" />
           </div>
           <ul className="divide-y divide-slate-100">
-            <li className="grid grid-cols-[110px_2fr_120px_140px_2fr_1fr] gap-3 bg-slate-50 px-5 py-2 text-[11px] font-medium uppercase tracking-wider text-slate-500">
-              <span>Date</span><span>Description</span><span className="text-right">Amount</span><span>Vendor</span><span>Rule that wins</span><span>Category</span>
+            <li className="grid grid-cols-[110px_2fr_120px_2fr_1fr] gap-3 bg-slate-50 px-5 py-2 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+              <span>Date</span><span>Description</span><span className="text-right">Amount</span><span>Rule that wins</span><span>Category</span>
             </li>
             {output.rows.map((r) => (
-              <li key={r.transactionId} className="grid grid-cols-[110px_2fr_120px_140px_2fr_1fr] gap-3 px-5 py-2 text-xs">
+              <li key={r.transactionId} className="grid grid-cols-[110px_2fr_120px_2fr_1fr] gap-3 px-5 py-2 text-xs">
                 <span className="text-slate-700">{r.date.slice(0,10)}</span>
                 <span className="truncate text-slate-700">{r.description}</span>
                 <span className="text-right"><TransactionAmountCell amount={r.amount} /></span>
-                <span className="text-slate-600">
-                  {r.vendorMatch ? r.vendorMatch.vendorName : "—"}
-                  {r.vendorMatchAmbiguous && <span className="ml-1 text-amber-700">(ambiguous)</span>}
-                </span>
                 <span className="text-slate-700">
                   {r.ruleMatch ? (
                     <Link href={`/rules/${r.ruleMatch.ruleId}/edit`} className="text-indigo-700 hover:underline" target="_blank">

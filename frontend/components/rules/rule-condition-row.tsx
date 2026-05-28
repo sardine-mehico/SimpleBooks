@@ -5,16 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  OPERATORS_BY_FIELD, RULE_FIELDS, type Account, type RuleCondition, type RuleField, type RuleOperator, type Vendor,
+  OPERATORS_BY_FIELD, RULE_FIELDS, type Account, type RuleCondition, type RuleField, type RuleOperator,
 } from "@/lib/types";
 
 export function RuleConditionRow({
-  condition, onChange, onRemove, vendors, accounts,
+  condition, onChange, onRemove, accounts,
 }: {
   condition: RuleCondition;
   onChange: (next: RuleCondition) => void;
   onRemove: () => void;
-  vendors: Vendor[];
   accounts: Account[];
 }) {
   const ops = OPERATORS_BY_FIELD[condition.field];
@@ -40,7 +39,7 @@ export function RuleConditionRow({
         </SelectContent>
       </Select>
 
-      <ValueInput condition={condition} onChange={onChange} vendors={vendors} accounts={accounts} />
+      <ValueInput condition={condition} onChange={onChange} accounts={accounts} />
 
       <Button type="button" variant="ghost" onClick={onRemove} aria-label="Remove condition" size="sm">
         <X className="h-4 w-4" />
@@ -50,8 +49,8 @@ export function RuleConditionRow({
 }
 
 function ValueInput({
-  condition, onChange, vendors, accounts,
-}: { condition: RuleCondition; onChange: (next: RuleCondition) => void; vendors: Vendor[]; accounts: Account[] }) {
+  condition, onChange, accounts,
+}: { condition: RuleCondition; onChange: (next: RuleCondition) => void; accounts: Account[] }) {
   if (condition.field === "DESCRIPTION") {
     return <Input value={condition.value} onChange={(e) => onChange({ ...condition, value: e.target.value })} placeholder="text to match" />;
   }
@@ -65,36 +64,6 @@ function ValueInput({
       );
     }
     return <Input type="number" step="0.01" value={condition.value} onChange={(e) => onChange({ ...condition, value: e.target.value })} />;
-  }
-  if (condition.field === "VENDOR") {
-    if (condition.operator === "IN") {
-      const selected = new Set(condition.valueList ?? []);
-      return (
-        <div className="flex flex-wrap gap-1.5 rounded-[0.3rem] border border-slate-300 bg-white p-1.5">
-          {vendors.map((v) => {
-            const on = selected.has(v.id);
-            return (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => {
-                  const next = new Set(selected);
-                  if (next.has(v.id)) next.delete(v.id); else next.add(v.id);
-                  onChange({ ...condition, valueList: Array.from(next) });
-                }}
-                className={`rounded-[0.3rem] border px-2 py-0.5 text-xs ${on ? "border-indigo-400 bg-indigo-100 text-indigo-900" : "border-slate-300 bg-white text-slate-600"}`}
-              >{v.name}</button>
-            );
-          })}
-        </div>
-      );
-    }
-    return (
-      <Select value={condition.value} onValueChange={(v) => onChange({ ...condition, value: v })}>
-        <SelectTrigger><SelectValue placeholder="pick vendor" /></SelectTrigger>
-        <SelectContent>{vendors.map((v) => (<SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>))}</SelectContent>
-      </Select>
-    );
   }
   if (condition.field === "ACCOUNT") {
     if (condition.operator === "IN") {

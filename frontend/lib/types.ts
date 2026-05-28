@@ -319,12 +319,14 @@ export type Transaction = {
   importHash: string;
   importId?: string | null;
   categoryId?: string | null;
-  vendorCustomerId?: string | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
   category?: { id: string; name: string; kind: CategoryKind } | null;
-  vendor?: { id: string; name: string } | null;
+  transactionTags?: Array<{
+    tag: { id: string; name: string; color: string | null };
+    source: 'USER' | 'RULE' | 'AI_APPLIED' | 'AUTO_ALIAS';
+  }>;
   splits?: Array<{ id: string; categoryId: string; amount: string | number; notes?: string | null }>;
   categorisationProvenance?: CategorisationProvenance;
 };
@@ -396,10 +398,8 @@ export type ImportReport = {
   warnings: string[];
   ruleCategorisation?: {
     enabled: boolean;
-    vendorMatched: number;
     ruleMatched: number;
     perRule: Array<{ ruleId: string; ruleName: string; categoryName: string; count: number }>;
-    ambiguousVendor: number;
   } | null;
 };
 
@@ -457,26 +457,17 @@ export type CategorisationProvenance = {
   ruleName: string | null;
 } | null;
 
-export type VendorKind = 'MERCHANT' | 'PERSON' | 'CUSTOMER' | 'BANK' | 'OTHER';
-export const VENDOR_KINDS: { value: VendorKind; label: string }[] = [
-  { value: 'MERCHANT', label: 'Merchant' },
-  { value: 'PERSON', label: 'Person' },
-  { value: 'CUSTOMER', label: 'Customer' },
-  { value: 'BANK', label: 'Bank' },
-  { value: 'OTHER', label: 'Other' },
-];
-
-export type Vendor = {
+export type Tag = {
   id: string;
   name: string;
-  kind: VendorKind;
   aliases: string[];
+  color: string | null;
   notes?: string | null;
   isActive: boolean;
   customerId: string | null;
   createdAt: string;
   updatedAt: string;
-  _count?: { transactions: number };
+  _count?: { transactionTags: number };
 };
 
 export type RuleState = 'USER' | 'AI_DRAFTED' | 'APPROVED' | 'DENIED';
@@ -487,11 +478,10 @@ export const RULE_STATES: { value: RuleState; label: string }[] = [
   { value: 'DENIED', label: 'Denied' },
 ];
 
-export type RuleField = 'DESCRIPTION' | 'AMOUNT' | 'VENDOR' | 'ACCOUNT';
+export type RuleField = 'DESCRIPTION' | 'AMOUNT' | 'ACCOUNT';
 export const RULE_FIELDS: { value: RuleField; label: string }[] = [
   { value: 'DESCRIPTION', label: 'Description' },
   { value: 'AMOUNT', label: 'Amount' },
-  { value: 'VENDOR', label: 'Vendor' },
   { value: 'ACCOUNT', label: 'Account' },
 ];
 
@@ -508,10 +498,6 @@ export const OPERATORS_BY_FIELD: Record<RuleField, { value: RuleOperator; label:
     { value: 'GT', label: '>' },
     { value: 'LT', label: '<' },
     { value: 'BETWEEN', label: 'between' },
-  ],
-  VENDOR: [
-    { value: 'EQUALS', label: 'is' },
-    { value: 'IN', label: 'is one of' },
   ],
   ACCOUNT: [
     { value: 'EQUALS', label: 'is' },
@@ -536,8 +522,6 @@ export type Rule = {
   priority: number;
   categoryId: string;
   category?: { id: string; name: string; kind: CategoryKind };
-  vendorId?: string | null;
-  vendor?: { id: string; name: string } | null;
   noteOnApply?: string | null;
   hitCount: number;
   lastFiredAt?: string | null;
@@ -546,22 +530,11 @@ export type Rule = {
   updatedAt: string;
 };
 
-export type VendorExtractionCandidate = {
-  suggestedName: string;
-  aliases: string[];
-  matchCount: number;
-  sampleDescriptions: string[];
-  existsAs: string | null;
-  suggestedKind: VendorKind;
-};
-
 export type EngineRowResult = {
   transactionId: string;
   date: string;
   amount: string;
   description: string;
-  vendorMatch: { vendorId: string; vendorName: string } | null;
-  vendorMatchAmbiguous: boolean;
   ruleMatch: { ruleId: string; ruleName: string; priority: number; categoryId: string; categoryName: string } | null;
   allMatchingRules: Array<{ ruleId: string; ruleName: string; priority: number }>;
   skipped: 'has-splits' | 'no-rule-match' | null;
@@ -571,7 +544,6 @@ export type EngineOutput = {
   rows: EngineRowResult[];
   stats: {
     total: number;
-    vendorMatched: number;
     ruleMatched: number;
     preservedSplits: number;
     unchanged: number;
@@ -591,13 +563,11 @@ export type TransactionSplit = {
 export type CategorisationEvent = {
   id: string;
   transactionId: string;
-  source: 'USER' | 'RULE' | 'VENDOR_MATCH' | 'AI_DRAFT' | 'AI_APPLIED';
+  source: 'USER' | 'RULE' | 'AI_DRAFT' | 'AI_APPLIED' | 'AI_REJECTED' | 'AUTO_ALIAS';
   ruleId?: string | null;
   rule?: { id: string; name: string } | null;
   oldCategoryId?: string | null;
   newCategoryId?: string | null;
-  oldVendorId?: string | null;
-  newVendorId?: string | null;
   acceptedAiSuggestion?: boolean | null;
   createdAt: string;
 };
@@ -622,8 +592,6 @@ export interface AiDraftView {
   eventId: string;
   categoryId: string | null;
   categoryName: string | null;
-  vendorId: string | null;
-  vendorName: string | null;
   confidence: AiConfidence;
   reasoning: string;
   providerId: string | null;
@@ -684,6 +652,8 @@ export type ScoredInvoice = {
     customerToken: boolean;
     datePlausible: boolean;
     partialBonus: boolean;
+    categoryCustomerMatch: boolean;
+    tagCustomerMatch: boolean;
   };
 };
 
@@ -716,10 +686,9 @@ export type PaymentQueueItem = {
   description: string;
   accountId: string;
   accountName: string;
-  vendorId: string | null;
-  vendorName: string | null;
-  vendorCustomerId: string | null;
-  vendorCustomerName: string | null;
+  linkedCustomerId: string | null;
+  linkedCustomerName: string | null;
+  tags: Array<{ id: string; name: string; color: string | null }>;
   unallocated: string;
 };
 

@@ -113,7 +113,7 @@ export function ColumnMappingStep({
           />
           <div>
             <div className="font-medium text-slate-900">Categorise based on rules</div>
-            <div className="text-xs text-slate-600">Runs vendor matching + active rules over the just-imported transactions. Equivalent to clicking Re-categorise after import.</div>
+            <div className="text-xs text-slate-600">Runs active rules over the just-imported transactions. Tag aliases auto-attach regardless of this setting.</div>
           </div>
         </label>
       </div>

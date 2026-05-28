@@ -1,7 +1,7 @@
 import { apiClient } from './api';
 import type {
-  Category, CategorisationEvent, EngineOutput, Rule, TransactionSplit,
-  Vendor, VendorExtractionCandidate, VendorKind, CategoryKind, RuleState, RuleCondition,
+  Category, CategorisationEvent, EngineOutput, Rule, Tag, TransactionSplit,
+  CategoryKind, RuleState, RuleCondition,
 } from './types';
 
 // ── Categories ──────────────────────────────────────────────────────
@@ -14,20 +14,19 @@ export const deleteCategory = (id: string) => apiClient.delete<{ ok: true }>(`/c
 export const splitCategory = (id: string) =>
   apiClient.post<{ alreadyGroup: boolean; child: { id: string; name: string; parentId: string } | null; migratedCount: number }>(`/categories/${id}/split`);
 
-// ── Vendors ──────────────────────────────────────────────────────────
-export const listVendors = (includeInactive = false) =>
-  apiClient.get<Vendor[]>(`/vendors${includeInactive ? '?includeInactive=true' : ''}`);
-export const getVendor = (id: string) => apiClient.get<Vendor>(`/vendors/${id}`);
-export const createVendor = (data: { name: string; kind: VendorKind; aliases: string[]; notes?: string; isActive?: boolean; customerId?: string }) =>
-  apiClient.post<Vendor>('/vendors', data);
-export const updateVendor = (id: string, data: Partial<{ name: string; kind: VendorKind; aliases: string[]; notes: string; isActive: boolean; customerId: string }>) =>
-  apiClient.patch<Vendor>(`/vendors/${id}`, data);
-export const deleteVendor = (id: string) => apiClient.delete<{ ok: true }>(`/vendors/${id}`);
-
-export const extractVendorCandidates = (input: { source: 'all-transactions' | 'csv'; csvBase64?: string; dateFrom?: string; dateTo?: string; accountIds?: string[] }) =>
-  apiClient.post<VendorExtractionCandidate[]>('/vendors/extract', input);
-export const commitVendorCandidates = (candidates: Array<{ name: string; kind: VendorKind; aliases: string[] }>) =>
-  apiClient.post<{ created: number; updated: number; skipped: number }>('/vendors/extract/commit', { candidates });
+// ── Tags ────────────────────────────────────────────────────────────
+export const listTags = (includeInactive = false) =>
+  apiClient.get<Tag[]>(`/tags${includeInactive ? '?includeInactive=true' : ''}`);
+export const getTag = (id: string) => apiClient.get<Tag>(`/tags/${id}`);
+export const createTag = (data: { name: string; aliases?: string[]; color?: string; notes?: string; isActive?: boolean; customerId?: string | null }) =>
+  apiClient.post<Tag>('/tags', data);
+export const updateTag = (id: string, data: Partial<{ name: string; aliases: string[]; color: string; notes: string; isActive: boolean; customerId: string | null }>) =>
+  apiClient.patch<Tag>(`/tags/${id}`, data);
+export const deleteTag = (id: string) => apiClient.delete<{ ok: true }>(`/tags/${id}`);
+export const autoApplyAllTags = () => apiClient.post<{ scanned: number; applied: number }>('/tags/auto-apply', {});
+export const autoApplyOneTag = (id: string) => apiClient.post<{ scanned: number; applied: number }>(`/tags/${id}/auto-apply`, {});
+export const setTransactionTags = (transactionId: string, tagIds: string[]) =>
+  apiClient.patch<{ ok: true; count: number }>(`/transactions/${transactionId}/tags`, { tagIds });
 
 // ── Rules ────────────────────────────────────────────────────────────
 export const listRules = (filter: { state?: RuleState[]; isActive?: boolean } = {}) => {
@@ -38,9 +37,9 @@ export const listRules = (filter: { state?: RuleState[]; isActive?: boolean } = 
   return apiClient.get<Rule[]>(`/rules${qs ? '?' + qs : ''}`);
 };
 export const getRule = (id: string) => apiClient.get<Rule>(`/rules/${id}`);
-export const createRule = (data: { name: string; categoryId: string; vendorId?: string; noteOnApply?: string; isActive?: boolean; conditions: RuleCondition[] }) =>
+export const createRule = (data: { name: string; categoryId: string; noteOnApply?: string; isActive?: boolean; conditions: RuleCondition[] }) =>
   apiClient.post<Rule>('/rules', data);
-export const updateRule = (id: string, data: Partial<{ name: string; categoryId: string; vendorId: string; noteOnApply: string; isActive: boolean; conditions: RuleCondition[] }>) =>
+export const updateRule = (id: string, data: Partial<{ name: string; categoryId: string; noteOnApply: string; isActive: boolean; conditions: RuleCondition[] }>) =>
   apiClient.patch<Rule>(`/rules/${id}`, data);
 export const deleteRule = (id: string) => apiClient.delete<{ ok: true }>(`/rules/${id}`);
 export const moveRule = (id: string, direction: 'up' | 'down') =>
@@ -57,7 +56,6 @@ export const recategorise = (input: {
   dateFrom?: string;
   dateTo?: string;
   preserveSplits?: boolean;
-  applyVendorMatch?: boolean;
 }) => apiClient.post<EngineOutput>('/rule-engine/recategorise', input);
 
 export const testRules = (input: {
@@ -67,7 +65,6 @@ export const testRules = (input: {
   dateFrom?: string;
   dateTo?: string;
   ruleIds?: string[];
-  applyVendorMatch?: boolean;
 }) => apiClient.post<EngineOutput>('/rule-engine/test', input);
 
 // ── Transactions: splits + manual category ───────────────────────────
@@ -75,7 +72,7 @@ export const setTransactionSplits = (id: string, splits: TransactionSplit[]) =>
   apiClient.post<any>(`/transactions/${id}/splits`, { splits });
 export const clearTransactionSplits = (id: string) =>
   apiClient.delete<any>(`/transactions/${id}/splits`);
-export const setTransactionCategory = (id: string, data: { categoryId?: string; vendorId?: string; notes?: string }) =>
+export const setTransactionCategory = (id: string, data: { categoryId?: string; notes?: string }) =>
   apiClient.patch<any>(`/transactions/${id}/category`, data);
 
 // ── Categorisation events ────────────────────────────────────────────

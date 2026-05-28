@@ -2,16 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { Category, Vendor } from "@/lib/types";
+import type { Category } from "@/lib/types";
 
 interface EventRow {
   id: string;
-  source: 'USER' | 'RULE' | 'VENDOR_MATCH' | 'AI_DRAFT' | 'AI_APPLIED' | 'AI_REJECTED';
+  source: 'USER' | 'RULE' | 'AI_DRAFT' | 'AI_APPLIED' | 'AI_REJECTED' | 'AUTO_ALIAS';
   acceptedAiSuggestion: boolean | null;
   oldCategoryId: string | null;
   newCategoryId: string | null;
-  oldVendorId: string | null;
-  newVendorId: string | null;
   reasoning: string | null;
   rule: { id: string; name: string } | null;
   createdAt: string;
@@ -20,11 +18,11 @@ interface EventRow {
 const TONE: Record<string, string> = {
   USER: 'bg-slate-100 text-slate-700',
   RULE: 'bg-indigo-100 text-indigo-800',
-  VENDOR_MATCH: 'bg-violet-100 text-violet-800',
   AI_DRAFT: 'bg-amber-50 text-amber-800',
   AI_APPLIED_TRUE: 'bg-emerald-100 text-emerald-800',
   AI_APPLIED_FALSE: 'bg-amber-100 text-amber-900',
   AI_REJECTED: 'bg-rose-100 text-rose-800',
+  AUTO_ALIAS: 'bg-cyan-100 text-cyan-800',
 };
 
 function badgeFor(e: EventRow) {
@@ -37,13 +35,11 @@ export function TransactionHistoryDrawer({
   open,
   onClose,
   categories,
-  vendors,
 }: {
   transactionId: string;
   open: boolean;
   onClose: () => void;
   categories: Category[];
-  vendors: Vendor[];
 }) {
   const [events, setEvents] = useState<EventRow[]>([]);
   useEffect(() => {
@@ -52,7 +48,6 @@ export function TransactionHistoryDrawer({
   }, [open, transactionId]);
 
   const catName = new Map(categories.map((c) => [c.id, c.name]));
-  const venName = new Map(vendors.map((v) => [v.id, v.name]));
   if (!open) return null;
 
   return (
@@ -75,9 +70,6 @@ export function TransactionHistoryDrawer({
                 </div>
                 {(e.oldCategoryId !== e.newCategoryId) && (e.oldCategoryId || e.newCategoryId) && (
                   <div className="mt-1">Category: <span className="font-mono">{catName.get(e.oldCategoryId ?? '') ?? '—'}</span> → <span className="font-mono">{catName.get(e.newCategoryId ?? '') ?? '—'}</span></div>
-                )}
-                {(e.oldVendorId !== e.newVendorId) && (e.oldVendorId || e.newVendorId) && (
-                  <div>Vendor: <span className="font-mono">{venName.get(e.oldVendorId ?? '') ?? '—'}</span> → <span className="font-mono">{venName.get(e.newVendorId ?? '') ?? '—'}</span></div>
                 )}
                 {e.reasoning && <div className="mt-1 italic text-slate-600">&ldquo;{e.reasoning}&rdquo;</div>}
                 {e.rule && <div className="mt-1"><a className="text-indigo-700 underline" href={`/rules/${e.rule.id}/edit`}>rule: &ldquo;{e.rule.name}&rdquo;</a></div>}

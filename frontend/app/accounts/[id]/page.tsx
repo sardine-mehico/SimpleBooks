@@ -4,7 +4,7 @@ import { TransactionsTable } from "@/components/transactions/transactions-table"
 import { ImportCsvButton } from "@/components/transaction-imports/import-csv-button";
 import { api } from "@/lib/api";
 import { getAccount, listAccounts, getTransactionStats } from "@/lib/banking";
-import { listCategories, listVendors } from "@/lib/banking-rules";
+import { listCategories, listTags } from "@/lib/banking-rules";
 import type { Customer } from "@/lib/types";
 import { PageShell } from "@/components/layout/page-shell";
 
@@ -17,11 +17,11 @@ export default async function Page({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const [account, allAccounts, categories, vendors, stats, customers] = await Promise.all([
+  const [account, allAccounts, categories, tags, stats, customers] = await Promise.all([
     getAccount(id),
     listAccounts(true),
     listCategories(),
-    listVendors(true),
+    listTags(true),
     getTransactionStats([id]),
     api<Customer[]>("/customers").catch(() => [] as Customer[]),
   ]);
@@ -39,7 +39,7 @@ export default async function Page({
         fixedAccountId={account.id}
         accounts={allAccounts}
         categories={categories}
-        vendors={vendors}
+        tags={tags}
         customers={customers}
         searchParams={sp}
       />

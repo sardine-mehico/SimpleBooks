@@ -28,7 +28,6 @@ export function getCandidates(transactionId: string): Promise<CandidatesResponse
 export function applyPayment(body: {
   transactionId: string;
   allocations: Array<{ invoiceId: string; amount: string }>;
-  bindVendorToCustomerId?: string;
 }): Promise<ApplyPaymentResponse> {
   return api<ApplyPaymentResponse>("/payments/apply", {
     method: "POST",

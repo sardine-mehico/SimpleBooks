@@ -9,15 +9,15 @@ import { Button } from "@/components/ui/button";
 import { SplitModal } from "./split-modal";
 import { TransactionEditModal } from "./transaction-edit-modal";
 import { deleteTransaction } from "@/lib/banking";
-import type { Category, Transaction, Vendor } from "@/lib/types";
+import type { Category, Tag, Transaction } from "@/lib/types";
 
 export function TransactionRowMenu({
-  transaction, accounts, categories, vendors, onApplyToInvoices,
+  transaction, accounts, categories, tags, onApplyToInvoices,
 }: {
   transaction: Transaction & { splits?: any[]; account?: { id: string; name: string } };
   accounts?: Array<{ id: string; name: string; isActive?: boolean }>;
   categories: Category[];
-  vendors: Vendor[];
+  tags: Tag[];
   onApplyToInvoices?: (t: Transaction) => void;
 }) {
   const router = useRouter();
@@ -71,7 +71,7 @@ export function TransactionRowMenu({
           transaction={transaction}
           accounts={accounts}
           categories={categories}
-          vendors={vendors}
+          tags={tags}
           onClose={() => setShowEdit(false)}
           onManageSplits={openSplitFromEdit}
         />

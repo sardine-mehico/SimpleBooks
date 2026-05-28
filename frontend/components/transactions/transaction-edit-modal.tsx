@@ -9,12 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Clock, Pencil, Scissors } from "lucide-react";
-import { createCategory, setTransactionCategory } from "@/lib/banking-rules";
+import { createCategory, setTransactionCategory, setTransactionTags } from "@/lib/banking-rules";
 import { createTransaction, getTransaction, updateTransactionFields } from "@/lib/banking";
 import { applyAiSuggestion } from "@/lib/ai";
-import type { AiDraftView, CategorisationProvenance, Category, Transaction, Vendor } from "@/lib/types";
+import type { AiDraftView, CategorisationProvenance, Category, Tag, Transaction } from "@/lib/types";
 import { AiSuggestionBanner } from "./ai-suggestion-banner";
 import { TransactionHistoryDrawer } from "./transaction-history-drawer";
+import { TagMultiSelect } from "@/components/tags/tag-multi-select";
 
 function fmtAmount(amount: string | number): string {
   const n = Number(amount);
@@ -31,7 +32,7 @@ export function TransactionEditModal({
   transaction,
   accounts,
   categories,
-  vendors,
+  tags,
   onClose,
   onManageSplits,
   aiReviewMode = false,
@@ -47,7 +48,7 @@ export function TransactionEditModal({
   // mode but needed when the user clicks the unlock icon to change accounts.
   accounts?: Array<{ id: string; name: string; isActive?: boolean }>;
   categories: Category[];
-  vendors: Vendor[];
+  tags: Tag[];
   onClose: () => void;
   onManageSplits?: () => void;
   // When true the modal is launched from the AI Review queue: the AiSuggestionBanner
@@ -150,7 +151,8 @@ export function TransactionEditModal({
   const categoryId = isTransferMode
     ? ''
     : (parentRequiresSub ? subcategoryId : parentCategoryId);
-  const [vendorId, setVendorId] = useState<string>(transaction?.vendorId ?? "");
+  const initialTagIds = transaction?.transactionTags?.map((tt) => tt.tag.id) ?? [];
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialTagIds);
   const [notes, setNotes] = useState<string>(transaction?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [activeDraft, setActiveDraft] = useState<AiDraftView | null>(null);
@@ -177,10 +179,10 @@ export function TransactionEditModal({
 
   useEffect(() => {
     if (!activeDraft || aiEditMode) return;
-    if (categoryId !== (activeDraft.categoryId ?? '') || vendorId !== (activeDraft.vendorId ?? '')) {
+    if (categoryId !== (activeDraft.categoryId ?? '')) {
       setAiEditMode(true);
     }
-  }, [categoryId, vendorId, activeDraft, aiEditMode]);
+  }, [categoryId, activeDraft, aiEditMode]);
 
   async function onSave() {
     setSaving(true);
@@ -221,7 +223,7 @@ export function TransactionEditModal({
           amount: amountNum,
           description: txDescription.trim(),
           categoryId: effectiveCategoryId || undefined,
-          vendorId: vendorId || undefined,
+          tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
           notes: notes || undefined,
         });
         onCreated?.();
@@ -251,21 +253,24 @@ export function TransactionEditModal({
         await applyAiSuggestion(txId, {
           action: 'edit',
           chosenCategoryId: effectiveCategoryId,
-          chosenVendorId: vendorId || null,
         });
         onAiReviewResolved?.();
       } else if (aiEditMode && activeDraft) {
         await applyAiSuggestion(txId, {
           action: 'edit',
           chosenCategoryId: effectiveCategoryId,
-          chosenVendorId: vendorId || null,
         });
       } else {
         await setTransactionCategory(txId, {
           categoryId: effectiveCategoryId || undefined,
-          vendorId: vendorId || undefined,
           notes,
         });
+      }
+      // Sync tag selection — always runs in edit mode regardless of which save path.
+      const originalTagIds = (transaction!.transactionTags ?? []).map((tt) => tt.tag.id).sort();
+      const nextTagIds = [...selectedTagIds].sort();
+      if (originalTagIds.join(',') !== nextTagIds.join(',')) {
+        await setTransactionTags(txId, selectedTagIds);
       }
       router.refresh();
       onClose();
@@ -408,7 +413,6 @@ export function TransactionEditModal({
                     setSubcategoryId(cat.parentId ? cat.id : "");
                   }
                 }
-                if (draft.vendorId)   setVendorId(draft.vendorId);
               }}
               onDraftLoaded={setActiveDraft}
             />
@@ -495,16 +499,8 @@ export function TransactionEditModal({
                 </Select>
               )}
             </Field>
-            <Field label="Vendor">
-              <Select value={vendorId || "__none__"} onValueChange={(v) => setVendorId(v === "__none__" ? "" : v)}>
-                <SelectTrigger><SelectValue placeholder="— none —" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">— none —</SelectItem>
-                  {vendors.filter((v) => v.isActive).map((v) => (
-                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <Field label="Tags">
+              <TagMultiSelect tags={tags} selectedIds={selectedTagIds} onChange={setSelectedTagIds} />
             </Field>
           </div>
           <Field label="Notes">
@@ -546,7 +542,6 @@ export function TransactionEditModal({
             open={historyOpen}
             onClose={() => setHistoryOpen(false)}
             categories={categories}
-            vendors={vendors}
           />
         )}
       </DialogContent>

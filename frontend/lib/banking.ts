@@ -30,8 +30,8 @@ export const listTransactions = (params: {
   categoryId?: string;
   categoryUncategorised?: boolean;
   categoryKind?: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'OTHER';
-  vendorId?: string;
-  vendorNone?: boolean;
+  tagIds?: string[];
+  tagNone?: boolean;
   pendingAiReview?: boolean;
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
@@ -46,8 +46,8 @@ export const listTransactions = (params: {
   if (params.categoryId) search.set('categoryId', params.categoryId);
   if (params.categoryUncategorised) search.set('categoryUncategorised', 'true');
   if (params.categoryKind) search.set('categoryKind', params.categoryKind);
-  if (params.vendorId) search.set('vendorId', params.vendorId);
-  if (params.vendorNone) search.set('vendorNone', 'true');
+  if (params.tagIds?.length) search.set('tagIds', params.tagIds.join(','));
+  if (params.tagNone) search.set('tagNone', 'true');
   if (params.pendingAiReview) search.set('pendingAiReview', 'true');
   if (params.sortBy) search.set('sortBy', params.sortBy);
   if (params.sortDir) search.set('sortDir', params.sortDir);
@@ -101,7 +101,7 @@ export const createTransaction = (data: {
   amount: number;        // signed
   description: string;
   categoryId?: string;
-  vendorId?: string;
+  tagIds?: string[];
   notes?: string;
 }) => apiClient.post<Transaction>('/transactions', data);
 

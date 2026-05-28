@@ -71,7 +71,7 @@ export function RecategoriseDialog({
               ))}
             </ul>
             <div className="text-slate-600">
-              {result.stats.unchanged} had no rule match · {result.stats.preservedSplits} skipped (already split) · {result.rows.filter((r) => r.vendorMatchAmbiguous).length} ambiguous vendor matches
+              {result.stats.unchanged} had no rule match · {result.stats.preservedSplits} skipped (already split)
             </div>
             <DialogFooter><Button type="button" onClick={onClose}>Close</Button></DialogFooter>
           </div>

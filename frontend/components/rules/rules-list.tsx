@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
 import { Plus, FlaskConical, Sparkles } from "lucide-react";
-import { RULE_STATES, type Account, type Rule, type RuleState, type Vendor } from "@/lib/types";
+import { RULE_STATES, type Account, type Rule, type RuleState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { RuleRow } from "./rule-row";
 import { AiDraftRow } from "./ai-draft-row";
@@ -14,11 +14,9 @@ import { mineRules } from "@/lib/ai";
 
 export function RulesList({
   initial,
-  vendors,
   accounts,
 }: {
   initial: Rule[];
-  vendors: Vendor[];
   accounts: Account[];
 }) {
   const router = useRouter();
@@ -34,10 +32,6 @@ export function RulesList({
   const filtered = useMemo(
     () => initial.filter((r) => r.state === stateFilter),
     [initial, stateFilter],
-  );
-  const vendorNames = useMemo(
-    () => new Map(vendors.map((v) => [v.id, v.name])),
-    [vendors],
   );
   const accountNames = useMemo(
     () => new Map(accounts.map((a) => [a.id, a.name])),
@@ -113,7 +107,6 @@ export function RulesList({
                 key={r.id}
                 rule={r}
                 rank={i + 1}
-                vendorNames={vendorNames}
                 accountNames={accountNames}
               />
             ))

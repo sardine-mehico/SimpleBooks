@@ -3,18 +3,16 @@
 import { Field } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { type Category, type Vendor } from "@/lib/types";
+import { type Category } from "@/lib/types";
 
 export function RuleOutcomeEditor({
   categoryId, onCategoryId,
-  vendorId, onVendorId,
   noteOnApply, onNoteOnApply,
-  categories, vendors,
+  categories,
 }: {
   categoryId: string; onCategoryId: (v: string) => void;
-  vendorId: string | null; onVendorId: (v: string | null) => void;
   noteOnApply: string; onNoteOnApply: (v: string) => void;
-  categories: Category[]; vendors: Vendor[];
+  categories: Category[];
 }) {
   return (
     <div className="space-y-3">
@@ -24,17 +22,6 @@ export function RuleOutcomeEditor({
           <SelectContent>
             {categories.filter((c) => c.isActive).map((c) => (
               <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-      <Field label="Vendor (optional)">
-        <Select value={vendorId ?? "__none__"} onValueChange={(v) => onVendorId(v === "__none__" ? null : v)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">— none —</SelectItem>
-            {vendors.filter((v) => v.isActive).map((v) => (
-              <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>

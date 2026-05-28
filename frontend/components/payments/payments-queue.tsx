@@ -85,7 +85,10 @@ export function PaymentsQueue({
             <span className="flex-1 truncate">{t.description}</span>
             <span className="text-xs text-slate-500">{t.accountName}</span>
             <span className="text-xs text-slate-700">
-              {t.vendorName ?? "—"}{t.vendorCustomerName ? ` (→ ${t.vendorCustomerName})` : ""}
+              {t.linkedCustomerName ?? "—"}
+              {t.tags.length > 0 && (
+                <span className="ml-1 text-slate-500">· {t.tags.map((tag) => tag.name).join(", ")}</span>
+              )}
             </span>
             <Button size="sm" onClick={() => setOpenTx(t)}>Apply</Button>
             <Button size="sm" variant="ghost" onClick={() => onDismiss(t)}>Not a customer payment</Button>

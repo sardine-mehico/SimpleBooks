@@ -10,15 +10,10 @@ import { deleteRule, moveRule, toggleRuleActive } from "@/lib/banking-rules";
 
 function conditionSummary(
   c: Rule["conditions"][number],
-  vendorNames: Map<string, string>,
   accountNames: Map<string, string>,
 ): string {
   const fieldLabel = RULE_FIELDS.find((f) => f.value === c.field)?.label.toLowerCase() ?? c.field;
   const op = c.operator.toLowerCase().replace("_", " ");
-  if (c.field === "VENDOR") {
-    if (c.operator === "EQUALS") return `vendor is ${vendorNames.get(c.value) ?? c.value}`;
-    if (c.operator === "IN") return `vendor in [${(c.valueList ?? []).map((id) => vendorNames.get(id) ?? id).join(", ")}]`;
-  }
   if (c.field === "ACCOUNT") {
     if (c.operator === "EQUALS") return `account is ${accountNames.get(c.value) ?? c.value}`;
     if (c.operator === "IN") return `account in [${(c.valueList ?? []).map((id) => accountNames.get(id) ?? id).join(", ")}]`;
@@ -30,12 +25,10 @@ function conditionSummary(
 export function RuleRow({
   rule,
   rank,
-  vendorNames,
   accountNames,
 }: {
   rule: Rule;
   rank: number;
-  vendorNames: Map<string, string>;
   accountNames: Map<string, string>;
 }) {
   const router = useRouter();
@@ -75,7 +68,7 @@ export function RuleRow({
                 <span key={i}>
                   {i > 0 && <span className="mx-1 text-slate-400">AND</span>}
                   <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-                    {conditionSummary(c, vendorNames, accountNames)}
+                    {conditionSummary(c, accountNames)}
                   </code>
                 </span>
               ))}

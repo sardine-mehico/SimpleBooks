@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { applyAiSuggestion, bulkSuggestStatus, cancelActiveBulkQueue, getActiveBulkQueue, listReviewQueue, type ActiveBulkQueue } from "@/lib/ai";
 import { listCategories } from "@/lib/banking-rules";
-import type { AiDraftView, BulkRunStatus, Category, Customer, Transaction, Vendor } from "@/lib/types";
+import type { AiDraftView, BulkRunStatus, Category, Customer, Tag, Transaction } from "@/lib/types";
 import { api } from "@/lib/api";
 import { CategoryFormDialog } from "@/components/categories/category-form-dialog";
 import { TransactionEditModal } from "./transaction-edit-modal";
@@ -18,7 +18,7 @@ type FullTransaction = Transaction & {
   splits?: Array<{ id: string; categoryId: string; amount: string | number; notes?: string | null }>;
 };
 
-export function AiReviewList({ categories, vendors }: { categories: Category[]; vendors: Vendor[] }) {
+export function AiReviewList({ categories, tags }: { categories: Category[]; tags: Tag[] }) {
   const router = useRouter();
   const sp = useSearchParams();
   const runId = sp.get("runId");
@@ -220,7 +220,6 @@ export function AiReviewList({ categories, vendors }: { categories: Category[]; 
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4" />
                 <span>AI suggests: <strong>{d.categoryName ?? '— uncategorised —'}</strong></span>
-                {d.vendorName && <span className="text-xs">· Vendor: {d.vendorName}</span>}
                 <span className="ml-2 rounded bg-white/60 px-1.5 py-0.5 text-[10px] uppercase">{d.confidence}</span>
               </div>
               {d.reasoning && <div className="mt-1 italic text-xs opacity-80">&ldquo;{d.reasoning}&rdquo;</div>}
@@ -241,7 +240,7 @@ export function AiReviewList({ categories, vendors }: { categories: Category[]; 
         <TransactionEditModal
           transaction={editingTx}
           categories={categories}
-          vendors={vendors}
+          tags={tags}
           aiReviewMode
           onClose={closeEdit}
           onManageSplits={closeEdit}

@@ -2,15 +2,14 @@
 
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { type Account, type RuleCondition, type Vendor } from "@/lib/types";
+import { type Account, type RuleCondition } from "@/lib/types";
 import { RuleConditionRow } from "./rule-condition-row";
 
 export function RuleConditionsEditor({
-  conditions, onChange, vendors, accounts,
+  conditions, onChange, accounts,
 }: {
   conditions: RuleCondition[];
   onChange: (next: RuleCondition[]) => void;
-  vendors: Vendor[];
   accounts: Account[];
 }) {
   function add() {
@@ -41,7 +40,6 @@ export function RuleConditionsEditor({
             condition={c}
             onChange={(next) => updateAt(i, next)}
             onRemove={() => removeAt(i)}
-            vendors={vendors}
             accounts={accounts}
           />
         ))}

@@ -11,19 +11,18 @@ import { Trash2 } from "lucide-react";
 import { RuleConditionsEditor } from "./rule-conditions-editor";
 import { RuleOutcomeEditor } from "./rule-outcome-editor";
 import { createRule, deleteRule, testRules, updateRule } from "@/lib/banking-rules";
-import type { Account, Category, Rule, RuleCondition, Vendor } from "@/lib/types";
+import type { Account, Category, Rule, RuleCondition } from "@/lib/types";
 
 export function RuleForm({
-  initial, categories, vendors, accounts,
+  initial, categories, accounts,
 }: {
-  initial?: Rule; categories: Category[]; vendors: Vendor[]; accounts: Account[];
+  initial?: Rule; categories: Category[]; accounts: Account[];
 }) {
   const router = useRouter();
   const isEdit = !!initial;
 
   const [name, setName] = useState(initial?.name ?? "");
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? categories[0]?.id ?? "");
-  const [vendorId, setVendorId] = useState<string | null>(initial?.vendorId ?? null);
   const [noteOnApply, setNoteOnApply] = useState(initial?.noteOnApply ?? "");
   const [conditions, setConditions] = useState<RuleCondition[]>(
     initial?.conditions.map((c) => ({ field: c.field, operator: c.operator, value: c.value, value2: c.value2 ?? null, valueList: c.valueList ?? [] }))
@@ -40,7 +39,6 @@ export function RuleForm({
         const r = await testRules({
           source: "existing",
           ruleIds: isEdit ? [initial!.id] : undefined,
-          applyVendorMatch: true,
         });
         setSampleMatchCount(r.stats.ruleMatched);
       } catch {
@@ -48,7 +46,7 @@ export function RuleForm({
       }
     }, 400);
     return () => clearTimeout(handle);
-  }, [conditions, categoryId, vendorId, isEdit, initial?.id]);
+  }, [conditions, categoryId, isEdit, initial?.id]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,7 +56,6 @@ export function RuleForm({
       const payload = {
         name: name.trim(),
         categoryId,
-        vendorId: vendorId ?? undefined,
         noteOnApply: noteOnApply.trim() || undefined,
         conditions,
       };
@@ -92,16 +89,15 @@ export function RuleForm({
 
         <Card className="space-y-3 p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Conditions (ALL must match)</h2>
-          <RuleConditionsEditor conditions={conditions} onChange={setConditions} vendors={vendors} accounts={accounts} />
+          <RuleConditionsEditor conditions={conditions} onChange={setConditions} accounts={accounts} />
         </Card>
 
         <Card className="p-6">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">Outcome</h2>
           <RuleOutcomeEditor
             categoryId={categoryId} onCategoryId={setCategoryId}
-            vendorId={vendorId} onVendorId={setVendorId}
             noteOnApply={noteOnApply} onNoteOnApply={setNoteOnApply}
-            categories={categories} vendors={vendors}
+            categories={categories}
           />
         </Card>
 

@@ -8,7 +8,7 @@ export function suggestCategory(transactionId: string, opts: { force?: boolean }
 
 export type ApplyDecision =
   | { action: 'accept' }
-  | { action: 'edit'; chosenCategoryId: string; chosenVendorId?: string | null }
+  | { action: 'edit'; chosenCategoryId: string }
   | { action: 'reject' };
 
 export function applyAiSuggestion(transactionId: string, decision: ApplyDecision) {

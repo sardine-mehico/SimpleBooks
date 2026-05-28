@@ -89,21 +89,20 @@ function TransactionContextModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickedCustomerId, setPickedCustomerId] = useState<string>("");
-  const [bindVendor, setBindVendor] = useState(false);
   const [crossSearch, setCrossSearch] = useState("");
   const [crossResults, setCrossResults] = useState<ScoredInvoice[]>([]);
   const [credit, setCredit] = useState<CustomerCredit | null>(null);
 
   useEffect(() => {
-    const customerId = transaction.vendorCustomerId ?? pickedCustomerId;
+    const customerId = transaction.linkedCustomerId ?? pickedCustomerId;
     if (!customerId) { setCredit(null); return; }
     void getCustomerCredit(customerId)
       .then(setCredit)
       .catch(() => setCredit(null));
-  }, [transaction.vendorCustomerId, pickedCustomerId]);
+  }, [transaction.linkedCustomerId, pickedCustomerId]);
 
   useEffect(() => {
-    if (!transaction.vendorCustomerId) {
+    if (!transaction.linkedCustomerId) {
       setCandidates({ candidates: [], bundleSuggestion: null });
       return;
     }
@@ -117,7 +116,7 @@ function TransactionContextModal({
         setLines(seed);
       }
     }).catch((e: any) => setError(e?.message ?? "Failed to load candidates"));
-  }, [transaction.id, transaction.vendorCustomerId]);
+  }, [transaction.id, transaction.linkedCustomerId]);
 
   useEffect(() => {
     if (!pickedCustomerId) return;
@@ -186,7 +185,6 @@ function TransactionContextModal({
       await applyPayment({
         transactionId: transaction.id,
         allocations,
-        bindVendorToCustomerId: bindVendor && pickedCustomerId ? pickedCustomerId : undefined,
       });
       onApplied();
     } catch (e: any) {
@@ -210,23 +208,19 @@ function TransactionContextModal({
             <span>{transaction.accountName}</span>
           </div>
 
-          {!transaction.vendorCustomerId && !pickedCustomerId && (
+          {!transaction.linkedCustomerId && !pickedCustomerId && (
             <div className="space-y-2 rounded border border-amber-200 bg-amber-50 p-2">
-              <div className="text-xs">This vendor isn't linked to a customer. Pick one to see candidate invoices:</div>
+              <div className="text-xs">This transaction isn't linked to a customer (via category or tag). Pick one to see candidate invoices:</div>
               <Select value={pickedCustomerId} onValueChange={setPickedCustomerId}>
                 <SelectTrigger><SelectValue placeholder="Select customer…" /></SelectTrigger>
                 <SelectContent>
                   {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <div className="text-[10px] text-slate-500">
+                Tip: to persist this link, set <code>customerId</code> on a Tag (in <a href="/settings/tags" className="underline">/settings/tags</a>) or on the transaction's Category.
+              </div>
             </div>
-          )}
-
-          {pickedCustomerId && (
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={bindVendor} onChange={(e) => setBindVendor(e.target.checked)} />
-              Bind this vendor to {customers.find((c) => c.id === pickedCustomerId)?.name ?? "this customer"} for next time
-            </label>
           )}
 
           {candidates?.bundleSuggestion && (
