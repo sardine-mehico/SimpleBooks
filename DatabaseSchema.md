@@ -25,11 +25,10 @@ For per-module *field semantics, required flags, UI surface, and business logic*
 | `SendVia` | `GENERAL_SMTP`, `CUSTOM_SMTP` |
 | `EmailEncryption` | `NONE`, `SSL`, `TLS`, `STARTTLS` |
 | `CategoryKind` | `INCOME`, `EXPENSE`, `TRANSFER`, `OTHER` |
-| `VendorKind` | `VENDOR_MATCH` (Phase B; further values scaffolded for Phase C) |
 | `RuleState` | `USER`, `AI_DRAFTED`, `APPROVED`, `DENIED` |
-| `RuleField` | Fields a rule condition can match against (e.g. `DESCRIPTION`, `AMOUNT`, `DATE`) |
+| `RuleField` | `DESCRIPTION`, `AMOUNT`, `ACCOUNT` — fields a rule condition can match against. `VENDOR` was removed 2026-05-28 (Tags migration). |
 | `RuleOperator` | Comparison operators for rule conditions (e.g. `CONTAINS`, `EQUALS`, `GT`, `LT`, `BETWEEN`, `IN_LIST`) |
-| `EventSource` | `MANUAL`, `RULE`, `VENDOR_MATCH`, `AI_DRAFT`, `AI_APPLIED`, `AI_REJECTED` (Phase C) — records what triggered a `CategorisationEvent`. `AI_REJECTED` added in Phase C. |
+| `EventSource` | `USER`, `RULE`, `AI_DRAFT`, `AI_APPLIED`, `AI_REJECTED`, `AUTO_ALIAS` — records what triggered a `CategorisationEvent` or a `TransactionTag` insert. `AUTO_ALIAS` added 2026-05-28 for auto-tagged rows; `VENDOR_MATCH` removed in the same migration. |
 | `AiCallPurpose` | `CATEGORISE`, `DRAFT_RULE` — **(Phase C)** purpose of an `AiCall` row |
 | `AiCallStatus` | `OK`, `FAILED` — **(Phase C)** outcome of an `AiCall` row |
 | `AllocationEventType` | `CREATED`, `DELETED` — **(Phase D)** audit-log event type |
@@ -383,7 +382,7 @@ Relations: `transactions Transaction[]`, `imports TransactionImport[]`.
 ### Transaction
 A single bank-statement line. `amount` is SIGNED (negative = debit, positive = credit). Per-row running balance is **not stored** — it is computed server-side at query time via a SQL window function (`Account.openingBalance + SUM(amount) OVER (PARTITION BY accountId ORDER BY date, id)`) over the unfiltered, unpaginated per-account history and attached to each visible row. See CLAUDE.md gotchas.
 
-Phase B promoted several forward-compat columns to real FKs and added new columns. The `vendorCustomerId` rename to `vendorId` is non-additive — see Known Operational Caveats.
+The Vendor → Tag migration (2026-05-28) dropped `vendorId` entirely. Tag association now lives on the join table `TransactionTag`.
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -393,7 +392,6 @@ Phase B promoted several forward-compat columns to real FKs and added new column
 | `amount` | decimal(14,2) | SIGNED — negative = debit, positive = credit |
 | `description` | string | |
 | `categoryId` | UUID? | FK → `Category.id` (ON DELETE **RESTRICT**) — Phase B |
-| `vendorId` | UUID? | FK → `Vendor.id` (ON DELETE **SET NULL**) — renamed from `vendorCustomerId` in Phase B |
 | `ruleId` | UUID? | FK → `Rule.id` (ON DELETE **SET NULL**) — the rule that last categorised this row |
 | `categorisedAt` | datetime? | stamped when categoryId is first set or changed by the engine |
 | `notes` | string? | |
@@ -407,7 +405,7 @@ Indexes / unique constraints:
 - `@@index([accountId, date])` — primary query pattern for account transaction lists.
 - `@@index([date])` — supports global date-range filters.
 
-Inverse relations added in Phase B: `splits TransactionSplit[]`, `events CategorisationEvent[]`. Phase D adds `allocations Allocation[]`.
+Inverse relations: `splits TransactionSplit[]`, `events CategorisationEvent[]`, `transactionTags TransactionTag[]` (added 2026-05-28). Phase D adds `allocations Allocation[]`.
 
 ---
 
@@ -461,8 +459,7 @@ Category ─< Transaction
 Category ─< TransactionSplit
 Category ─< Rule
 
-Vendor ─< Transaction
-Vendor ─< Rule
+Tag ─< TransactionTag >─ Transaction       (many-to-many; 2026-05-28, replaces Vendor)
 
 Rule ─< RuleCondition
 Rule ─< Transaction
@@ -508,21 +505,37 @@ Server rules:
 
 ---
 
-### Vendor
-Lookup catalog for payees / merchants. Seeded with 39 rows.
+### Tag *(2026-05-28, replaces Vendor)*
+Many-to-many facets attached to transactions. Seeded with 39 starter rows (BP, Caltex, Woolworths, Coles, Telstra, etc. — same names that used to be Vendors, with the same alias lists).
 
 | Column | Type | Constraints |
 |---|---|---|
 | `id` | UUID | PK |
-| `name` | string | UNIQUE |
-| `kind` | enum `VendorKind` | `VENDOR_MATCH` |
-| `aliases` | string[] | lowercase substrings; matching is case-insensitive whitespace-collapsed |
+| `name` | string | Not globally unique. Case-insensitive uniqueness enforced in `TagsService.create` / `update`. |
+| `aliases` | string[] | Description fragments that auto-attach this tag when found in a transaction's description (case-insensitive, word-boundary aware, longest-pattern-first). Editable per-tag via `/settings/tags`. |
+| `color` | string? | Optional hex (e.g. `#a78bfa`) or tailwind token used as the badge color in chip displays. |
 | `notes` | string? | |
-| `customerId` | UUID? | **(Phase D)** FK → `Customer.id` (ON DELETE **SET NULL**). Optional link between a vendor and an invoiced customer. When set, the Payments queue can auto-fetch candidate invoices for the customer without an explicit picker step. |
-| `isActive` | bool | default `true` |
+| `isActive` | bool | default `true`. Inactive tags are excluded from the auto-alias pass and from dropdowns. |
+| `customerId` | UUID? | FK → `Customer.id` (ON DELETE **SET NULL**). When set, the Payments scorer adds +30 (`tagCustomerMatch` signal) for any of that customer's invoices, symmetric to `Category.customerId`. |
 | `createdAt` / `updatedAt` | datetime | |
 
-Relations: `transactions Transaction[]`, `rules Rule[]`, `customer Customer?` (Phase D).
+Indexes: `@@index([customerId])`.
+
+Relations: `transactionTags TransactionTag[]`, `customer Customer?`.
+
+---
+
+### TransactionTag *(2026-05-28)*
+Join table for the many-to-many between `Transaction` and `Tag`. Composite PK on `(transactionId, tagId)` means a tag cannot attach to the same transaction twice. `source` records what created the row (used by the auto-alias pass for idempotency and by the History drawer for badges).
+
+| Column | Type | Constraints |
+|---|---|---|
+| `transactionId` | UUID | FK → `Transaction.id` (ON DELETE **CASCADE**), PK component |
+| `tagId` | UUID | FK → `Tag.id` (ON DELETE **CASCADE**), PK component |
+| `source` | enum `EventSource` | default `USER`. Possible values in practice: `USER` (manual add via edit modal), `RULE` (reserved for future rule-based tagging — not used today), `AI_APPLIED` (reserved — AI does NOT apply tags today), `AUTO_ALIAS` (auto-alias pass). |
+| `createdAt` | datetime | default `now()`. No `updatedAt` — rows are insert-only; updates mean delete + reinsert. |
+
+Indexes: `@@id([transactionId, tagId])` (composite PK), `@@index([tagId])` (covers the "list all transactions tagged X" query).
 
 ---
 
@@ -537,7 +550,6 @@ Categorisation rule. Evaluated priority-order (lower INT = higher precedence).
 | `isActive` | bool | default `true` |
 | `priority` | int | default `1000`; spaced by 10 in practice |
 | `categoryId` | UUID | FK → `Category.id` (ON DELETE **RESTRICT**) |
-| `vendorId` | UUID? | FK → `Vendor.id` (ON DELETE **SET NULL**) — optional; applied to matched transactions |
 | `noteOnApply` | string? | text appended to `Transaction.notes` when the rule fires |
 | `hitCount` | int | default `0`; incremented by the engine on each pass |
 | `lastFiredAt` | datetime? | stamped by the engine on each pass |
@@ -546,6 +558,8 @@ Categorisation rule. Evaluated priority-order (lower INT = higher precedence).
 Indexes: `@@index([priority])`, `@@index([state, isActive])`.
 
 Relations: `conditions RuleCondition[]`, `transactions Transaction[]`, `events CategorisationEvent[]`.
+
+**Note (2026-05-28):** `vendorId` was dropped. Rules now set category only — tag application is exclusively the auto-alias pass.
 
 ---
 
@@ -584,20 +598,20 @@ Index: `@@index([transactionId])`.
 ---
 
 ### CategorisationEvent
-Append-only audit log. One row per change to a transaction's category, vendor, or accepted AI suggestion. Never updated after insert.
+Append-only audit log. One row per change to a transaction's category or accepted AI suggestion. Never updated after insert.
+
+**Vendor → Tag migration (2026-05-28):** `oldVendorId` / `newVendorId` columns were dropped along with the `VENDOR_MATCH` source. Tag adds/removes go through `TransactionTag` directly (with `source` on each join row) rather than through this audit log.
 
 | Column | Type | Constraints |
 |---|---|---|
 | `id` | UUID | PK |
 | `transactionId` | UUID | FK → `Transaction.id` (ON DELETE **CASCADE**) |
-| `source` | enum `EventSource` | `MANUAL`, `RULE`, `VENDOR_MATCH`, `AI_DRAFT`, `AI_APPLIED`, `AI_REJECTED` |
+| `source` | enum `EventSource` | `USER`, `RULE`, `AI_DRAFT`, `AI_APPLIED`, `AI_REJECTED` (`AUTO_ALIAS` is used on `TransactionTag.source`, not here) |
 | `ruleId` | UUID? | FK → `Rule.id` (ON DELETE **SET NULL**) — set when `source = RULE` |
 | `oldCategoryId` | UUID? | category before the change |
 | `newCategoryId` | UUID? | category after the change |
-| `oldVendorId` | UUID? | vendor before the change |
-| `newVendorId` | UUID? | vendor after the change |
 | `acceptedAiSuggestion` | bool? | set when `source = AI_SUGGESTION`; Phase C reads these rows as few-shot examples |
-| `providerId` | UUID? | FK → `AiProvider.id` (ON DELETE **SET NULL**). Set on `AI_DRAFT` / `AI_APPLIED` / `AI_REJECTED` events to record which provider produced the suggestion. Null on USER / RULE / VENDOR_MATCH events, and on AI events that pre-date this column (no backfill). Deleting a provider preserves the audit row, just loses the link. |
+| `providerId` | UUID? | FK → `AiProvider.id` (ON DELETE **SET NULL**). Set on `AI_DRAFT` / `AI_APPLIED` / `AI_REJECTED` events to record which provider produced the suggestion. Null on USER / RULE events, and on AI events that pre-date this column (no backfill). Deleting a provider preserves the audit row, just loses the link. |
 | `createdAt` | datetime | default `now()` — no `updatedAt`; rows are immutable |
 
 Indexes: `@@index([transactionId])`, `@@index([source, createdAt])`, `@@index([ruleId])`, `@@index([providerId])`.
@@ -655,7 +669,7 @@ Index: `@@index([clusterHash])`.
 
 | Column | Type | Notes |
 |---|---|---|
-| `reasoning` | string? | AI's free-text justification (≤ 200 chars). Populated for `AI_DRAFT`, `AI_APPLIED`, and `AI_REJECTED` events. Null for USER / RULE / VENDOR_MATCH. |
+| `reasoning` | string? | AI's free-text justification (≤ 200 chars). Populated for `AI_DRAFT`, `AI_APPLIED`, and `AI_REJECTED` events. Null for USER / RULE. |
 
 ### New column — `Preferences.aiMiningThreshold`
 
@@ -738,5 +752,5 @@ Indexes: `@@index([transactionId])`, `@@index([invoiceId])`, `@@index([createdAt
 Transaction ─< Allocation >─ Invoice
               (AllocationEvent — string snapshots only, no FKs)
 
-Vendor >─ Customer (optional, ON DELETE SET NULL)
+Tag >─ Customer (optional, ON DELETE SET NULL — 2026-05-28, replaces Vendor>─Customer)
 ```

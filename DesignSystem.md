@@ -118,9 +118,8 @@ Every edit page (Invoices, Customers, Billing Companies, Items, Tasks, Recurring
 - **No bottom action bar.** The old `FormActions` row at the bottom of each form was removed across the board — every action surfaces in the header.
 
 ### Back button on Banking detail / wizard pages
-Three Banking pages that are not edit forms also use the same square `h-9 w-9` outline `ArrowLeft` back button (from `lucide-react`) at the top of their content, matching the `EditPageChrome` back button style:
+Two Banking pages that are not edit forms also use the same square `h-9 w-9` outline `ArrowLeft` back button (from `lucide-react`) at the top of their content, matching the `EditPageChrome` back button style:
 - `/accounts/[id]` — back button inserted into `<AccountHeaderCard>`, navigates to `/accounts`.
-- `/vendors/extract` — back button at the top of the extraction wizard, navigates to `/vendors`.
 - `/rules/test` — back button at the top of the sandbox page, navigates to `/rules`.
 
 These pages do not use `EditPageChrome` (they are not forms), but the back button must be visually identical to the chrome variant.
@@ -214,12 +213,14 @@ Use the standard badge shape (11px / 500 uppercase, 4px Y / 8px X, rounded-full)
 | `TRANSFER` | `bg-blue-100 text-blue-900` |
 | `OTHER` | `bg-slate-100 text-slate-800` |
 
-### Vendor chip
-Small inline pill used wherever a vendor name appears in-line (transaction rows, rule list, etc.):
+### Tag chip *(2026-05-28, replaces Vendor chip)*
+Small inline pill used wherever a tag name appears in-line (transaction rows, payment queue, etc.). Renders as a pill (fully rounded) rather than a slight-radius rectangle:
 
 ```
-bg-slate-100 text-slate-700 rounded-[0.3rem] px-2 py-0.5 text-xs
+bg-slate-100 text-slate-600 rounded-full px-1.5 py-0 text-[10px]
 ```
+
+Multi-tag rows: `flex flex-wrap gap-1`. When a tag carries a `color`, render a 2px round dot of that color inline at the start of the chip (used on `/settings/tags` only — the transaction-row chips stay slate to avoid visual noise).
 
 ### Rules list priority rank prefix
 Each row in the rules list shows a rank number prefix (`#1`, `#2`, …):
@@ -280,8 +281,8 @@ Each `CategorisationEvent` row in the history drawer carries a badge coloured by
 |---|---|
 | `USER` | `bg-slate-100 text-slate-700` |
 | `RULE` | `bg-indigo-100 text-indigo-700` |
-| `VENDOR_MATCH` | `bg-violet-100 text-violet-700` |
 | `AI_DRAFT` | `bg-amber-50 text-amber-700` |
 | `AI_APPLIED` (`acceptedAiSuggestion=true`) | `bg-emerald-100 text-emerald-700` |
 | `AI_APPLIED` (`acceptedAiSuggestion=false`) | `bg-amber-100 text-amber-700` |
 | `AI_REJECTED` | `bg-rose-100 text-rose-700` |
+| `AUTO_ALIAS` *(2026-05-28)* | `bg-cyan-100 text-cyan-700` — used on `TransactionTag` rows attached by the auto-alias pass |

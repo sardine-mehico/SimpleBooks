@@ -536,14 +536,16 @@ Bottom section — **Rule drafting**:
 
 | Trigger | Transaction changed? | Event written |
 |---|---|---|
-| AI returns a suggestion | no | `AI_DRAFT` with `newCategoryId`, `newVendorId`, `reasoning` |
+| AI returns a suggestion | no | `AI_DRAFT` with `newCategoryId`, `reasoning` |
 | User Accept | yes — to AI's picks | `AI_APPLIED` with `acceptedAiSuggestion=true` |
 | User Edit | yes — to user's picks | `AI_APPLIED` with `acceptedAiSuggestion=false` |
 | User Reject | no | `AI_REJECTED` with `newCategoryId` (rejected pick), `reasoning` |
 | User cancels modal without acting | no | nothing — `AI_DRAFT` stays unresolved (cached for next open within 24 h) |
 | User changes Category while banner is in Suggestion state, then saves | yes — to user's picks | `AI_APPLIED`. `acceptedAiSuggestion=true` if final values match AI's pick, else `false`. |
 
-Server-side accept-vs-edit resolution: when the client sends `action: 'edit'` but the chosen `(categoryId, vendorId)` pair equals the AI draft's pick, the server records `AI_APPLIED accepted=true`. Clicking Edit then saving without changing anything is therefore treated as an accept, not a false negative.
+Server-side accept-vs-edit resolution: when the client sends `action: 'edit'` but the chosen `categoryId` equals the AI draft's pick, the server records `AI_APPLIED accepted=true`. Clicking Edit then saving without changing anything is therefore treated as an accept, not a false negative.
+
+**(2026-05-28)** AI suggestions cover **category only** — `vendorId` was dropped from the LLM output schema and from `ApplyDecision`. Tag application is exclusively the auto-alias pass; AI does not propose tags.
 
 ### AI banner — transaction edit modal
 
@@ -551,7 +553,7 @@ Banner slot sits between the read-only block and the editable block.
 
 - **Uncategorised transaction**: banner auto-loads on modal open, fires `POST /ai/suggest-category`.
 - **Already-categorised transaction**: banner hidden; a small "Ask AI for a different opinion" link appears under the Category select. Clicking it fires with `force: true` to bypass the 24 h cache.
-- **Suggestion displayed**: bordered card coloured by confidence (emerald=high, amber=med, slate=low). Shows category, optional vendor, and AI reasoning. Three buttons: `[Accept]` `[Edit]` `[Reject]`.
+- **Suggestion displayed**: bordered card coloured by confidence (emerald=high, amber=med, slate=low). Shows category and AI reasoning. Three buttons: `[Accept]` `[Edit]` `[Reject]`.
   - **Accept** — `POST /ai/apply { action: 'accept' }`; modal closes.
   - **Edit** — banner shrinks to one-line reminder; Category select pre-fills with AI's pick; modal Save calls `POST /ai/apply` with accept-vs-edit comparison at save time.
   - **Reject** — `POST /ai/apply { action: 'reject' }`; banner hides; modal stays open for manual categorisation.
@@ -673,12 +675,12 @@ Read-only list of bank-statement lines. Backend module: `transactions`. Route pr
 
 #### Row actions — three-dots menu
 Each transaction row has a three-dots (`MoreHorizontal`) actions menu with three items:
-1. **Edit** — opens `<TransactionEditModal>` (`frontend/components/transactions/transaction-edit-modal.tsx`). The modal shows a read-only grey panel with Date / Description / Amount / Balance / Account, then editable fields: Category (select), Vendor (select), Notes (textarea). A "Manage splits" button at the bottom opens the split modal from within the edit modal. Saving writes a `CategorisationEvent` row with `source=USER` (the Phase C AI learning signal).
+1. **Edit** — opens `<TransactionEditModal>` (`frontend/components/transactions/transaction-edit-modal.tsx`). The modal shows a read-only grey panel with Date / Description / Amount / Balance / Account, then editable fields: Category (select), Subcategory (select, cascading off Category), **Tags (multi-select)**, Notes (textarea). A "Manage splits" button at the bottom opens the split modal from within the edit modal. Saving writes a `CategorisationEvent` row with `source=USER` for category changes (the AI learning signal); tag changes go to `PATCH /transactions/:id/tags` and write `TransactionTag` rows with `source=USER`.
 2. **Split** — opens the split modal directly.
 3. **Create rule** — opens the rule-creation flow pre-populated from this transaction.
 
 #### Category + Subcategory
-The category field is rendered as two cascading dropdowns: **Category** (top-level rows only) followed by **Subcategory** (children of the picked parent). Layout is `md:grid-cols-3` (Category | Subcategory | Vendor) on desktop, stacked on mobile.
+The category field is rendered as two cascading dropdowns: **Category** (top-level rows only) followed by **Subcategory** (children of the picked parent). Layout is `md:grid-cols-3` (Category | Subcategory | Tags) on desktop, stacked on mobile.
 
 - When the picked parent has children: Subcategory dropdown is enabled with that parent's children. Save is disabled with a tooltip until a subcategory is picked — transactions can't attach to a parent (the existing `setCategory` service guard would reject the request anyway).
 - When the picked parent is a standalone leaf (no children): Subcategory shows a disabled "no subcategories" hint. The parent's own id is submitted as `categoryId`.
@@ -745,38 +747,48 @@ The selected `Customer.id` is persisted to `Category.customerId`. The Payments m
 
 ---
 
-### Vendors
+### Tags *(2026-05-28, replaces Vendors)*
 
-Lookup catalog for payees/merchants. Backend module: `vendors`. Route prefix: `/vendors`.
+Many-to-many facets attached to transactions. Backend module: `tags`. Route prefix: `/tags`. Settings page: `/settings/tags`.
+
+Tags replaced the old `Vendor` concept. The key conceptual shift: a transaction can carry many tags (Honda CRV 2006 + Tax-deductible + Reimbursable), while it could only ever have one vendor. Tags also subsume the old vendor → customer linkage via the new `Tag.customerId` field.
 
 #### Fields
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `id` | UUID | auto | |
-| `name` | string | **yes** | UNIQUE |
-| `kind` | enum `VendorKind` | **yes** | `VENDOR_MATCH` |
-| `aliases` | string[] | no | lowercase substrings; matching is case-insensitive whitespace-collapsed. Trailing spaces in an alias prevent false-positive partial matches on similar but distinct descriptions. |
+| `name` | string | **yes** | Case-insensitive unique (service-enforced; not a DB constraint). |
+| `aliases` | string[] | no | Description fragments that auto-attach this tag when found in a `Transaction.description`. Case-insensitive, word-boundary aware, longest-pattern-first. Editable per-tag via `/settings/tags`. |
+| `color` | string? | no | Optional hex (e.g. `#a78bfa`) or tailwind token for chip rendering. |
 | `notes` | string | no | |
-| `isActive` | boolean | no | default `true` |
+| `isActive` | boolean | no | default `true`. Inactive tags don't fire in the auto-alias pass and don't appear in dropdowns. |
+| `customerId` | UUID? | no | FK → `Customer.id` (ON DELETE SET NULL). When set, the Payments scorer adds +30 (`tagCustomerMatch`) for that customer's invoices — symmetric to `Category.customerId`. |
 | `createdAt` / `updatedAt` | datetime | auto | |
 
-#### List page — `/vendors`
-- **Columns:** Name · Kind · Aliases (count or preview) · Status.
-- **Default sort:** `isActive` desc, tie-breaker `name` asc.
+#### Settings page — `/settings/tags`
+- **Columns:** Name (with color dot) · Aliases (chip list) · Linked customer · Transactions (count) · Active · Actions (per-row Apply, Edit, Delete).
+- **Default sort:** `isActive` desc, then `name` asc.
+- **Search** box filters by name OR alias substring.
+- **Global "Re-apply all to existing"** button at the top — `POST /tags/auto-apply`. Re-scans every transaction against current tag aliases. Idempotent: `transactionTag.createMany({ skipDuplicates: true })` so re-runs don't double-tag.
+- **Per-tag "Apply to existing"** button (wand icon) on each row — `POST /tags/:id/auto-apply`. Same pass, scoped to one tag. Used right after editing that tag's aliases.
+- **`<TagFormDialog>`** — shared create/edit modal. Alias chip input (Enter or `,` to add, X to remove). Linked-customer select with explanation of the +30 scorer signal.
 
-#### Edit page — `/vendors/[id]` (and `/vendors/new`)
-- **Row 1:** Name (required) · Kind (required, select)
-- **Row 2:** Aliases (tag input, each stored lowercase) · Active (switch)
-- **Row 3:** Notes (textarea, full width)
+#### Auto-alias pass
+Pure helpers in `backend/src/tags/auto-alias.ts`:
+- `buildMatchIndex(tags)` — builds a flat array of `{ tagId, pattern: RegExp, length }` from each tag's `name + aliases[]`. Pattern is `(?:^|[^a-z0-9])<escaped-pattern>(?=[^a-z0-9]|$)`, case-insensitive. Sorted longest-first.
+- `findMatchingTagIds(description, index)` — returns the set of tag IDs that match. Each tag matches at most once per transaction.
 
-#### Extraction wizard — `/vendors/extract`
-Two-step process for bulk-creating vendors from unrecognised transaction descriptions:
-1. `POST /vendors/extract` — analyses transaction descriptions not yet matched to a vendor, proposes name + aliases for each cluster.
-2. User reviews and edits proposals in a table.
-3. `POST /vendors/extract/commit` — saves accepted proposals as new `Vendor` rows.
+`TagsService.autoAliasApply({ transactionIds?, onlyTagId? })` runs the index over the chosen transactions (or all if no filter) and inserts `TransactionTag` rows with `source=AUTO_ALIAS`. Batched in chunks of 500. Always uses `skipDuplicates: true`.
 
-#### Logic
-- Vendor matching: the engine checks each transaction description against all active vendors' `aliases`. Matching is case-insensitive and whitespace-collapsed. When multiple vendors match, the one with the longest matching alias wins (most-specific tiebreak).
+Trigger surfaces:
+1. **CSV import** — `TransactionImportsService.commit` calls `autoAliasApply({ transactionIds: <inserted ids> })` after the rule engine pass. Always runs (no opt-out checkbox).
+2. **Manual transaction save** — the edit modal's `setTransactionTags` call is the manual override; auto-alias does not run on save.
+3. **On-demand** — the two `/settings/tags` buttons described above.
+
+#### Manual tag management
+- **Edit modal** — `<TagMultiSelect>` in `components/tags/tag-multi-select.tsx`. Chip-based picker with type-to-search (matches against tag name AND alias). Save calls `PATCH /transactions/:id/tags` with the full new tag-id set (replaces, not merges).
+- **List filter** — same `<TagMultiSelect>` component is reused in the transactions filter panel. Plus an "Untagged only" checkbox that maps to `?tagNone=true` (mutually exclusive with `tagIds`).
+- **Bulk** — not implemented in v1. Future improvement: "Add tag" / "Remove tag" bulk row actions.
 
 ---
 
@@ -793,7 +805,6 @@ Categorisation rules. Backend module: `rules`. Route prefix: `/rules`.
 | `isActive` | boolean | no | default `true` |
 | `priority` | int | no | default `1000`; spaced by 10 in practice. Lower = higher precedence. |
 | `categoryId` | FK → Category | **yes** | applied to matched transactions |
-| `vendorId` | FK → Vendor | no | optionally applied to matched transactions |
 | `noteOnApply` | string | no | appended to `Transaction.notes` when the rule fires |
 | `hitCount` | int | auto | incremented by the engine on each pass |
 | `lastFiredAt` | datetime | auto | stamped by the engine on each pass |
@@ -803,15 +814,15 @@ Categorisation rules. Backend module: `rules`. Route prefix: `/rules`.
 #### List page — `/rules`
 - The rules list is **priority-ordered, not FilteredList**. Rows render in ascending priority order (rank 1 = lowest priority INT = fires first).
 - Each row shows a priority rank prefix in `font-mono text-lg tabular-nums text-slate-400` (e.g. `#1`, `#2`).
-- **Columns:** Rank · Name · State · Category · Vendor · Conditions count · Hit Count · Active.
+- **Columns:** Rank · Name · State · Category · Conditions count · Hit Count · Active.
 - **Actions per row:** `[↑]` / `[↓]` reorder buttons (swap with neighbour via `PATCH /rules/:id/move`). Edit. Toggle active.
 - **No sort or filter** — the order IS the feature.
 
 #### Edit page — `/rules/[id]` (and `/rules/new`)
 Uses `EditPageChrome`.
 - **Row 1:** Name (required) · State (select) · Active (switch)
-- **Row 2:** Category (required, select — sorted by `sortOrder`) · Vendor (optional, select)
-- **Conditions section:** a list of condition rows, each with Field / Operator / Value / Value2 / ValueList inputs appropriate to the operator. "+ Add Condition" below the list.
+- **Row 2:** Category (required, select — sorted by `sortOrder`)
+- **Conditions section:** a list of condition rows, each with Field / Operator / Value / Value2 / ValueList inputs appropriate to the operator. Available fields: DESCRIPTION, AMOUNT, ACCOUNT (the old VENDOR field was dropped 2026-05-28). "+ Add Condition" below the list.
 - **Row (footer):** Note on Apply (textarea)
 
 #### Sample-matches preview
@@ -828,9 +839,10 @@ The rule editor hits `POST /rule-engine/test` on debounce as the user edits cond
 
 Backend module: `rule-engine`. No database table of its own — pure orchestration.
 
-#### Two-pass evaluation
-1. **Vendor-match pass:** for each transaction, check all active vendors' `aliases`. If one or more match, assign the vendor with the longest matching alias (most-specific wins). This pass sets `Transaction.vendorId` but does not set `categoryId`.
-2. **Rule-match pass:** evaluate active, `isActive=true` rules in ascending `priority` order. For each transaction, the first rule whose AND-conditions all match wins. Assigns `categoryId`, optionally `vendorId` (if the rule specifies one), optionally appends `noteOnApply` to `Transaction.notes`, and stamps `categorisedAt`.
+#### Single-pass evaluation *(2026-05-28: was previously two-pass)*
+1. **Rule-match pass:** evaluate active, `isActive=true` rules in ascending `priority` order. For each transaction, the first rule whose AND-conditions all match wins. Assigns `categoryId`, optionally appends `noteOnApply` to `Transaction.notes`, and stamps `categorisedAt`.
+
+Tag application is no longer a rule-engine concern — see the Tags module's auto-alias pass for description-based tagging, which runs after this pass during CSV import.
 
 #### Engine writes
 - All writes for a batch run are wrapped in a single Prisma `$transaction`.
@@ -869,7 +881,7 @@ Standalone page for testing rules against a sample of real transactions without 
 
 Read-only audit trail. Backend module: `categorisation-events`. Route prefix: `/categorisation-events`.
 
-- **Columns:** Date · Transaction · Source · Rule (if applicable) · Old Category · New Category · Old Vendor · New Vendor.
+- **Columns:** Date · Transaction · Source · Rule (if applicable) · Old Category · New Category.
 - **Default sort:** `createdAt` desc.
 - No create, update, or delete endpoints. Rows are written only by the engine, the manual-patch endpoint, and the import opt-in path.
 
@@ -892,7 +904,7 @@ The same `<ApplyPaymentModal>` component renders in three places. The context go
 
 | Context | Where it opens from | Behaviour |
 |---|---|---|
-| **Queue** | `[Apply]` button on the Payments review queue | If the transaction's vendor is linked to a customer (`Vendor.customerId`), loads candidate invoices for that customer via `GET /payments/candidates?transactionId=…`; shows the scored list plus the bundle-suggestion chip when applicable. If the vendor is unlinked (or null), surfaces a customer picker first; an optional **"Bind this vendor to <customer>"** checkbox writes `Vendor.customerId` on apply so the next deposit auto-matches. |
+| **Queue** | `[Apply]` button on the Payments review queue | If the transaction has a linked customer (`Category.customerId` OR any `Tag.customerId`), loads candidate invoices for that customer via `GET /payments/candidates?transactionId=…`; shows the scored list plus the bundle-suggestion chip when applicable. If neither link is set, surfaces a customer picker first with a tip pointing the user at `/settings/tags` (or the Category edit form) to persist the link for next time. |
 | **Invoice** | `[Receive payment]` button on the invoice view | Invoice is fixed. Lists the customer's transactions where `remaining > 0` (signed positive minus allocations); user picks transactions to apply against this invoice. Each picked transaction produces one allocation call. |
 | **Transaction** | Three-dots row menu on any transaction row | Identical to the Queue context — reachable from any transaction, not just the queue. |
 
@@ -905,11 +917,13 @@ The candidate list is sorted by a sum of independent signals computed against `I
 |---|---|
 | Invoice number appears in transaction description (case-insensitive) | **+60** |
 | Exact amount match (transaction amount = invoice `amountOutstanding`) | **+40** |
+| `Category.customerId` matches `invoice.customerId` | **+30** |
+| Any `Tag.customerId` on the transaction matches `invoice.customerId` *(2026-05-28)* | **+30** |
 | Customer-name token (≥ 4 characters) appears in transaction description | **+15** |
 | Transaction date is plausible — within 60 days *after* `invoiceDate` | **+10** |
 | Invoice is already `PARTIAL_PAID` (more likely to be the target of a follow-up payment) | **+5** |
 
-Highest score first; ties broken by `invoiceDate` ascending.
+Highest score first; ties broken by `invoiceDate` ascending. The two `*CustomerMatch` signals are symmetric — both fire +30 — because a tag-link and a category-link are equally strong user-curated declarations of "this transaction belongs to this customer."
 
 ### Bundle suggestion
 When the transaction amount doesn't exactly match any single candidate, the modal computes a **bundle suggestion**: a search for any 2- or 3-invoice combination whose `amountOutstanding` sums exactly to the transaction amount. Oldest invoices first. The search is **skipped when the candidate list exceeds 8 invoices** (combinatorial blow-up). When found, a one-line chip appears at the top of the candidate list: "Tick these N invoices to match $X.XX exactly."
@@ -917,14 +931,18 @@ When the transaction amount doesn't exactly match any single candidate, the moda
 ### Allocations panel on invoice view
 The invoice view page renders an **Allocations** panel listing each `Allocation` row pointing at the invoice: transaction date · description · amount · trash icon. Clicking the trash icon opens a confirmation dialog that previews the resulting invoice status (e.g. *"Removing this $200.00 allocation will revert this invoice from PAID to PARTIAL_PAID"*). On confirm, `DELETE /payments/allocations/:id` removes the row, runs `recomputeInvoicePayment`, and writes an `AllocationEvent` with `eventType=DELETED` capturing the status before / after.
 
-### Vendor → Customer linkage
-The vendor edit form gains an optional **Linked customer** select (`Vendor.customerId`). When set, the Payments queue can fetch candidate invoices for the customer with no picker step, and the Apply modal opens straight into the scored list. Unsetting it reverts to the picker flow.
+### Customer linkage *(2026-05-28: replaced Vendor → Customer linkage)*
+The Payments queue auto-fetches candidate invoices when a transaction has either:
+- a **Category** with `Category.customerId` set (configured per-category in `<CategoryFormDialog>` for INCOME-kind categories), or
+- any **Tag** with `Tag.customerId` set (configured per-tag in `<TagFormDialog>` on `/settings/tags`).
+
+Both linkages contribute to the candidate-customer pool (union) and both fire +30 in the scorer (independently). Unsetting all customer links reverts that transaction to the customer-picker flow inside `<ApplyPaymentModal>`.
 
 ### Invoice manual status — derived statuses are read-only
 The invoice edit page's Status control no longer lets the user freely choose any value. **`SENT` / `VIEWED` / `PARTIAL_PAID` / `PAID` are derived** (set by the send flow, the public-view route, and the payments allocator respectively) and render read-only on the form with an inline helper line: *"Status is updated automatically by sending the invoice or receiving a payment. Only Draft and Voided can be set manually."* The select only exposes `DRAFT` and `VOID` as manually-settable options. Existing behaviour for `FAILED_TO_SEND` is unchanged (also derived, never user-settable).
 
 ### Customer credit
-`GET /customers/:id/credit` returns the unallocated remainder of transactions whose `vendor.customerId` points at this customer — money the customer has paid that hasn't yet been linked to any invoice. The Apply modal surfaces this as a strip across the top when non-zero: *"<Customer> has $X.XX of unallocated credit. [Use existing credit instead →]"*. Clicking the link routes into a customer-credit allocation flow against the chosen invoice; no new transaction is needed.
+`GET /customers/:id/credit` returns the unallocated remainder of transactions linked to this customer via `Category.customerId` OR any `Tag.customerId` — money the customer has paid that hasn't yet been linked to any invoice. The query uses an `EXISTS` subquery on `TransactionTag → Tag` to avoid row explosion on heavily-tagged transactions. The Apply modal surfaces this as a strip across the top when non-zero: *"<Customer> has $X.XX of unallocated credit. [Use existing credit instead →]"*. Clicking the link routes into a customer-credit allocation flow against the chosen invoice; no new transaction is needed.
 
 ### Audit
 Every `Allocation` create or delete writes one `AllocationEvent` row. `transactionId` and `invoiceId` are stored as **plain string snapshots** (not FKs) so the audit history survives subsequent deletes of the underlying records. `invoiceStatusBefore` / `invoiceStatusAfter` capture the derived-status flip caused by the change.
