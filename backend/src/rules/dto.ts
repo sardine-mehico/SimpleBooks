@@ -4,7 +4,7 @@ import {
 } from 'class-validator';
 
 export enum RuleStateDto    { USER = 'USER', AI_DRAFTED = 'AI_DRAFTED', APPROVED = 'APPROVED', DENIED = 'DENIED' }
-export enum RuleFieldDto    { DESCRIPTION = 'DESCRIPTION', AMOUNT = 'AMOUNT', VENDOR = 'VENDOR', ACCOUNT = 'ACCOUNT' }
+export enum RuleFieldDto    { DESCRIPTION = 'DESCRIPTION', AMOUNT = 'AMOUNT', ACCOUNT = 'ACCOUNT' }
 export enum RuleOperatorDto {
   CONTAINS = 'CONTAINS', EQUALS = 'EQUALS', STARTS_WITH = 'STARTS_WITH', ENDS_WITH = 'ENDS_WITH',
   GT = 'GT', LT = 'LT', BETWEEN = 'BETWEEN', IN = 'IN',
@@ -21,7 +21,6 @@ export class RuleConditionDto {
 export class CreateRuleDto {
   @IsString() @MinLength(1) @MaxLength(200) name!: string;
   @IsUUID() categoryId!: string;
-  @IsUUID() @IsOptional() vendorId?: string;
   @IsString() @IsOptional() @MaxLength(2000) noteOnApply?: string;
   @IsBoolean() @IsOptional() isActive?: boolean;
   @IsArray() @ValidateNested({ each: true }) @Type(() => RuleConditionDto) @ArrayMinSize(1) conditions!: RuleConditionDto[];
@@ -30,7 +29,6 @@ export class CreateRuleDto {
 export class UpdateRuleDto {
   @IsString() @IsOptional() @MinLength(1) @MaxLength(200) name?: string;
   @IsUUID() @IsOptional() categoryId?: string;
-  @IsUUID() @IsOptional() vendorId?: string;
   @IsString() @IsOptional() @MaxLength(2000) noteOnApply?: string;
   @IsBoolean() @IsOptional() isActive?: boolean;
   @IsArray() @ValidateNested({ each: true }) @Type(() => RuleConditionDto) @ArrayMinSize(1) @IsOptional() conditions?: RuleConditionDto[];

@@ -8,19 +8,11 @@ export type EngineTransactionInput = {
   amount: string;
   description: string;
   accountId: string;
-  vendorId: string | null;
   hasSplits: boolean;
 };
 
-export type EngineVendor = {
-  id: string;
-  name: string;
-  aliases: string[];
-  isActive: boolean;
-};
-
 export type EngineRuleCondition = {
-  field: 'DESCRIPTION' | 'AMOUNT' | 'VENDOR' | 'ACCOUNT';
+  field: 'DESCRIPTION' | 'AMOUNT' | 'ACCOUNT';
   operator: 'CONTAINS' | 'EQUALS' | 'STARTS_WITH' | 'ENDS_WITH' | 'GT' | 'LT' | 'BETWEEN' | 'IN';
   value: string;
   value2: string | null;
@@ -35,7 +27,6 @@ export type EngineRule = {
   priority: number;
   categoryId: string;
   categoryName: string;
-  vendorId: string | null;
   noteOnApply: string | null;
   conditions: EngineRuleCondition[];
 };
@@ -45,8 +36,6 @@ export type EngineRowResult = {
   date: string;
   amount: string;
   description: string;
-  vendorMatch: { vendorId: string; vendorName: string } | null;
-  vendorMatchAmbiguous: boolean;
   ruleMatch: { ruleId: string; ruleName: string; priority: number; categoryId: string; categoryName: string } | null;
   allMatchingRules: Array<{ ruleId: string; ruleName: string; priority: number }>;
   skipped: 'has-splits' | 'no-rule-match' | null;
@@ -56,7 +45,6 @@ export type EngineOutput = {
   rows: EngineRowResult[];
   stats: {
     total: number;
-    vendorMatched: number;
     ruleMatched: number;
     preservedSplits: number;
     unchanged: number;

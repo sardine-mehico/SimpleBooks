@@ -34,11 +34,20 @@ export class ListTransactionsDto {
   @IsOptional() @IsIn(VALID_CATEGORY_KINDS as unknown as string[])
   categoryKind?: CategoryKind;
 
-  // Vendor filtering — precedence: vendorId > vendorNone
-  @IsOptional() @IsUUID() vendorId?: string;
+  // Tag filtering — comma-separated list of tagIds. Matches transactions
+  // tagged with ANY of the given tags (OR-of-tags).
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string' && value.length) return value.split(',');
+    return [];
+  })
+  @IsArray()
+  @IsUUID('all', { each: true })
+  tagIds?: string[];
 
   @IsOptional() @IsIn(['true'])
-  vendorNone?: 'true';
+  tagNone?: 'true';
 
   @IsOptional() @IsIn(['true'])
   pendingAiReview?: 'true';
@@ -68,7 +77,6 @@ export class SetSplitsDto {
 
 export class SetCategoryDto {
   @IsUUID() @IsOptional() categoryId?: string;
-  @IsUUID() @IsOptional() vendorId?: string;
   @IsString() @IsOptional() @MaxLength(2000) notes?: string;
 }
 
@@ -82,7 +90,7 @@ export class CreateTransactionDto {
   @Type(() => Number) @IsNumber() amount!: number;   // signed: negative = withdrawal, positive = deposit
   @IsString() @MaxLength(500) description!: string;
   @IsUUID() @IsOptional() categoryId?: string;
-  @IsUUID() @IsOptional() vendorId?: string;
+  @IsArray() @IsUUID('all', { each: true }) @IsOptional() tagIds?: string[];
   @IsString() @IsOptional() @MaxLength(2000) notes?: string;
 }
 

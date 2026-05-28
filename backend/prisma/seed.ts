@@ -532,54 +532,58 @@ async function main() {
     }
   }
 
-  // ── Vendors (Banking Phase B) ────────────────────────────────────────────
-  const VENDORS: Array<{ name: string; kind: 'MERCHANT' | 'PERSON' | 'CUSTOMER' | 'BANK' | 'OTHER'; aliases: string[] }> = [
-    { name: 'BP', kind: 'MERCHANT', aliases: ['bp ', 'bp australia', 'bp connect'] },
-    { name: 'Caltex', kind: 'MERCHANT', aliases: ['caltex', 'ampol caltex'] },
-    { name: 'Shell', kind: 'MERCHANT', aliases: ['shell ', 'shell coles'] },
-    { name: 'Ampol', kind: 'MERCHANT', aliases: ['ampol', 'caltex ampol'] },
-    { name: '7-Eleven', kind: 'MERCHANT', aliases: ['7-eleven', '7 eleven', '7eleven'] },
-    { name: 'Costco', kind: 'MERCHANT', aliases: ['costco'] },
-    { name: 'Liberty', kind: 'MERCHANT', aliases: ['liberty oil', 'liberty service'] },
-    { name: 'Mobil', kind: 'MERCHANT', aliases: ['mobil '] },
-    { name: 'Vibe', kind: 'MERCHANT', aliases: ['vibe service', 'vibe petroleum'] },
-    { name: 'United', kind: 'MERCHANT', aliases: ['united petroleum'] },
-    { name: 'Woolworths', kind: 'MERCHANT', aliases: ['woolworths', 'woolies', 'ww metro', 'ww supermarkets'] },
-    { name: 'Coles', kind: 'MERCHANT', aliases: ['coles ', 'coles supermarkets', 'coles express'] },
-    { name: 'IGA', kind: 'MERCHANT', aliases: ['iga '] },
-    { name: 'ALDI', kind: 'MERCHANT', aliases: ['aldi '] },
-    { name: 'Foodland', kind: 'MERCHANT', aliases: ['foodland'] },
-    { name: 'PayPal', kind: 'MERCHANT', aliases: ['paypal', '617704'] },
-    { name: 'Stripe', kind: 'MERCHANT', aliases: ['stripe payments'] },
-    { name: 'eBay', kind: 'MERCHANT', aliases: ['ebay '] },
-    { name: 'Amazon AU', kind: 'MERCHANT', aliases: ['amazon au', 'amazon.com.au', 'amzn mktp au'] },
-    { name: 'Apple', kind: 'MERCHANT', aliases: ['apple.com/bill', 'apple pty ltd'] },
-    { name: 'Google Play', kind: 'MERCHANT', aliases: ['google *play', 'google play'] },
-    { name: 'Telstra', kind: 'MERCHANT', aliases: ['telstra'] },
-    { name: 'Optus', kind: 'MERCHANT', aliases: ['optus ', 'singtel optus'] },
-    { name: 'Vodafone', kind: 'MERCHANT', aliases: ['vodafone'] },
-    { name: 'TPG', kind: 'MERCHANT', aliases: ['tpg internet', 'tpg telecom'] },
-    { name: 'Aussie Broadband', kind: 'MERCHANT', aliases: ['aussie broadband'] },
-    { name: 'Synergy', kind: 'MERCHANT', aliases: ['synergy '] },
-    { name: 'Water Corp', kind: 'MERCHANT', aliases: ['water corp', 'water corporation'] },
-    { name: 'Alinta Energy', kind: 'MERCHANT', aliases: ['alinta energy', 'alinta gas'] },
-    { name: 'RAC', kind: 'MERCHANT', aliases: ['rac ', 'raci ', '250930'] },
-    { name: 'NRMA', kind: 'MERCHANT', aliases: ['nrma '] },
-    { name: 'AAMI', kind: 'MERCHANT', aliases: ['aami '] },
-    { name: 'Allianz', kind: 'MERCHANT', aliases: ['allianz'] },
-    { name: 'Bupa', kind: 'MERCHANT', aliases: ['bupa '] },
-    { name: 'Medibank', kind: 'MERCHANT', aliases: ['medibank'] },
-    { name: 'Commonwealth Bank', kind: 'BANK', aliases: ['commbank', 'cba ', 'commonwealth bank'] },
-    { name: 'NAB', kind: 'BANK', aliases: ['national australia bank', 'nab '] },
-    { name: 'Westpac', kind: 'BANK', aliases: ['westpac'] },
-    { name: 'ANZ', kind: 'BANK', aliases: ['anz '] },
+  // ── Starter Tags ─────────────────────────────────────────────────────────
+  // Common merchant/bank names with description-fragment aliases. The
+  // auto-alias pass uses these to attach the tag whenever the description
+  // contains any of them. Users can edit / delete via /settings/tags.
+  const TAGS: Array<{ name: string; aliases: string[] }> = [
+    { name: 'BP', aliases: ['bp ', 'bp australia', 'bp connect'] },
+    { name: 'Caltex', aliases: ['caltex', 'ampol caltex'] },
+    { name: 'Shell', aliases: ['shell ', 'shell coles'] },
+    { name: 'Ampol', aliases: ['ampol', 'caltex ampol'] },
+    { name: '7-Eleven', aliases: ['7-eleven', '7 eleven', '7eleven'] },
+    { name: 'Costco', aliases: ['costco'] },
+    { name: 'Liberty', aliases: ['liberty oil', 'liberty service'] },
+    { name: 'Mobil', aliases: ['mobil '] },
+    { name: 'Vibe', aliases: ['vibe service', 'vibe petroleum'] },
+    { name: 'United', aliases: ['united petroleum'] },
+    { name: 'Woolworths', aliases: ['woolworths', 'woolies', 'ww metro', 'ww supermarkets'] },
+    { name: 'Coles', aliases: ['coles ', 'coles supermarkets', 'coles express'] },
+    { name: 'IGA', aliases: ['iga '] },
+    { name: 'ALDI', aliases: ['aldi '] },
+    { name: 'Foodland', aliases: ['foodland'] },
+    { name: 'PayPal', aliases: ['paypal', '617704'] },
+    { name: 'Stripe', aliases: ['stripe payments'] },
+    { name: 'eBay', aliases: ['ebay '] },
+    { name: 'Amazon AU', aliases: ['amazon au', 'amazon.com.au', 'amzn mktp au'] },
+    { name: 'Apple', aliases: ['apple.com/bill', 'apple pty ltd'] },
+    { name: 'Google Play', aliases: ['google *play', 'google play'] },
+    { name: 'Telstra', aliases: ['telstra'] },
+    { name: 'Optus', aliases: ['optus ', 'singtel optus'] },
+    { name: 'Vodafone', aliases: ['vodafone'] },
+    { name: 'TPG', aliases: ['tpg internet', 'tpg telecom'] },
+    { name: 'Aussie Broadband', aliases: ['aussie broadband'] },
+    { name: 'Synergy', aliases: ['synergy '] },
+    { name: 'Water Corp', aliases: ['water corp', 'water corporation'] },
+    { name: 'Alinta Energy', aliases: ['alinta energy', 'alinta gas'] },
+    { name: 'RAC', aliases: ['rac ', 'raci ', '250930'] },
+    { name: 'NRMA', aliases: ['nrma '] },
+    { name: 'AAMI', aliases: ['aami '] },
+    { name: 'Allianz', aliases: ['allianz'] },
+    { name: 'Bupa', aliases: ['bupa '] },
+    { name: 'Medibank', aliases: ['medibank'] },
+    { name: 'Commonwealth Bank', aliases: ['commbank', 'cba ', 'commonwealth bank'] },
+    { name: 'NAB', aliases: ['national australia bank', 'nab '] },
+    { name: 'Westpac', aliases: ['westpac'] },
+    { name: 'ANZ', aliases: ['anz '] },
   ];
-  for (const v of VENDORS) {
-    await prisma.vendor.upsert({
-      where: { name: v.name },
-      update: { aliases: v.aliases, kind: v.kind },
-      create: v,
-    });
+  for (const t of TAGS) {
+    const existing = await prisma.tag.findFirst({ where: { name: { equals: t.name, mode: 'insensitive' } } });
+    if (existing) {
+      await prisma.tag.update({ where: { id: existing.id }, data: { aliases: t.aliases } });
+    } else {
+      await prisma.tag.create({ data: { name: t.name, aliases: t.aliases } });
+    }
   }
 
   console.log('seed: done');

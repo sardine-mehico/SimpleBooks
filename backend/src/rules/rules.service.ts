@@ -26,7 +26,6 @@ export class RulesService {
       include: {
         conditions: { orderBy: { position: 'asc' } },
         category: { select: { id: true, name: true, kind: true } },
-        vendor: { select: { id: true, name: true } },
       },
     });
   }
@@ -37,7 +36,6 @@ export class RulesService {
       include: {
         conditions: { orderBy: { position: 'asc' } },
         category: { select: { id: true, name: true, kind: true } },
-        vendor: { select: { id: true, name: true } },
       },
     });
     if (!row) throw new NotFoundException();
@@ -51,7 +49,6 @@ export class RulesService {
       data: {
         name: data.name,
         categoryId: data.categoryId,
-        vendorId: data.vendorId,
         noteOnApply: data.noteOnApply,
         isActive: data.isActive ?? true,
         priority: maxPriority + PRIORITY_GAP,
@@ -86,7 +83,6 @@ export class RulesService {
         data: {
           name: data.name,
           categoryId: data.categoryId,
-          vendorId: data.vendorId,
           noteOnApply: data.noteOnApply,
           isActive: ratify ? true : data.isActive,
           ...(ratify ? { state: 'APPROVED' as any } : {}),

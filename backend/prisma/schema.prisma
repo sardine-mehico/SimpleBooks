@@ -42,7 +42,7 @@ model Customer {
   billingCompany BillingCompany? @relation(fields: [billingCompanyId], references: [id], onDelete: SetNull)
   invoices       Invoice[]
   recurringRules RecurringRule[]
-  vendors        Vendor[]
+  tags           Tag[]
   categories     Category[]
 }
 
@@ -425,9 +425,6 @@ model Transaction {
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
-  vendorId String?
-  vendor   Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-
   notes String?
 
   ruleId String?
@@ -439,8 +436,9 @@ model Transaction {
   importId   String?
   import     TransactionImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
 
-  splits TransactionSplit[]
-  events CategorisationEvent[]
+  splits          TransactionSplit[]
+  events          CategorisationEvent[]
+  transactionTags TransactionTag[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -485,14 +483,6 @@ enum CategoryKind {
   OTHER
 }
 
-enum VendorKind {
-  MERCHANT
-  PERSON
-  CUSTOMER
-  BANK
-  OTHER
-}
-
 enum RuleState {
   USER
   AI_DRAFTED
@@ -503,7 +493,6 @@ enum RuleState {
 enum RuleField {
   DESCRIPTION
   AMOUNT
-  VENDOR
   ACCOUNT
 }
 
@@ -521,10 +510,10 @@ enum RuleOperator {
 enum EventSource {
   USER
   RULE
-  VENDOR_MATCH
   AI_DRAFT
   AI_APPLIED
   AI_REJECTED
+  AUTO_ALIAS
 }
 
 model Category {
@@ -549,21 +538,35 @@ model Category {
   @@index([customerId])
 }
 
-model Vendor {
-  id        String     @id @default(uuid())
-  name      String     @unique
-  kind      VendorKind
-  aliases   String[]
-  notes     String?
-  isActive  Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-
-  transactions Transaction[]
-  rules        Rule[]
+model Tag {
+  id         String   @id @default(uuid())
+  name       String   // case-insensitive unique enforced in service layer
+  aliases    String[] // extra description-substring patterns that match this tag
+  color      String?  // optional UI badge color (hex without # or tailwind token)
+  notes      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  transactionTags TransactionTag[]
+
+  @@index([customerId])
+}
+
+model TransactionTag {
+  transactionId String
+  tagId         String
+  source        EventSource @default(USER) // USER | RULE | AI_APPLIED | AUTO_ALIAS
+  createdAt     DateTime    @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
+  @@index([tagId])
 }
 
 model Rule {
@@ -575,8 +578,6 @@ model Rule {
 
   categoryId  String
   category    Category   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  vendorId    String?
-  vendor      Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   noteOnApply String?
   clusterHash String?
 
@@ -655,8 +656,6 @@ model CategorisationEvent {
 
   oldCategoryId String?
   newCategoryId String?
-  oldVendorId   String?
-  newVendorId   String?
 
   acceptedAiSuggestion Boolean?
   reasoning String?

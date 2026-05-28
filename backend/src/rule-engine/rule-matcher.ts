@@ -31,14 +31,6 @@ function conditionMatches(tx: EngineTransactionInput, c: EngineRuleCondition): b
         default: return false;
       }
     }
-    case 'VENDOR': {
-      if (tx.vendorId === null) return false;
-      switch (c.operator) {
-        case 'EQUALS': return tx.vendorId === v;
-        case 'IN':     return c.valueList.includes(tx.vendorId);
-        default: return false;
-      }
-    }
     case 'ACCOUNT': {
       switch (c.operator) {
         case 'EQUALS': return tx.accountId === v;

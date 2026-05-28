@@ -1,11 +1,13 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TagsService } from '../tags/tags.service';
+import { ApplyTagsToTransactionDto } from '../tags/dto';
 import { BulkDeleteDto, CreateTransactionDto, ListTransactionsDto, SetCategoryDto, SetSplitsDto, UpdateTransactionDto } from './dto';
 
 @Controller('transactions')
 export class TransactionsController {
-  constructor(private service: TransactionsService, private prisma: PrismaService) {}
+  constructor(private service: TransactionsService, private prisma: PrismaService, private tags: TagsService) {}
 
   @Get() list(@Query() q: ListTransactionsDto) { return this.service.list(q); }
 
@@ -60,5 +62,11 @@ export class TransactionsController {
 
   @Patch(':id/category') setCategory(@Param('id') id: string, @Body() dto: SetCategoryDto) {
     return this.service.setCategory(id, dto);
+  }
+
+  // Replace the tag set on a transaction. `tagIds` of [] clears all tags.
+  @Patch(':id/tags')
+  setTags(@Param('id') id: string, @Body() dto: ApplyTagsToTransactionDto) {
+    return this.tags.setTransactionTags(id, dto.tagIds, 'USER');
   }
 }

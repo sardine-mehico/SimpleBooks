@@ -2,11 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { TagsService } from '../tags/tags.service';
 import { CreateTransactionDto, ListTransactionsDto, UpdateTransactionDto } from './dto';
 
 @Injectable()
 export class TransactionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private tags: TagsService) {}
 
   async get(id: string) {
     const tx = await this.prisma.transaction.findUnique({
@@ -14,7 +15,9 @@ export class TransactionsService {
       include: {
         account: { select: { id: true, name: true } },
         category: { select: { id: true, name: true, kind: true } },
-        vendor: { select: { id: true, name: true } },
+        transactionTags: {
+          select: { tag: { select: { id: true, name: true, color: true } }, source: true },
+        },
         splits: { select: { id: true, categoryId: true, amount: true, notes: true }, orderBy: { position: 'asc' } },
       },
     });
@@ -99,11 +102,11 @@ export class TransactionsService {
       where.category = { kind: q.categoryKind };
     }
 
-    // Vendor filtering — precedence: vendorId > vendorNone.
-    if (q.vendorId) {
-      where.vendorId = q.vendorId;
-    } else if (q.vendorNone === 'true') {
-      where.vendorId = null;
+    // Tag filtering — precedence: tagIds (OR semantics) > tagNone.
+    if (q.tagIds && q.tagIds.length > 0) {
+      where.transactionTags = { some: { tagId: { in: q.tagIds } } };
+    } else if (q.tagNone === 'true') {
+      where.transactionTags = { none: {} };
     }
 
     // Pending AI review filter — transactions with an unresolved AI_DRAFT.
@@ -158,7 +161,9 @@ export class TransactionsService {
         include: {
           account: { select: { id: true, name: true } },
           category: { select: { id: true, name: true, kind: true } },
-          vendor: { select: { id: true, name: true } },
+          transactionTags: {
+            select: { tag: { select: { id: true, name: true, color: true } }, source: true },
+          },
           splits: { select: { id: true, categoryId: true, amount: true, notes: true }, orderBy: { position: 'asc' } },
         },
       }),
@@ -270,7 +275,7 @@ export class TransactionsService {
     return { deleted: result.count };
   }
 
-  async setCategory(transactionId: string, data: { categoryId?: string; vendorId?: string; notes?: string }) {
+  async setCategory(transactionId: string, data: { categoryId?: string; notes?: string }) {
     const tx = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
     if (!tx) throw new NotFoundException();
     if (data.categoryId) {
@@ -284,7 +289,6 @@ export class TransactionsService {
         where: { id: transactionId },
         data: {
           categoryId: data.categoryId === undefined ? undefined : data.categoryId,
-          vendorId: data.vendorId === undefined ? undefined : data.vendorId,
           notes: data.notes === undefined ? undefined : data.notes,
           categorisedAt: data.categoryId !== undefined ? new Date() : undefined,
           ruleId: data.categoryId !== undefined ? null : undefined,
@@ -295,14 +299,6 @@ export class TransactionsService {
           data: {
             transactionId, source: 'USER',
             oldCategoryId: tx.categoryId, newCategoryId: data.categoryId,
-          },
-        });
-      }
-      if (data.vendorId !== undefined && data.vendorId !== tx.vendorId) {
-        await db.categorisationEvent.create({
-          data: {
-            transactionId, source: 'USER',
-            oldVendorId: tx.vendorId, newVendorId: data.vendorId,
           },
         });
       }
@@ -330,22 +326,23 @@ export class TransactionsService {
         amount: new Prisma.Decimal(data.amount.toFixed ? data.amount.toFixed(2) : String(data.amount)),
         description: data.description,
         categoryId: data.categoryId ?? null,
-        vendorId: data.vendorId ?? null,
         notes: data.notes ?? null,
         categorisedAt: data.categoryId ? new Date() : null,
         importHash: `manual:${randomUUID()}`,
         importId: null,
       },
     });
-    if (data.categoryId || data.vendorId) {
+    if (data.categoryId) {
       await this.prisma.categorisationEvent.create({
         data: {
           transactionId: tx.id,
           source: 'USER',
-          newCategoryId: data.categoryId ?? null,
-          newVendorId: data.vendorId ?? null,
+          newCategoryId: data.categoryId,
         },
       });
+    }
+    if (data.tagIds && data.tagIds.length > 0) {
+      await this.tags.setTransactionTags(tx.id, data.tagIds, 'USER');
     }
     const [withBalance] = await this.attachComputedBalance([tx]);
     return withBalance;
