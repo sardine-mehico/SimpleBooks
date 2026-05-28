@@ -77,7 +77,7 @@ export function TagsReportPage({
 
       <Card className="space-y-5 p-6">
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm md:flex-nowrap md:gap-4">
           <div className="flex items-center gap-2">
             <span className="text-slate-600">Side:</span>
             <Select value={kind} onValueChange={(v) => setKind(v as "EXPENSE" | "INCOME")}>
@@ -90,13 +90,13 @@ export function TagsReportPage({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-slate-600">Date:</span>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-36" />
             <span className="text-slate-400">—</span>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-36" />
           </div>
           <div className="flex items-center gap-2">
             <span className="text-slate-600">Accounts:</span>
-            <AccountMultiSelect accounts={accounts} selected={selectedAccountIds} onChange={setSelectedAccountIds} />
+            <AccountMultiSelect accounts={accounts} selected={selectedAccountIds} onChange={setSelectedAccountIds} className="w-44" />
           </div>
         </div>
 

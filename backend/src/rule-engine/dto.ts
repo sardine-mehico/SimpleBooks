@@ -7,6 +7,9 @@ export class RecategoriseDto {
   @IsISO8601() @IsOptional() dateFrom?: string;
   @IsISO8601() @IsOptional() dateTo?: string;
   @IsBoolean() @IsOptional() preserveSplits?: boolean;
+  // When true (default), re-runs the tag auto-alias pass against the same
+  // set of transactions so updated tag aliases attach in the same click.
+  @IsBoolean() @IsOptional() applyAutoAlias?: boolean;
 }
 
 class TestCsvRowDto {

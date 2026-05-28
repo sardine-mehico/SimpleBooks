@@ -1,15 +1,16 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { RuleEngineService } from './rule-engine.service';
+import { TagsService } from '../tags/tags.service';
 import { RecategoriseDto, TestRulesDto } from './dto';
 
 @Controller('rule-engine')
 export class RuleEngineController {
-  constructor(private engine: RuleEngineService) {}
+  constructor(private engine: RuleEngineService, private tags: TagsService) {}
 
   @Post('recategorise')
   @HttpCode(200)
-  recategorise(@Body() dto: RecategoriseDto) {
-    return this.engine.run({
+  async recategorise(@Body() dto: RecategoriseDto) {
+    const result = await this.engine.run({
       filter: {
         scope: dto.scope,
         accountIds: dto.accountIds,
@@ -20,6 +21,14 @@ export class RuleEngineController {
       applyRules: true,
       dryRun: false,
     });
+
+    let autoAlias: { scanned: number; applied: number } | null = null;
+    if (dto.applyAutoAlias !== false) {
+      const txIds = result.rows.map((r) => r.transactionId);
+      autoAlias = await this.tags.autoAliasApply(txIds.length > 0 ? { transactionIds: txIds } : {});
+    }
+
+    return { ...result, autoAlias };
   }
 
   @Post('test')

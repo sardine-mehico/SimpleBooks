@@ -56,6 +56,7 @@ export const recategorise = (input: {
   dateFrom?: string;
   dateTo?: string;
   preserveSplits?: boolean;
+  applyAutoAlias?: boolean;
 }) => apiClient.post<EngineOutput>('/rule-engine/recategorise', input);
 
 export const testRules = (input: {

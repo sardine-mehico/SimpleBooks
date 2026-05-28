@@ -549,6 +549,10 @@ export type EngineOutput = {
     unchanged: number;
     perRule: Array<{ ruleId: string; ruleName: string; count: number }>;
   };
+  // Populated only by /rule-engine/recategorise when applyAutoAlias is true.
+  // Null on the Test endpoint (which is dry-run only) or when the caller
+  // opted out via applyAutoAlias=false.
+  autoAlias?: { scanned: number; applied: number } | null;
 };
 
 export type TransactionSplit = {
