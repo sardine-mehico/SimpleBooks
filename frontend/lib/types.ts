@@ -717,3 +717,50 @@ export type ReportResponse = {
   uncategorised: string;
   grandTotal: string;
 };
+
+// === Statements ===
+
+export type StatementRowType = 'INVOICE' | 'PAYMENT';
+
+export type StatementRow = {
+  date: string;            // YYYY-MM-DD
+  type: StatementRowType;
+  details: string;
+  amount: string;          // "0.00" when PAYMENT
+  payment: string;         // "0.00" when INVOICE
+  balance: string;
+};
+
+export type StatementResponse = {
+  customer: {
+    id: string;
+    customerNumber: number;
+    name: string;
+    address: string | null;
+    billingEmail1: string | null;
+    billingEmail2: string | null;
+  };
+  billingCompany: {
+    id: string;
+    name: string;
+    abn: string | null;
+    address: string | null;
+    accountsEmail: string | null;
+    invoiceBcc: string;
+    paymentDetails: string | null;
+  };
+  dateFrom: string | null;
+  dateTo: string | null;
+  openingBalance: string;
+  rows: StatementRow[];
+  summary: { invoicedAmount: string; amountReceived: string; balanceDue: string };
+};
+
+export type StatementSendContext = {
+  from: string;
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  html: string;
+};
