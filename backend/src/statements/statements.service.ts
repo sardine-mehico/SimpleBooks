@@ -215,7 +215,7 @@ export class StatementsService {
     const payload = await this.getStatement(params);
     const subject = `Statement for ${payload.customer.name} · ${formatRangeForSubject(payload.dateFrom, payload.dateTo)}`;
     const paymentBlock = payload.billingCompany.paymentDetails
-      ? `<p style="margin: 16px 0;">${escapeHtml(payload.billingCompany.paymentDetails)}</p>`
+      ? `<div style="margin: 16px 0;">${payload.billingCompany.paymentDetails}</div>`
       : '';
     const html =
       `<p>Hi ${escapeHtml(payload.customer.name)},</p>` +
