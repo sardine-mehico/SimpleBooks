@@ -123,7 +123,7 @@ export function SendStatementDialog({
               </Field>
               <Field label="Body" hint="Read-only preview">
                 <div
-                  className="max-h-72 overflow-y-auto rounded-[0.3rem] border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 [&_p]:my-2 [&_strong]:font-semibold"
+                  className="max-h-72 overflow-y-auto rounded-[0.3rem] border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 [&_a]:text-indigo-600 [&_a]:underline [&_p]:my-2 [&_strong]:font-semibold"
                   dangerouslySetInnerHTML={{ __html: html }}
                 />
               </Field>
