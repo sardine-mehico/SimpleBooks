@@ -43,3 +43,42 @@ export type PdfTemplateProps = {
   company: PdfCompany;
   customer: PdfCustomer;
 };
+
+// === Statement template ===
+
+export type PdfStatementRow = {
+  date: string;            // YYYY-MM-DD
+  type: 'INVOICE' | 'PAYMENT';
+  details: string;
+  amount: string;          // "0.00" when type === PAYMENT
+  payment: string;         // "0.00" when type === INVOICE
+  balance: string;
+};
+
+export type PdfStatementPayload = {
+  customer: {
+    customerNumber: number;
+    name: string;
+    address: string | null;
+    billingEmail1: string | null;
+  };
+  billingCompany: {
+    name: string;
+    abn: string | null;
+    address: string | null;
+    accountsEmail: string | null;
+  };
+  dateFrom: string | null;   // YYYY-MM-DD
+  dateTo: string | null;
+  openingBalance: string;
+  rows: PdfStatementRow[];
+  summary: {
+    invoicedAmount: string;
+    amountReceived: string;
+    balanceDue: string;
+  };
+};
+
+export type PdfStatementTemplateProps = {
+  statement: PdfStatementPayload;
+};
