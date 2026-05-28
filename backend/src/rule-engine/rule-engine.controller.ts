@@ -17,7 +17,6 @@ export class RuleEngineController {
         dateTo: dto.dateTo,
       },
       preserveSplits: dto.preserveSplits ?? true,
-      applyVendorMatch: dto.applyVendorMatch ?? true,
       applyRules: true,
       dryRun: false,
     });
@@ -33,7 +32,6 @@ export class RuleEngineController {
       csvRows: dto.source === 'csv' ? dto.csvRows : undefined,
       ruleIds: dto.ruleIds,
       preserveSplits: true,
-      applyVendorMatch: dto.applyVendorMatch ?? true,
       applyRules: true,
       dryRun: true,
     });

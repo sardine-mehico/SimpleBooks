@@ -16,6 +16,8 @@ export interface ScoredInvoiceView {
     customerToken: boolean;
     datePlausible: boolean;
     partialBonus: boolean;
+    categoryCustomerMatch: boolean;
+    tagCustomerMatch: boolean;
   };
 }
 
@@ -37,10 +39,11 @@ export interface PaymentQueueItem {
   description: string;
   accountId: string;
   accountName: string;
-  vendorId: string | null;
-  vendorName: string | null;
-  vendorCustomerId: string | null;
-  vendorCustomerName: string | null;
+  // The linked customer for this transaction: category.customerId takes
+  // precedence, then the first tag.customerId we find. null = no link yet.
+  linkedCustomerId: string | null;
+  linkedCustomerName: string | null;
+  tags: Array<{ id: string; name: string; color: string | null }>;
   unallocated: string;
 }
 

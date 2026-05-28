@@ -32,7 +32,6 @@ export type AiCompleteResult<T> = AiCompleteOk<T> | AiCompleteFail;
 // Schema for the category-suggestion response (returned by AiCategoriser).
 export interface CategoriseLlmResponse {
   categoryId: string | null;
-  vendorId: string | null;
   confidence: AiConfidence;
   reasoning: string;
 }
@@ -41,7 +40,7 @@ export interface CategoriseLlmResponse {
 export interface DraftRuleLlmResponse {
   name: string;
   conditions: Array<{
-    field: 'DESCRIPTION' | 'AMOUNT' | 'VENDOR' | 'ACCOUNT';
+    field: 'DESCRIPTION' | 'AMOUNT' | 'ACCOUNT';
     operator: 'CONTAINS' | 'EQUALS' | 'STARTS_WITH' | 'ENDS_WITH' | 'GT' | 'LT' | 'BETWEEN' | 'IN';
     value: string;
     value2: string | null;

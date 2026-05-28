@@ -19,8 +19,6 @@ export interface AiDraftView {
   eventId: string;
   categoryId: string | null;
   categoryName: string | null;
-  vendorId: string | null;
-  vendorName: string | null;
   confidence: AiConfidence;
   reasoning: string;
   providerId: string | null;
@@ -35,7 +33,7 @@ export type SuggestResult =
 
 export type ApplyDecision =
   | { action: 'accept' }
-  | { action: 'edit'; chosenCategoryId: string; chosenVendorId?: string | null }
+  | { action: 'edit'; chosenCategoryId: string }
   | { action: 'reject' };
 
 export interface BulkSuggestQuery {
@@ -68,21 +66,18 @@ export class AiCategoriserService {
     });
     if (!tx) throw new NotFoundException('Transaction not found');
 
-    const [categories, vendors, fewShots] = await Promise.all([
+    const [categories, fewShots] = await Promise.all([
       this.loadCategoriesForPrompt(),
-      this.loadVendorsForPrompt(),
       this.loadFewShots(),
     ]);
 
     const userPrompt = buildCategoriseUserPrompt({
       categories,
-      vendors,
       fewShots,
       tx: {
         date: tx.date.toISOString().slice(0, 10),
         amount: tx.amount.toString(),
         description: tx.description,
-        vendorGuess: vendors.find((v) => v.id === tx.vendorId)?.name ?? null,
         accountName: tx.account.name,
       },
     });
@@ -105,12 +100,10 @@ export class AiCategoriserService {
 
     // Validation hardening against hallucinated ids.
     const activeCats = new Set(categories.map((c) => c.id));
-    const activeVens = new Set(vendors.map((v) => v.id));
-    let { categoryId, vendorId, confidence, reasoning } = result.data;
+    let { categoryId, confidence, reasoning } = result.data;
     if (categoryId && !activeCats.has(categoryId)) {
       return { kind: 'failed', error: 'AI returned an unknown categoryId. Try again.' };
     }
-    if (vendorId && !activeVens.has(vendorId)) vendorId = null;
     if (reasoning.length > 200) reasoning = reasoning.slice(0, 200);
 
     const event = await this.prisma.categorisationEvent.create({
@@ -118,7 +111,6 @@ export class AiCategoriserService {
         transactionId,
         source: 'AI_DRAFT',
         newCategoryId: categoryId,
-        newVendorId: vendorId,
         reasoning,
         providerId: result.providerId,
       },
@@ -134,8 +126,6 @@ export class AiCategoriserService {
         eventId: event.id,
         categoryId,
         categoryName: categoryId ? categories.find((c) => c.id === categoryId)?.name ?? null : null,
-        vendorId,
-        vendorName: vendorId ? vendors.find((v) => v.id === vendorId)?.name ?? null : null,
         confidence,
         reasoning,
         providerId: result.providerId,
@@ -152,7 +142,7 @@ export class AiCategoriserService {
 
     const tx = await this.prisma.transaction.findUnique({
       where: { id: transactionId },
-      select: { categoryId: true, vendorId: true },
+      select: { categoryId: true },
     });
     if (!tx) throw new NotFoundException('Transaction not found');
 
@@ -160,9 +150,7 @@ export class AiCategoriserService {
     // equal the AI's pick — keeps acceptedAiSuggestion honest.
     let effective = decision;
     if (decision.action === 'edit') {
-      const sameCat = decision.chosenCategoryId === draft.categoryId;
-      const sameVen = (decision.chosenVendorId ?? null) === (draft.vendorId ?? null);
-      if (sameCat && sameVen) effective = { action: 'accept' };
+      if (decision.chosenCategoryId === draft.categoryId) effective = { action: 'accept' };
     }
 
     await this.prisma.$transaction(async (db) => {
@@ -171,7 +159,6 @@ export class AiCategoriserService {
           where: { id: transactionId },
           data: {
             categoryId: draft.categoryId,
-            vendorId: draft.vendorId ?? tx.vendorId,
             categorisedAt: new Date(),
           },
         });
@@ -182,18 +169,15 @@ export class AiCategoriserService {
             acceptedAiSuggestion: true,
             oldCategoryId: tx.categoryId,
             newCategoryId: draft.categoryId,
-            oldVendorId: tx.vendorId,
-            newVendorId: draft.vendorId,
             reasoning: draft.reasoning,
             providerId: draft.providerId,
           },
         });
       } else if (effective.action === 'edit') {
         const chosenCat = effective.chosenCategoryId;
-        const chosenVen = effective.chosenVendorId ?? null;
         await db.transaction.update({
           where: { id: transactionId },
-          data: { categoryId: chosenCat, vendorId: chosenVen, categorisedAt: new Date() },
+          data: { categoryId: chosenCat, categorisedAt: new Date() },
         });
         await db.categorisationEvent.create({
           data: {
@@ -202,8 +186,6 @@ export class AiCategoriserService {
             acceptedAiSuggestion: false,
             oldCategoryId: tx.categoryId,
             newCategoryId: chosenCat,
-            oldVendorId: tx.vendorId,
-            newVendorId: chosenVen,
             reasoning: draft.reasoning,
             providerId: draft.providerId,
           },
@@ -397,9 +379,8 @@ export class AiCategoriserService {
     }
     const seenTx = new Set<string>();
     const out: AiDraftView[] = [];
-    const [categories, vendors] = await Promise.all([this.loadCategoriesForPrompt(), this.loadVendorsForPrompt()]);
+    const categories = await this.loadCategoriesForPrompt();
     const cat = new Map(categories.map((c) => [c.id, c.name]));
-    const ven = new Map(vendors.map((v) => [v.id, v.name]));
     for (const d of drafts) {
       if (seenTx.has(d.transactionId)) continue;
       const resolution = latestResolutionByTx.get(d.transactionId);
@@ -409,8 +390,6 @@ export class AiCategoriserService {
         eventId: d.id,
         categoryId: d.newCategoryId,
         categoryName: d.newCategoryId ? cat.get(d.newCategoryId) ?? null : null,
-        vendorId: d.newVendorId,
-        vendorName: d.newVendorId ? ven.get(d.newVendorId) ?? null : null,
         confidence: 'med', // confidence isn't stored on the event; conservative default for the queue
         reasoning: d.reasoning ?? '',
         providerId: d.provider?.id ?? null,
@@ -437,15 +416,10 @@ export class AiCategoriserService {
     const cat = draft.newCategoryId
       ? await this.prisma.category.findUnique({ where: { id: draft.newCategoryId }, select: { name: true } })
       : null;
-    const ven = draft.newVendorId
-      ? await this.prisma.vendor.findUnique({ where: { id: draft.newVendorId }, select: { name: true } })
-      : null;
     return {
       eventId: draft.id,
       categoryId: draft.newCategoryId,
       categoryName: cat?.name ?? null,
-      vendorId: draft.newVendorId,
-      vendorName: ven?.name ?? null,
       confidence: 'med',
       reasoning: draft.reasoning ?? '',
       providerId: draft.providerId,
@@ -473,18 +447,6 @@ export class AiCategoriserService {
       usageCount: c._count.transactions,
       parentName: c.parent?.name ?? null,
     }));
-  }
-
-  private async loadVendorsForPrompt() {
-    const vens = await this.prisma.vendor.findMany({
-      where: { isActive: true },
-      include: { _count: { select: { transactions: true } } },
-      orderBy: { name: 'asc' },
-    });
-    return vens
-      .sort((a, b) => b._count.transactions - a._count.transactions)
-      .slice(0, 50)
-      .map((v) => ({ id: v.id, name: v.name, aliases: v.aliases }));
   }
 
   private async loadFewShots() {

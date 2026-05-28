@@ -44,10 +44,8 @@ export interface MappingSuggestion {
 
 export interface ImportRuleCategorisation {
   enabled: boolean;
-  vendorMatched: number;
   ruleMatched: number;
   perRule: Array<{ ruleId: string; ruleName: string; categoryName: string; count: number }>;
-  ambiguousVendor: number;
 }
 
 export interface ImportReport {

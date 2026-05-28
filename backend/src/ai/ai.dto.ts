@@ -9,7 +9,6 @@ export class ApplyAcceptDto { @IsIn(['accept']) action!: 'accept'; }
 export class ApplyEditDto {
   @IsIn(['edit']) action!: 'edit';
   @IsUUID() chosenCategoryId!: string;
-  @IsUUID() @IsOptional() chosenVendorId?: string | null;
 }
 export class ApplyRejectDto { @IsIn(['reject']) action!: 'reject'; }
 

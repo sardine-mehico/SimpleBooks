@@ -95,7 +95,8 @@ export class CreateTransactionDto {
 }
 
 // Generic core-field update — date/amount/description/account/notes.
-// Category/vendor updates still go through PATCH /:id/category (different audit semantics).
+// Category updates still go through PATCH /:id/category (different audit
+// semantics). Tag updates go through PATCH /:id/tags.
 export class UpdateTransactionDto {
   @IsUUID() @IsOptional() accountId?: string;
   @IsISO8601() @IsOptional() date?: string;

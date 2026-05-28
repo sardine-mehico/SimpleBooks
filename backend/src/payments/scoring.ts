@@ -8,6 +8,10 @@ export interface ScoreTransaction {
   // (Category.customerId). When this matches invoice.customerId, +30 fires — a
   // strong signal that the user has manually identified the payer.
   categoryCustomerId?: string | null;
+  // tagCustomerIds is the set of Tag.customerId values across all tags attached
+  // to the transaction. Symmetric to categoryCustomerId — if any element matches
+  // invoice.customerId, +30 fires.
+  tagCustomerIds?: string[];
 }
 
 export interface ScoreInvoice {
@@ -29,6 +33,7 @@ export interface ScoreSignals {
   datePlausible: boolean;
   partialBonus: boolean;
   categoryCustomerMatch: boolean;
+  tagCustomerMatch: boolean;
 }
 
 export interface ScoreResult {
@@ -51,6 +56,7 @@ export function scoreInvoice(
     datePlausible: false,
     partialBonus: false,
     categoryCustomerMatch: false,
+    tagCustomerMatch: false,
   };
 
   // Signal 1: invoice number in description (+60)
@@ -93,10 +99,18 @@ export function scoreInvoice(
     signals.categoryCustomerMatch = true;
   }
 
+  // Signal 7: any tag on the transaction has customerId === invoice.customerId (+30).
+  // Symmetric to signal 6. Tags replaced the old Vendor concept; a tag with a
+  // customerId set means the user labelled the counterparty via that tag.
+  if (tx.tagCustomerIds && tx.tagCustomerIds.includes(invoice.customerId)) {
+    signals.tagCustomerMatch = true;
+  }
+
   const total =
     (signals.invoiceNumber ? 60 : 0) +
     (signals.exactAmount ? 40 : 0) +
     (signals.categoryCustomerMatch ? 30 : 0) +
+    (signals.tagCustomerMatch ? 30 : 0) +
     (signals.customerToken ? 15 : 0) +
     (signals.datePlausible ? 10 : 0) +
     (signals.partialBonus ? 5 : 0);

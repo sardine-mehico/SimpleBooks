@@ -1,14 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { matchRules } from './rule-matcher';
-import { matchVendor } from './vendor-matcher';
 import {
   EngineOutput,
   EngineRowResult,
   EngineRule,
   EngineRuleCondition,
   EngineTransactionInput,
-  EngineVendor,
 } from './types';
 
 export interface EngineInput {
@@ -22,7 +20,6 @@ export interface EngineInput {
   csvRows?: Array<{ date: string; amount: string; description: string }>;
   ruleIds?: string[];
   preserveSplits: boolean;
-  applyVendorMatch: boolean;
   applyRules: boolean;
   dryRun: boolean;
 }
@@ -32,14 +29,6 @@ export class RuleEngineService {
   constructor(private prisma: PrismaService) {}
 
   async run(input: EngineInput): Promise<EngineOutput> {
-    const vendors = await this.prisma.vendor.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, aliases: true, isActive: true },
-    });
-    const engineVendors: EngineVendor[] = vendors.map((v) => ({
-      id: v.id, name: v.name, aliases: v.aliases, isActive: v.isActive,
-    }));
-
     const ruleRows = await this.prisma.rule.findMany({
       where: input.ruleIds?.length ? { id: { in: input.ruleIds } } : {},
       include: {
@@ -53,7 +42,7 @@ export class RuleEngineService {
       state: r.state as EngineRule['state'],
       isActive: r.isActive, priority: r.priority,
       categoryId: r.categoryId, categoryName: r.category.name,
-      vendorId: r.vendorId, noteOnApply: r.noteOnApply,
+      noteOnApply: r.noteOnApply,
       conditions: r.conditions.map<EngineRuleCondition>((c) => ({
         field: c.field as EngineRuleCondition['field'],
         operator: c.operator as EngineRuleCondition['operator'],
@@ -62,12 +51,12 @@ export class RuleEngineService {
     }));
 
     let txInputs: EngineTransactionInput[];
-    let txRecordById: Map<string, { id: string; categoryId: string | null; vendorId: string | null; notes: string | null }>;
+    let txRecordById: Map<string, { id: string; categoryId: string | null; notes: string | null }>;
     if (input.csvRows) {
       txInputs = input.csvRows.map((r, i) => ({
         id: `csv:${i}`,
         date: r.date, amount: r.amount, description: r.description,
-        accountId: '', vendorId: null, hasSplits: false,
+        accountId: '', hasSplits: false,
       }));
       txRecordById = new Map();
     } else {
@@ -86,7 +75,7 @@ export class RuleEngineService {
         where,
         select: {
           id: true, date: true, amount: true, description: true, accountId: true,
-          vendorId: true, categoryId: true, notes: true,
+          categoryId: true, notes: true,
           _count: { select: { splits: true } },
         },
       });
@@ -96,15 +85,13 @@ export class RuleEngineService {
         amount: r.amount.toString(),
         description: r.description,
         accountId: r.accountId,
-        vendorId: r.vendorId,
         hasSplits: r._count.splits > 0,
       }));
-      txRecordById = new Map(rows.map((r) => [r.id, { id: r.id, categoryId: r.categoryId, vendorId: r.vendorId, notes: r.notes }]));
+      txRecordById = new Map(rows.map((r) => [r.id, { id: r.id, categoryId: r.categoryId, notes: r.notes }]));
     }
 
     const results: EngineRowResult[] = [];
     let preservedSplitsCount = 0;
-    let vendorMatchedCount = 0;
     let ruleMatchedCount = 0;
     const perRuleCount = new Map<string, { ruleName: string; count: number }>();
 
@@ -112,18 +99,8 @@ export class RuleEngineService {
       const result: EngineRowResult = {
         transactionId: tx.id,
         date: tx.date, amount: tx.amount, description: tx.description,
-        vendorMatch: null, vendorMatchAmbiguous: false,
         ruleMatch: null, allMatchingRules: [], skipped: null,
       };
-
-      if (input.applyVendorMatch) {
-        const vm = matchVendor(tx.description, engineVendors);
-        if (vm) {
-          result.vendorMatch = { vendorId: vm.vendor.id, vendorName: vm.vendor.name };
-          result.vendorMatchAmbiguous = vm.ambiguous;
-          tx.vendorId = vm.vendor.id;
-        }
-      }
 
       if (tx.hasSplits && input.preserveSplits) {
         result.skipped = 'has-splits';
@@ -139,9 +116,6 @@ export class RuleEngineService {
         if (!rm.winner) result.skipped = 'no-rule-match';
       }
 
-      if (result.vendorMatch && txRecordById.get(tx.id)?.vendorId !== result.vendorMatch.vendorId) {
-        vendorMatchedCount++;
-      }
       if (result.ruleMatch) {
         ruleMatchedCount++;
         const prev = perRuleCount.get(result.ruleMatch.ruleId);
@@ -159,10 +133,9 @@ export class RuleEngineService {
       rows: results,
       stats: {
         total: results.length,
-        vendorMatched: vendorMatchedCount,
         ruleMatched: ruleMatchedCount,
         preservedSplits: preservedSplitsCount,
-        unchanged: results.filter((r) => !r.vendorMatch && !r.ruleMatch && !r.skipped).length,
+        unchanged: results.filter((r) => !r.ruleMatch && !r.skipped).length,
         perRule: Array.from(perRuleCount.entries()).map(([ruleId, v]) => ({
           ruleId, ruleName: v.ruleName, count: v.count,
         })),
@@ -172,7 +145,7 @@ export class RuleEngineService {
 
   private async applyResults(
     results: EngineRowResult[],
-    txRecordById: Map<string, { id: string; categoryId: string | null; vendorId: string | null; notes: string | null }>,
+    txRecordById: Map<string, { id: string; categoryId: string | null; notes: string | null }>,
     engineRules: EngineRule[],
   ) {
     const ruleById = new Map(engineRules.map((r) => [r.id, r]));
@@ -184,19 +157,6 @@ export class RuleEngineService {
       for (const r of results) {
         const orig = txRecordById.get(r.transactionId);
         if (!orig) continue;
-
-        if (r.vendorMatch && orig.vendorId !== r.vendorMatch.vendorId) {
-          await tx.transaction.update({ where: { id: orig.id }, data: { vendorId: r.vendorMatch.vendorId } });
-          await tx.categorisationEvent.create({
-            data: {
-              transactionId: orig.id,
-              source: 'VENDOR_MATCH',
-              oldVendorId: orig.vendorId,
-              newVendorId: r.vendorMatch.vendorId,
-            },
-          });
-          orig.vendorId = r.vendorMatch.vendorId;
-        }
 
         if (r.ruleMatch) {
           const winningRule = ruleById.get(r.ruleMatch.ruleId);

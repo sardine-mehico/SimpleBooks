@@ -8,6 +8,25 @@ import type { CandidatesResponse, ScoredInvoiceView } from './types';
 
 const OPEN_STATUSES = ['SENT', 'VIEWED', 'PARTIAL_PAID'] as const;
 
+const TX_CUSTOMER_INCLUDE = {
+  allocations: true,
+  account: true,
+  category: { select: { customerId: true } },
+  transactionTags: {
+    select: {
+      tag: { select: { id: true, name: true, color: true, customerId: true } },
+    },
+  },
+} as const;
+
+function extractTagCustomerIds(tx: any): string[] {
+  const ids = new Set<string>();
+  for (const tt of (tx?.transactionTags ?? []) as any[]) {
+    if (tt?.tag?.customerId) ids.add(tt.tag.customerId);
+  }
+  return Array.from(ids);
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(private prisma: PrismaService) {}
@@ -15,12 +34,7 @@ export class PaymentsService {
   async getCandidates(transactionId: string): Promise<CandidatesResponse> {
     const tx = await this.prisma.transaction.findUnique({
       where: { id: transactionId },
-      include: {
-        allocations: true,
-        vendor: true,
-        account: true,
-        category: { select: { customerId: true } },
-      } as any,
+      include: TX_CUSTOMER_INCLUDE as any,
     });
     if (!tx) throw new NotFoundException('Transaction not found');
 
@@ -30,15 +44,14 @@ export class PaymentsService {
     );
     const unallocated = new Decimal((tx as any).amount.toString()).sub(allocSum);
 
-    // Candidate customer pool: union of vendor.customerId and category.customerId.
-    // The +30 categoryCustomerMatch signal only does meaningful ranking work when
-    // multiple customers' invoices appear in the candidate list, so we include
-    // both linkages and let the scorer discriminate.
-    const candidateCustomerIds = new Set<string>();
-    const vendorCustomerId: string | null = (tx as any).vendor?.customerId ?? null;
+    // Candidate customer pool: union of category.customerId and every
+    // tag.customerId on the transaction. Both linkages feed the scorer so
+    // ranking can break ties between competing labelled customers.
     const categoryCustomerId: string | null = (tx as any).category?.customerId ?? null;
-    if (vendorCustomerId) candidateCustomerIds.add(vendorCustomerId);
+    const tagCustomerIds = extractTagCustomerIds(tx);
+    const candidateCustomerIds = new Set<string>();
     if (categoryCustomerId) candidateCustomerIds.add(categoryCustomerId);
+    for (const id of tagCustomerIds) candidateCustomerIds.add(id);
     if (candidateCustomerIds.size === 0) {
       return { candidates: [], bundleSuggestion: null };
     }
@@ -55,6 +68,7 @@ export class PaymentsService {
           unallocated,
           date: (tx as any).date,
           categoryCustomerId,
+          tagCustomerIds,
         },
         {
           invoiceNumber: inv.invoiceNumber,
@@ -107,7 +121,6 @@ export class PaymentsService {
   async applyAllocations(
     transactionId: string,
     allocations: Array<{ invoiceId: string; amount: string }>,
-    bindVendorToCustomerId?: string,
   ): Promise<import('./types').ApplyResponse> {
     if (allocations.length === 0) {
       throw new BadRequestException('allocations must not be empty');
@@ -121,7 +134,7 @@ export class PaymentsService {
     return this.prisma.$transaction(async (db: any) => {
       const tx = await db.transaction.findUnique({
         where: { id: transactionId },
-        include: { allocations: true, vendor: true, account: true },
+        include: { allocations: true, account: true },
       });
       if (!tx) throw new NotFoundException('Transaction not found');
 
@@ -202,13 +215,6 @@ export class PaymentsService {
         affectedInvoiceIds.add(line.invoiceId);
       }
 
-      if (bindVendorToCustomerId && tx.vendor?.id) {
-        await db.vendor.update({
-          where: { id: tx.vendor.id },
-          data: { customerId: bindVendorToCustomerId },
-        });
-      }
-
       const updatedInvoices = Array.from(affectedInvoiceIds).map((id) => {
         const inv = invById.get(id)!;
         return {
@@ -280,7 +286,22 @@ export class PaymentsService {
     if (!opts.showAll) where.category = { kind: 'INCOME' };
     const rows = await this.prisma.transaction.findMany({
       where,
-      include: { account: true, vendor: { include: { customer: true } }, allocations: true } as any,
+      include: {
+        account: true,
+        allocations: true,
+        category: { select: { customerId: true, customer: { select: { id: true, name: true } } } },
+        transactionTags: {
+          select: {
+            tag: {
+              select: {
+                id: true, name: true, color: true,
+                customerId: true,
+                customer: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+      } as any,
       orderBy: { date: 'desc' },
     } as any);
     return (rows as any[])
@@ -291,6 +312,18 @@ export class PaymentsService {
           new Decimal(0),
         );
         const unallocated = new Decimal(t.amount.toString()).sub(allocSum);
+        const tags = (t.transactionTags ?? []).map((tt: any) => ({
+          id: tt.tag.id, name: tt.tag.name, color: tt.tag.color ?? null,
+        }));
+        const categoryCustomer = t.category?.customer ?? null;
+        const firstTagWithCustomer = (t.transactionTags ?? [])
+          .map((tt: any) => tt.tag)
+          .find((tag: any) => tag.customer) ?? null;
+        const linked = categoryCustomer
+          ? { id: categoryCustomer.id, name: categoryCustomer.name }
+          : firstTagWithCustomer?.customer
+            ? { id: firstTagWithCustomer.customer.id, name: firstTagWithCustomer.customer.name }
+            : null;
         return {
           id: t.id,
           date: t.date.toISOString().slice(0, 10),
@@ -298,10 +331,9 @@ export class PaymentsService {
           description: t.description,
           accountId: t.accountId,
           accountName: t.account?.name ?? '',
-          vendorId: t.vendorId ?? null,
-          vendorName: t.vendor?.name ?? null,
-          vendorCustomerId: t.vendor?.customerId ?? null,
-          vendorCustomerName: t.vendor?.customer?.name ?? null,
+          linkedCustomerId: linked?.id ?? null,
+          linkedCustomerName: linked?.name ?? null,
+          tags,
           unallocated: unallocated.toString(),
         };
       })
@@ -328,15 +360,24 @@ export class PaymentsService {
   }
 
   async getCustomerCredit(customerId: string): Promise<import('./types').CustomerCreditView> {
+    // Income transactions linked to this customer either via category.customerId
+    // or via any tag.customerId, with positive unallocated remainder.
     const rows: Array<{ id: string; date: Date; amount: Decimal; description: string; remaining: Decimal }> =
       await this.prisma.$queryRaw`
         SELECT
           t.id, t.date, t.amount, t.description,
           t.amount - COALESCE(SUM(a.amount), 0) AS remaining
         FROM "Transaction" t
-        JOIN "Vendor" v ON v.id = t."vendorId"
+        LEFT JOIN "Category" c ON c.id = t."categoryId"
         LEFT JOIN "Allocation" a ON a."transactionId" = t.id
-        WHERE v."customerId" = ${customerId}
+        WHERE (
+          c."customerId" = ${customerId}
+          OR EXISTS (
+            SELECT 1 FROM "TransactionTag" tt
+            JOIN "Tag" tag ON tag.id = tt."tagId"
+            WHERE tt."transactionId" = t.id AND tag."customerId" = ${customerId}
+          )
+        )
           AND t.amount > 0
         GROUP BY t.id
         HAVING t.amount - COALESCE(SUM(a.amount), 0) > 0

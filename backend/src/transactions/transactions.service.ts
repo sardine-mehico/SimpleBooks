@@ -349,9 +349,9 @@ export class TransactionsService {
   }
 
   // Generic update for core fields (date/amount/description/account/notes).
-  // Category/vendor changes still go through setCategory because they emit a
-  // distinct CategorisationEvent and clear ruleId. Mixing them here would
-  // confuse the audit semantics.
+  // Category changes still go through setCategory because they emit a
+  // distinct CategorisationEvent and clear ruleId. Tag changes go through
+  // PATCH /:id/tags. Mixing here would confuse the audit semantics.
   async updateFields(id: string, data: UpdateTransactionDto) {
     const existing = await this.prisma.transaction.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException();

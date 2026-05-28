@@ -1,66 +1,16 @@
 import { strict as assert } from 'node:assert';
-import { matchVendor } from './vendor-matcher';
 import { matchRules, allConditionsMatch } from './rule-matcher';
-import { EngineRule, EngineTransactionInput, EngineVendor } from './types';
+import { EngineRule, EngineTransactionInput } from './types';
 
 function run(name: string, fn: () => void) {
   try { fn(); console.log(`PASS ${name}`); }
   catch (e) { console.error(`FAIL ${name}`); console.error(e); process.exitCode = 1; }
 }
 
-const VENDORS: EngineVendor[] = [
-  { id: 'v-paypal', name: 'PayPal', aliases: ['paypal', '617704'], isActive: true },
-  { id: 'v-rac',    name: 'RAC',    aliases: ['rac ', 'raci ', '250930'], isActive: true },
-  { id: 'v-dyson',  name: 'DYSON',  aliases: ['dyson appliances'], isActive: true },
-  { id: 'v-bp',     name: 'BP',     aliases: ['bp ', 'bp australia'], isActive: true },
-  { id: 'v-off',    name: 'Inactive', aliases: ['inactivevendor'], isActive: false },
-];
-
-run('vendor matcher: exact substring match', () => {
-  const r = matchVendor('Direct Debit 617704 PAYPAL AUSTRALIA 1050102939603', VENDORS);
-  assert.ok(r); assert.equal(r!.vendor.name, 'PayPal'); assert.equal(r!.ambiguous, false);
-});
-
-run('vendor matcher: trailing-space alias prevents false-positive', () => {
-  const r = matchVendor('horse racing club fees', VENDORS);
-  assert.equal(r, null);
-});
-
-run('vendor matcher: case-insensitive', () => {
-  const r = matchVendor('DiReCt CrEdIt DYSON APPLIANCES 2000', VENDORS);
-  assert.ok(r); assert.equal(r!.vendor.name, 'DYSON');
-});
-
-run('vendor matcher: multiple aliases on same vendor — still single match', () => {
-  const r = matchVendor('Direct Debit 250930 RACI 9835350867', VENDORS);
-  assert.ok(r); assert.equal(r!.vendor.name, 'RAC'); assert.equal(r!.ambiguous, false);
-});
-
-run('vendor matcher: ambiguous picks longest alias', () => {
-  const overlap: EngineVendor[] = [
-    { id: 'v-paypal', name: 'PayPal', aliases: ['paypal'], isActive: true },
-    { id: 'v-paypal-au', name: 'PayPal AU', aliases: ['paypal australia'], isActive: true },
-  ];
-  const r = matchVendor('Direct Debit 617704 PAYPAL AUSTRALIA 1050102939603', overlap);
-  assert.ok(r);
-  assert.equal(r!.vendor.name, 'PayPal AU');
-  assert.equal(r!.ambiguous, true);
-});
-
-run('vendor matcher: inactive vendors are skipped', () => {
-  const r = matchVendor('something inactivevendor reference', VENDORS);
-  assert.equal(r, null);
-});
-
-run('vendor matcher: no match returns null', () => {
-  const r = matchVendor('Random unmatched description', VENDORS);
-  assert.equal(r, null);
-});
-
 function tx(overrides: Partial<EngineTransactionInput> = {}): EngineTransactionInput {
   return {
     id: 't1', date: '2026-05-08', amount: '-1750.00',
-    description: 'Transfer To Mani Dawa Friend Maddington', accountId: 'a1', vendorId: null, hasSplits: false,
+    description: 'Transfer To Mani Dawa Friend Maddington', accountId: 'a1', hasSplits: false,
     ...overrides,
   };
 }
@@ -68,7 +18,7 @@ function tx(overrides: Partial<EngineTransactionInput> = {}): EngineTransactionI
 function rule(id: string, name: string, priority: number, conditions: any[], extras: Partial<EngineRule> = {}): EngineRule {
   return {
     id, name, state: 'USER', isActive: true, priority,
-    categoryId: 'c1', categoryName: 'Test category', vendorId: null, noteOnApply: null,
+    categoryId: 'c1', categoryName: 'Test category', noteOnApply: null,
     conditions: conditions.map((c) => ({ value2: null, valueList: [], ...c })),
     ...extras,
   };
@@ -104,16 +54,6 @@ run('rule matcher: AMOUNT BETWEEN', () => {
   assert.equal(allConditionsMatch(tx({ amount: '-75.00' }), r), true);
   assert.equal(allConditionsMatch(tx({ amount: '-101.00' }), r), false);
   assert.equal(allConditionsMatch(tx({ amount: '-49.00' }), r), false);
-});
-
-run('rule matcher: VENDOR EQUALS / IN', () => {
-  const rEq = rule('r1', 'vendor1', 1000, [{ field: 'VENDOR', operator: 'EQUALS', value: 'v-paypal' }]);
-  assert.equal(allConditionsMatch(tx({ vendorId: 'v-paypal' }), rEq), true);
-  assert.equal(allConditionsMatch(tx({ vendorId: 'v-other' }), rEq), false);
-
-  const rIn = rule('r1', 'vendor-in', 1000, [{ field: 'VENDOR', operator: 'IN', value: '', valueList: ['v-paypal', 'v-rac'] }]);
-  assert.equal(allConditionsMatch(tx({ vendorId: 'v-rac' }), rIn), true);
-  assert.equal(allConditionsMatch(tx({ vendorId: 'v-other' }), rIn), false);
 });
 
 run('rule matcher: ACCOUNT EQUALS', () => {

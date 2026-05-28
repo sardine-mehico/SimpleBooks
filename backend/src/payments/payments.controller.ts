@@ -27,7 +27,6 @@ export class PaymentsController {
     return this.payments.applyAllocations(
       dto.transactionId,
       dto.allocations.map((a) => ({ invoiceId: a.invoiceId, amount: a.amount })),
-      dto.bindVendorToCustomerId,
     );
   }
 

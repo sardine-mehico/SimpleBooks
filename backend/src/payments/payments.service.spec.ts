@@ -2,6 +2,8 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PaymentsService } from './payments.service';
 
 // Hand-rolled Prisma double. Each test populates the in-memory tables.
+// After the Vendor->Tags migration, customer linkage comes from
+// category.customerId and/or tag.customerId.
 function makePrisma(state: any) {
   const find = (arr: any[], where: any): any =>
     arr.find((row: any) => Object.entries(where).every(([k, v]) => row[k] === v));
@@ -14,19 +16,21 @@ function makePrisma(state: any) {
         const category = tx.categoryId
           ? find(state.categories ?? [], { id: tx.categoryId })
           : null;
+        const txTags = (state.transactionTags ?? [])
+          .filter((tt: any) => tt.transactionId === tx.id)
+          .map((tt: any) => ({ tag: find(state.tags ?? [], { id: tt.tagId }) }));
         return {
           ...tx,
           allocations: state.allocations.filter((a: any) => a.transactionId === tx.id),
-          vendor: tx.vendorId ? find(state.vendors, { id: tx.vendorId }) : null,
           account: find(state.accounts, { id: tx.accountId }),
           category: category ? { customerId: category.customerId ?? null } : null,
+          transactionTags: txTags,
         };
       }),
     },
     invoice: {
       findMany: jest.fn(async ({ where }: any) => {
         let rows = state.invoices.slice();
-        // customerId filter: accepts either a string or { in: [...] }
         if (where?.customerId) {
           if (typeof where.customerId === 'string') {
             rows = rows.filter((r: any) => r.customerId === where.customerId);
@@ -45,42 +49,67 @@ function makePrisma(state: any) {
 }
 
 describe('PaymentsService.getCandidates', () => {
-  it('returns scored candidates for a customer-linked transaction', async () => {
+  it('returns scored candidates for a category-linked transaction', async () => {
     const prisma = makePrisma({
       accounts: [{ id: 'acc1', name: 'Operating' }],
       customers: [{ id: 'c1', name: 'Office Cleaners' }],
-      vendors: [{ id: 'v1', name: 'OFFICE CLEANERS PTY', customerId: 'c1' }],
+      categories: [{ id: 'cat1', name: 'Cleaning revenue', customerId: 'c1' }],
       transactions: [
-        { id: 'tx1', accountId: 'acc1', vendorId: 'v1', amount: new Decimal('300.00'), description: 'PMT INV-1011', date: new Date('2026-01-10') },
+        { id: 'tx1', accountId: 'acc1', categoryId: 'cat1', amount: new Decimal('300.00'), description: 'PMT INV-1011', date: new Date('2026-01-10') },
       ],
       invoices: [
         { id: 'inv1', invoiceNumber: 1011, customerId: 'c1', invoiceDate: new Date('2026-01-01'), totalAmount: new Decimal('300.00'), amountOutstanding: new Decimal('300.00'), status: 'SENT' },
         { id: 'inv2', invoiceNumber: 1012, customerId: 'c1', invoiceDate: new Date('2026-01-05'), totalAmount: new Decimal('100.00'), amountOutstanding: new Decimal('100.00'), status: 'SENT' },
       ],
       allocations: [],
+      tags: [],
+      transactionTags: [],
     });
     const svc = new PaymentsService(prisma);
     const r = await svc.getCandidates('tx1');
     expect(r.candidates).toHaveLength(2);
-    // INV-1011 hits invoice# + exact-amount + date → 60+40+10 = 110
+    // INV-1011 hits invoice# + exact-amount + date + categoryCustomerMatch
     const top = r.candidates[0];
     expect(top.invoiceNumber).toBe(1011);
     expect(top.score).toBeGreaterThanOrEqual(60 + 40 + 10);
+  });
+
+  it('returns scored candidates when only a tag links to the customer', async () => {
+    const prisma = makePrisma({
+      accounts: [{ id: 'acc1', name: 'Operating' }],
+      customers: [{ id: 'c1', name: 'Office Cleaners' }],
+      categories: [{ id: 'cat1', name: 'Misc revenue', customerId: null }],
+      tags: [{ id: 'tag1', name: 'Office Cleaners', customerId: 'c1' }],
+      transactions: [
+        { id: 'tx1', accountId: 'acc1', categoryId: 'cat1', amount: new Decimal('300.00'), description: 'PMT INV-1011', date: new Date('2026-01-10') },
+      ],
+      transactionTags: [{ transactionId: 'tx1', tagId: 'tag1' }],
+      invoices: [
+        { id: 'inv1', invoiceNumber: 1011, customerId: 'c1', invoiceDate: new Date('2026-01-01'), totalAmount: new Decimal('300.00'), amountOutstanding: new Decimal('300.00'), status: 'SENT' },
+      ],
+      allocations: [],
+    });
+    const svc = new PaymentsService(prisma);
+    const r = await svc.getCandidates('tx1');
+    expect(r.candidates).toHaveLength(1);
+    expect(r.candidates[0].signals.tagCustomerMatch).toBe(true);
   });
 
   it('suggests a 2-invoice bundle when the deposit exactly sums two open invoices', async () => {
     const prisma = makePrisma({
       accounts: [{ id: 'acc1', name: 'Operating' }],
       customers: [{ id: 'c1', name: 'Cust' }],
-      vendors: [{ id: 'v1', name: 'V', customerId: 'c1' }],
+      categories: [{ id: 'cat1', name: 'Rev', customerId: 'c1' }],
       transactions: [
-        { id: 'tx1', accountId: 'acc1', vendorId: 'v1', amount: new Decimal('300.00'), description: 'PMT', date: new Date('2026-01-10') },
+        { id: 'tx1', accountId: 'acc1', categoryId: 'cat1', amount: new Decimal('300.00'), description: 'PMT', date: new Date('2026-01-10') },
       ],
       invoices: [
         { id: 'inv1', invoiceNumber: 1, customerId: 'c1', invoiceDate: new Date('2026-01-01'), totalAmount: new Decimal('100.00'), amountOutstanding: new Decimal('100.00'), status: 'SENT' },
         { id: 'inv2', invoiceNumber: 2, customerId: 'c1', invoiceDate: new Date('2026-01-02'), totalAmount: new Decimal('200.00'), amountOutstanding: new Decimal('200.00'), status: 'SENT' },
       ],
       allocations: [],
+      tags: [],
+      transactionTags: [],
     });
     const svc = new PaymentsService(prisma);
     const r = await svc.getCandidates('tx1');
@@ -88,16 +117,18 @@ describe('PaymentsService.getCandidates', () => {
     expect(r.bundleSuggestion!.invoiceIds.sort()).toEqual(['inv1', 'inv2']);
   });
 
-  it('returns empty candidates when vendor is not linked to a customer', async () => {
+  it('returns empty candidates when no category and no tag is linked to a customer', async () => {
     const prisma = makePrisma({
       accounts: [{ id: 'acc1', name: 'Operating' }],
       customers: [],
-      vendors: [{ id: 'v1', name: 'V', customerId: null }],
+      categories: [{ id: 'cat1', name: 'Misc', customerId: null }],
       transactions: [
-        { id: 'tx1', accountId: 'acc1', vendorId: 'v1', amount: new Decimal('100.00'), description: 'pmt', date: new Date('2026-01-10') },
+        { id: 'tx1', accountId: 'acc1', categoryId: 'cat1', amount: new Decimal('100.00'), description: 'pmt', date: new Date('2026-01-10') },
       ],
       invoices: [],
       allocations: [],
+      tags: [],
+      transactionTags: [],
     });
     const svc = new PaymentsService(prisma);
     const r = await svc.getCandidates('tx1');
@@ -120,7 +151,6 @@ function makeWritePrisma(state: any) {
           return {
             ...t,
             allocations: state.allocations.filter((a: any) => a.transactionId === t.id),
-            vendor: t.vendorId ? find(state.vendors, { id: t.vendorId }) : null,
             account: find(state.accounts, { id: t.accountId }),
           };
         }
@@ -166,13 +196,6 @@ function makeWritePrisma(state: any) {
         return row;
       }),
     },
-    vendor: {
-      update: jest.fn(async ({ where, data }: any) => {
-        const row = find(state.vendors, where)!;
-        Object.assign(row, data);
-        return row;
-      }),
-    },
   };
   return {
     _state: state,
@@ -204,8 +227,7 @@ describe('PaymentsService.applyAllocations', () => {
     return {
       accounts: [{ id: 'acc1', name: 'Op' }],
       customers: [{ id: 'c1', name: 'Cust' }],
-      vendors: [{ id: 'v1', name: 'V', customerId: 'c1' }],
-      transactions: [{ id: 'tx1', accountId: 'acc1', vendorId: 'v1', amount: new Decimal('300.00'), description: 'pmt', date: new Date('2026-01-10') }],
+      transactions: [{ id: 'tx1', accountId: 'acc1', amount: new Decimal('300.00'), description: 'pmt', date: new Date('2026-01-10') }],
       invoices: [],
       allocations: [],
       events: [],
@@ -302,16 +324,6 @@ describe('PaymentsService.applyAllocations', () => {
       svc.applyAllocations('tx1', [{ invoiceId: 'i1', amount: '0' }]),
     ).rejects.toThrow(/must be > 0/i);
   });
-
-  it('bindVendorToCustomerId writes Vendor.customerId', async () => {
-    const state = baseState();
-    (state.vendors[0] as any).customerId = null; // unlinked
-    seedInvoice(state, { id: 'i1', totalAmount: '100.00' });
-    const prisma = makeWritePrisma(state);
-    const svc = new PaymentsService(prisma);
-    await svc.applyAllocations('tx1', [{ invoiceId: 'i1', amount: '100.00' }], 'c1');
-    expect(state.vendors[0].customerId).toBe('c1');
-  });
 });
 
 describe('PaymentsService.deleteAllocation', () => {
@@ -319,8 +331,7 @@ describe('PaymentsService.deleteAllocation', () => {
     const state: any = {
       accounts: [{ id: 'acc1', name: 'Op' }],
       customers: [{ id: 'c1', name: 'Cust' }],
-      vendors: [{ id: 'v1', name: 'V', customerId: 'c1' }],
-      transactions: [{ id: 'tx1', accountId: 'acc1', vendorId: 'v1', amount: new Decimal('100.00'), description: 'pmt', date: new Date('2026-01-10') }],
+      transactions: [{ id: 'tx1', accountId: 'acc1', amount: new Decimal('100.00'), description: 'pmt', date: new Date('2026-01-10') }],
       invoices: [],
       allocations: [],
       events: [],
@@ -390,21 +401,16 @@ describe('PaymentsService.getQueue / getQueueCount', () => {
     return {
       accounts: [{ id: 'acc1', name: 'Operating' }],
       customers: [{ id: 'c1', name: 'Cust' }],
-      vendors: [
-        { id: 'v1', name: 'V1', customerId: 'c1' },
-        { id: 'v2', name: 'V2', customerId: null },
-      ],
       categories: [
-        { id: 'cat-inc', name: 'Sales', kind: 'INCOME' },
-        { id: 'cat-int', name: 'Interest', kind: 'INCOME' },
-        { id: 'cat-exp', name: 'Office', kind: 'EXPENSE' },
+        { id: 'cat-inc', name: 'Sales', kind: 'INCOME', customerId: 'c1' },
+        { id: 'cat-exp', name: 'Office', kind: 'EXPENSE', customerId: null },
       ],
       transactions: [
-        { id: 'tx-inc', accountId: 'acc1', vendorId: 'v1', categoryId: 'cat-inc', amount: new Decimal('100.00'), description: 'paid', date: new Date('2026-01-10'), paymentReviewDismissedAt: null },
-        { id: 'tx-exp', accountId: 'acc1', vendorId: 'v2', categoryId: 'cat-exp', amount: new Decimal('50.00'),  description: 'cleaning', date: new Date('2026-01-11'), paymentReviewDismissedAt: null },
-        { id: 'tx-neg', accountId: 'acc1', vendorId: 'v1', categoryId: 'cat-inc', amount: new Decimal('-20.00'), description: 'refund', date: new Date('2026-01-12'), paymentReviewDismissedAt: null },
-        { id: 'tx-dis', accountId: 'acc1', vendorId: 'v1', categoryId: 'cat-inc', amount: new Decimal('60.00'),  description: 'dismissed', date: new Date('2026-01-13'), paymentReviewDismissedAt: new Date() },
-        { id: 'tx-full', accountId: 'acc1', vendorId: 'v1', categoryId: 'cat-inc', amount: new Decimal('40.00'), description: 'fully-allocated', date: new Date('2026-01-14'), paymentReviewDismissedAt: null },
+        { id: 'tx-inc', accountId: 'acc1', categoryId: 'cat-inc', amount: new Decimal('100.00'), description: 'paid', date: new Date('2026-01-10'), paymentReviewDismissedAt: null },
+        { id: 'tx-exp', accountId: 'acc1', categoryId: 'cat-exp', amount: new Decimal('50.00'),  description: 'cleaning', date: new Date('2026-01-11'), paymentReviewDismissedAt: null },
+        { id: 'tx-neg', accountId: 'acc1', categoryId: 'cat-inc', amount: new Decimal('-20.00'), description: 'refund', date: new Date('2026-01-12'), paymentReviewDismissedAt: null },
+        { id: 'tx-dis', accountId: 'acc1', categoryId: 'cat-inc', amount: new Decimal('60.00'),  description: 'dismissed', date: new Date('2026-01-13'), paymentReviewDismissedAt: new Date() },
+        { id: 'tx-full', accountId: 'acc1', categoryId: 'cat-inc', amount: new Decimal('40.00'), description: 'fully-allocated', date: new Date('2026-01-14'), paymentReviewDismissedAt: null },
       ],
       invoices: [],
       allocations: [
@@ -429,12 +435,17 @@ describe('PaymentsService.getQueue / getQueueCount', () => {
               const cat = find(state.categories, { id: t.categoryId });
               return cat?.kind === where.category.kind;
             })
-            .map((t: any) => ({
-              ...t,
-              account: find(state.accounts, { id: t.accountId }),
-              vendor: t.vendorId ? { ...find(state.vendors, { id: t.vendorId }), customer: null } : null,
-              allocations: state.allocations.filter((a: any) => a.transactionId === t.id),
-            }));
+            .map((t: any) => {
+              const cat = find(state.categories, { id: t.categoryId });
+              const catCustomer = cat?.customerId ? find(state.customers, { id: cat.customerId }) : null;
+              return {
+                ...t,
+                account: find(state.accounts, { id: t.accountId }),
+                category: cat ? { customerId: cat.customerId ?? null, customer: catCustomer } : null,
+                transactionTags: [],
+                allocations: state.allocations.filter((a: any) => a.transactionId === t.id),
+              };
+            });
         }),
         update: jest.fn(async ({ where, data }: any) => {
           const t = find(state.transactions, where)!;
@@ -488,7 +499,7 @@ describe('PaymentsService.getQueue / getQueueCount', () => {
 });
 
 describe('PaymentsService.getCustomerCredit', () => {
-  it('sums remaining across transactions for vendors linked to the customer', async () => {
+  it('sums remaining across transactions linked to the customer', async () => {
     const prisma = {
       $queryRaw: jest.fn(async () => [
         { id: 't1', date: new Date('2026-01-10'), amount: new Decimal('100'), description: 'a', remaining: new Decimal('40') },

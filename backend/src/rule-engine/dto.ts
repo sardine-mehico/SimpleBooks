@@ -7,7 +7,6 @@ export class RecategoriseDto {
   @IsISO8601() @IsOptional() dateFrom?: string;
   @IsISO8601() @IsOptional() dateTo?: string;
   @IsBoolean() @IsOptional() preserveSplits?: boolean;
-  @IsBoolean() @IsOptional() applyVendorMatch?: boolean;
 }
 
 class TestCsvRowDto {
@@ -23,5 +22,4 @@ export class TestRulesDto {
   @IsISO8601() @IsOptional() dateFrom?: string;
   @IsISO8601() @IsOptional() dateTo?: string;
   @IsArray() @IsOptional() @IsUUID('all', { each: true }) ruleIds?: string[];
-  @IsBoolean() @IsOptional() applyVendorMatch?: boolean;
 }

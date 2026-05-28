@@ -28,8 +28,6 @@ export class ApplyPaymentDto {
   @ValidateNested({ each: true })
   @Type(() => AllocationLineDto)
   allocations!: AllocationLineDto[];
-
-  @IsUUID() @IsOptional() bindVendorToCustomerId?: string;
 }
 
 export class QueueQueryDto {

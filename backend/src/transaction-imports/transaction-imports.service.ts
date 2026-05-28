@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import Papa from 'papaparse';
 import { PrismaService } from '../prisma/prisma.service';
 import { RuleEngineService } from '../rule-engine/rule-engine.service';
+import { TagsService } from '../tags/tags.service';
 import { parseCsv } from './csv-parser.service';
 import { sniffCsv } from './csv-sniffer.service';
 import { fileSha256, rowImportHash } from './hash';
@@ -16,6 +17,7 @@ export class TransactionImportsService {
   constructor(
     private prisma: PrismaService,
     private engine: RuleEngineService,
+    private tags: TagsService,
   ) {}
 
   async sniff(buffer: Buffer, accountId: string, filename: string): Promise<{
@@ -248,11 +250,9 @@ export class TransactionImportsService {
       const engineResult = await this.engine.run({
         transactionIds: txIds,
         preserveSplits: true,
-        applyVendorMatch: true,
         applyRules: true,
         dryRun: false,
       });
-      const ambiguousVendor = engineResult.rows.filter((r) => r.vendorMatchAmbiguous).length;
       const ruleCategoryMap = new Map<string, { categoryName: string }>();
       for (const r of engineResult.rows) {
         if (r.ruleMatch && !ruleCategoryMap.has(r.ruleMatch.ruleId)) {
@@ -261,19 +261,27 @@ export class TransactionImportsService {
       }
       const ruleCategorisation: ImportRuleCategorisation = {
         enabled: true,
-        vendorMatched: engineResult.stats.vendorMatched,
         ruleMatched: engineResult.stats.ruleMatched,
         perRule: engineResult.stats.perRule.map((p) => ({
           ...p,
           categoryName: ruleCategoryMap.get(p.ruleId)?.categoryName ?? '',
         })),
-        ambiguousVendor,
       };
       report.ruleCategorisation = ruleCategorisation;
       await this.prisma.transactionImport.update({
         where: { id: importId },
         data: { reportJson: report as unknown as Prisma.InputJsonValue },
       });
+    }
+
+    // Auto-alias pass: always runs on import (regardless of applyRules) so the
+    // user's tag aliases attach to newly-imported descriptions.
+    if (importedRowCount > 0) {
+      const inserted = await this.prisma.transaction.findMany({
+        where: { importId },
+        select: { id: true },
+      });
+      await this.tags.autoAliasApply({ transactionIds: inserted.map((t) => t.id) });
     }
 
     return report;
