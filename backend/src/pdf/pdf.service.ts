@@ -3,11 +3,13 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { PrismaService } from '../prisma/prisma.service';
 import { getTemplateComponent } from './templates';
+import CustomerStatementTemplate from './templates/customer-statement';
 import type {
   PdfCompany,
   PdfCustomer,
   PdfInvoice,
   PdfLineItem,
+  PdfStatementPayload,
 } from './templates/types';
 
 // Soft target — we log when a rendered PDF crosses this threshold per page so
@@ -92,6 +94,24 @@ export class PdfService {
       buffer,
       filename: `INV-${invoice.invoiceNumber}.pdf`,
     };
+  }
+
+  async renderStatement(payload: PdfStatementPayload): Promise<{ buffer: Buffer; filename: string }> {
+    const element = React.createElement(CustomerStatementTemplate, { statement: payload });
+    const buffer = await renderToBuffer(element as React.ReactElement);
+
+    const pageCount = countPdfPages(buffer);
+    const bytesPerPage = buffer.byteLength / Math.max(pageCount, 1);
+    if (bytesPerPage > SIZE_BUDGET_BYTES_PER_PAGE) {
+      this.log.warn(
+        `Statement (cust ${payload.customer.customerNumber}) rendered to ${buffer.byteLength}B across ${pageCount} page(s) — ${Math.round(bytesPerPage / 1024)}KB/page exceeds 180KB target.`,
+      );
+    }
+
+    const from = payload.dateFrom ?? 'all';
+    const to = payload.dateTo ?? 'all';
+    const filename = `Statement-${payload.customer.customerNumber}-${from}-${to}.pdf`;
+    return { buffer, filename };
   }
 }
 
