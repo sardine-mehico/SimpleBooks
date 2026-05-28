@@ -220,7 +220,7 @@ Small inline pill used wherever a tag name appears in-line (transaction rows, pa
 bg-slate-100 text-slate-600 rounded-full px-1.5 py-0 text-[10px]
 ```
 
-Multi-tag rows: `flex flex-wrap gap-1`. When a tag carries a `color`, render a 2px round dot of that color inline at the start of the chip (used on `/settings/tags` only — the transaction-row chips stay slate to avoid visual noise).
+Multi-tag rows: `flex flex-wrap gap-1`. When a tag carries a `color`, render a 2px round dot of that color inline at the start of the chip (used on `/tags` only — the transaction-row chips stay slate to avoid visual noise).
 
 ### Rules list priority rank prefix
 Each row in the rules list shows a rank number prefix (`#1`, `#2`, …):

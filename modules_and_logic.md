@@ -749,7 +749,7 @@ The selected `Customer.id` is persisted to `Category.customerId`. The Payments m
 
 ### Tags *(2026-05-28, replaces Vendors)*
 
-Many-to-many facets attached to transactions. Backend module: `tags`. Route prefix: `/tags`. Settings page: `/settings/tags`.
+Many-to-many facets attached to transactions. Backend module: `tags`. Route prefix: `/tags`. Settings page: `/tags`.
 
 Tags replaced the old `Vendor` concept. The key conceptual shift: a transaction can carry many tags (Honda CRV 2006 + Tax-deductible + Reimbursable), while it could only ever have one vendor. Tags also subsume the old vendor → customer linkage via the new `Tag.customerId` field.
 
@@ -758,14 +758,14 @@ Tags replaced the old `Vendor` concept. The key conceptual shift: a transaction 
 |---|---|---|---|
 | `id` | UUID | auto | |
 | `name` | string | **yes** | Case-insensitive unique (service-enforced; not a DB constraint). |
-| `aliases` | string[] | no | Description fragments that auto-attach this tag when found in a `Transaction.description`. Case-insensitive, word-boundary aware, longest-pattern-first. Editable per-tag via `/settings/tags`. |
+| `aliases` | string[] | no | Description fragments that auto-attach this tag when found in a `Transaction.description`. Case-insensitive, word-boundary aware, longest-pattern-first. Editable per-tag via `/tags`. |
 | `color` | string? | no | Optional hex (e.g. `#a78bfa`) or tailwind token for chip rendering. |
 | `notes` | string | no | |
 | `isActive` | boolean | no | default `true`. Inactive tags don't fire in the auto-alias pass and don't appear in dropdowns. |
 | `customerId` | UUID? | no | FK → `Customer.id` (ON DELETE SET NULL). When set, the Payments scorer adds +30 (`tagCustomerMatch`) for that customer's invoices — symmetric to `Category.customerId`. |
 | `createdAt` / `updatedAt` | datetime | auto | |
 
-#### Settings page — `/settings/tags`
+#### Settings page — `/tags`
 - **Columns:** Name (with color dot) · Aliases (chip list) · Linked customer · Transactions (count) · Active · Actions (per-row Apply, Edit, Delete).
 - **Default sort:** `isActive` desc, then `name` asc.
 - **Search** box filters by name OR alias substring.
@@ -783,7 +783,7 @@ Pure helpers in `backend/src/tags/auto-alias.ts`:
 Trigger surfaces:
 1. **CSV import** — `TransactionImportsService.commit` calls `autoAliasApply({ transactionIds: <inserted ids> })` after the rule engine pass. Always runs (no opt-out checkbox).
 2. **Manual transaction save** — the edit modal's `setTransactionTags` call is the manual override; auto-alias does not run on save.
-3. **On-demand** — the two `/settings/tags` buttons described above.
+3. **On-demand** — the two `/tags` buttons described above.
 
 #### Manual tag management
 - **Edit modal** — `<TagMultiSelect>` in `components/tags/tag-multi-select.tsx`. Chip-based picker with type-to-search (matches against tag name AND alias). Save calls `PATCH /transactions/:id/tags` with the full new tag-id set (replaces, not merges).
@@ -904,7 +904,7 @@ The same `<ApplyPaymentModal>` component renders in three places. The context go
 
 | Context | Where it opens from | Behaviour |
 |---|---|---|
-| **Queue** | `[Apply]` button on the Payments review queue | If the transaction has a linked customer (`Category.customerId` OR any `Tag.customerId`), loads candidate invoices for that customer via `GET /payments/candidates?transactionId=…`; shows the scored list plus the bundle-suggestion chip when applicable. If neither link is set, surfaces a customer picker first with a tip pointing the user at `/settings/tags` (or the Category edit form) to persist the link for next time. |
+| **Queue** | `[Apply]` button on the Payments review queue | If the transaction has a linked customer (`Category.customerId` OR any `Tag.customerId`), loads candidate invoices for that customer via `GET /payments/candidates?transactionId=…`; shows the scored list plus the bundle-suggestion chip when applicable. If neither link is set, surfaces a customer picker first with a tip pointing the user at `/tags` (or the Category edit form) to persist the link for next time. |
 | **Invoice** | `[Receive payment]` button on the invoice view | Invoice is fixed. Lists the customer's transactions where `remaining > 0` (signed positive minus allocations); user picks transactions to apply against this invoice. Each picked transaction produces one allocation call. |
 | **Transaction** | Three-dots row menu on any transaction row | Identical to the Queue context — reachable from any transaction, not just the queue. |
 
@@ -934,7 +934,7 @@ The invoice view page renders an **Allocations** panel listing each `Allocation`
 ### Customer linkage *(2026-05-28: replaced Vendor → Customer linkage)*
 The Payments queue auto-fetches candidate invoices when a transaction has either:
 - a **Category** with `Category.customerId` set (configured per-category in `<CategoryFormDialog>` for INCOME-kind categories), or
-- any **Tag** with `Tag.customerId` set (configured per-tag in `<TagFormDialog>` on `/settings/tags`).
+- any **Tag** with `Tag.customerId` set (configured per-tag in `<TagFormDialog>` on `/tags`).
 
 Both linkages contribute to the candidate-customer pool (union) and both fire +30 in the scorer (independently). Unsetting all customer links reverts that transaction to the customer-picker flow inside `<ApplyPaymentModal>`.
 

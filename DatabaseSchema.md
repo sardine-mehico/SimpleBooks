@@ -512,7 +512,7 @@ Many-to-many facets attached to transactions. Seeded with 39 starter rows (BP, C
 |---|---|---|
 | `id` | UUID | PK |
 | `name` | string | Not globally unique. Case-insensitive uniqueness enforced in `TagsService.create` / `update`. |
-| `aliases` | string[] | Description fragments that auto-attach this tag when found in a transaction's description (case-insensitive, word-boundary aware, longest-pattern-first). Editable per-tag via `/settings/tags`. |
+| `aliases` | string[] | Description fragments that auto-attach this tag when found in a transaction's description (case-insensitive, word-boundary aware, longest-pattern-first). Editable per-tag via `/tags`. |
 | `color` | string? | Optional hex (e.g. `#a78bfa`) or tailwind token used as the badge color in chip displays. |
 | `notes` | string? | |
 | `isActive` | bool | default `true`. Inactive tags are excluded from the auto-alias pass and from dropdowns. |

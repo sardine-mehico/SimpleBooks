@@ -218,7 +218,7 @@ function TransactionContextModal({
                 </SelectContent>
               </Select>
               <div className="text-[10px] text-slate-500">
-                Tip: to persist this link, set <code>customerId</code> on a Tag (in <a href="/settings/tags" className="underline">/settings/tags</a>) or on the transaction's Category.
+                Tip: to persist this link, set <code>customerId</code> on a Tag (in <a href="/tags" className="underline">/tags</a>) or on the transaction's Category.
               </div>
             </div>
           )}

@@ -162,7 +162,7 @@ export function TagsReportPage({
               {report.tags.length === 0 && (
                 <li className="px-4 py-10 text-center text-sm text-slate-400">
                   No tagged transactions in this range. Tag a few transactions in the edit modal,
-                  or open <span className="font-mono">/settings/tags</span> and hit "Re-apply all to existing".
+                  or open <span className="font-mono">/tags</span> and hit "Re-apply all to existing".
                 </li>
               )}
               {report.tags.map((t) => (
