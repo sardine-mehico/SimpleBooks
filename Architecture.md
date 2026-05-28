@@ -144,6 +144,15 @@ All wired in [backend/src/app.module.ts](backend/src/app.module.ts).
 | `GET` | `/ai/review-queue` | list transactions with unresolved `AI_DRAFT` (cap 500) |
 | `POST` | `/ai/mine-rules` | trigger cluster-mining + LLM polish; returns `{ drafted: number }` |
 
+#### Statements — endpoint summary (Phase E)
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/statements` | `?customerId&billingCompanyId&dateFrom?&dateTo?` — returns `StatementResponse` (customer, billingCompany, dateFrom/To, openingBalance, rows, summary). Math computed live from `Invoice` + `Allocation` + `Transaction` — VOIDs excluded across all three queries. Date filters via `localStartOfDay` / `localEndOfDay` against `Preferences.timezone`. |
+| `GET` | `/statements/pdf` | Same query params — streams the rendered statement PDF as `Content-Disposition: inline`. Uses `PdfService.renderStatement` → `customer-statement.tsx` React-PDF template. Filename pattern `Statement-<customerNumber>-<from>-<to>.pdf` (with `all` when a bound is null). |
+| `GET` | `/statements/send-context` | Same query params — pre-fill envelope for the Send dialog: `{ from, to, cc, bcc, subject, html }`. From = `billingCompany.accountsEmail`, To = `customer.billingEmail1`, CC = `customer.billingEmail2`, BCC = `billingCompany.invoiceBcc`. Subject `Statement for <customer> · <range>`. HTML body hardcoded, embeds `billingCompany.paymentDetails` raw (it's already HTML). |
+| `POST` | `/statements/send` | Body: `SendStatementDto` (`customerId`, `billingCompanyId`, optional date range, `fromEmail`, `toEmail`, `ccEmail?`, `bccEmail?`, `subject`, `html`). Renders the PDF then dispatches via `MailService.sendStatement` — PDF is ALWAYS attached. Uses the billing company's SMTP route (CUSTOM_SMTP if configured, else the system `MailConfiguration`). No retry queue. |
+
 #### Banking — shared types
 `backend/src/transaction-imports/types.ts` defines the `ImportReport`, `ImportReportRow`, and column-mapping interfaces shared across the sniff/commit/log pipeline. The frontend counterpart lives at `frontend/lib/types.ts` (Banking section). Both files must stay in sync — the shape is serialised into `TransactionImport.reportJson` and read back by `<ImportReportPopup>`.
 
