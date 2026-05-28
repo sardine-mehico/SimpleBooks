@@ -73,6 +73,7 @@ const nav: Group[] = [
     items: [
       { label: "Expense Report", href: "/reports/expense" },
       { label: "Income Report", href: "/reports/income" },
+      { label: "Tags Report", href: "/reports/tags" },
       { label: "Statements", href: "/statements" },
     ],
   },
@@ -93,6 +94,7 @@ const subIcons: Record<string, any> = {
   "/statements": FileText,
   "/reports/expense": ChartBar,
   "/reports/income": ChartBar,
+  "/reports/tags": Hash,
 };
 
 export function Sidebar() {

@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Download } from "lucide-react";
 import { motion } from "framer-motion";
-import type { Account, ReportResponse } from "@/lib/types";
+import type { Account, ReportResponse, Tag } from "@/lib/types";
 import { getExpenseReport, getIncomeReport } from "@/lib/reports";
 import { CategoryPie, PIE_PALETTE } from "./category-pie";
 import { TotalsTable } from "./totals-table";
 import { AccountMultiSelect } from "./account-multi-select";
+import { TagMultiSelect } from "@/components/tags/tag-multi-select";
 import { exportReportToExcel } from "@/lib/export-excel";
 
 function fyStartDate(financialYearStart: number): string {
@@ -32,10 +33,12 @@ function fmtMoney(n: string | number) {
 export function ReportPage({
   kind,
   accounts,
+  tags,
   prefs,
 }: {
   kind: "EXPENSE" | "INCOME";
   accounts: Account[];
+  tags: Tag[];
   prefs: { financialYearStart: number };
 }) {
   const [from, setFrom] = useState(() => fyStartDate(prefs.financialYearStart));
@@ -43,6 +46,7 @@ export function ReportPage({
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>(() =>
     accounts.map((a) => a.id),
   );
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,7 +59,7 @@ export function ReportPage({
     setLoading(true);
     setError(null);
     const fetcher = kind === "EXPENSE" ? getExpenseReport : getIncomeReport;
-    fetcher({ from, to, accountIds: selectedAccountIds })
+    fetcher({ from, to, accountIds: selectedAccountIds, tagIds: selectedTagIds })
       .then((r) => {
         if (!cancelled) {
           setReport(r);
@@ -71,7 +75,7 @@ export function ReportPage({
     return () => {
       cancelled = true;
     };
-  }, [kind, from, to, selectedAccountIds.join(",")]);
+  }, [kind, from, to, selectedAccountIds.join(","), selectedTagIds.join(",")]);
 
   const UNCAT_ID = "__uncategorised__";
   const parentSlices = useMemo(() => {
@@ -151,6 +155,12 @@ export function ReportPage({
               selected={selectedAccountIds}
               onChange={setSelectedAccountIds}
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-600">Tags:</span>
+            <div className="min-w-[200px]">
+              <TagMultiSelect tags={tags} selectedIds={selectedTagIds} onChange={setSelectedTagIds} placeholder="All tags" />
+            </div>
           </div>
         </div>
 
