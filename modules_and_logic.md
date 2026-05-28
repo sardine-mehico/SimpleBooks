@@ -981,6 +981,38 @@ P&L (income minus expense in one view), dashboard tile, PDF export, comparison m
 - Frontend shared component: [frontend/components/reports/report-page.tsx](frontend/components/reports/report-page.tsx)
 - Excel export: [frontend/lib/export-excel.ts](frontend/lib/export-excel.ts)
 
+### Statements
+
+Page at `/statements` (sidebar: Reports → Statements). Renders a Customer Statement for one Customer + one Billing Company over an optional date range.
+
+**Filters:**
+- Customer (required) — active customers only, sorted by `customerNumber`.
+- Billing Company (required) — auto-fills from `Customer.billingCompanyId` on pick, user may override.
+- Date From / Date To — both optional; empty = "all transactions" (no opening balance).
+
+**On-screen layout:**
+- Header: page title + Send / PDF buttons (disabled until both Customer and Billing Company are picked).
+- "To" customer block + "Statement of Accounts" title with date range.
+- Summary card (right-aligned): Opening Balance, Invoiced Amount, Amount Received, Balance Due.
+- Transactions table: Date / Transactions / Details / Amount / Payments / Balance. When `dateFrom` is set, the first row is an "Opening Balance" pseudo-row.
+- Balance Due footer row.
+
+**Math:**
+- Opening Balance = Σ totalAmount of (customerId, billingCompanyId, status != VOID) invoices with `invoiceDate < from` − Σ allocation amounts on those invoices where `tx.date < from`. Zero when `from` is empty.
+- Body invoice rows: one per invoice for `(customer, company, status != VOID, invoiceDate in [from, to])`.
+- Body payment rows: one per Transaction whose date is in `[from, to]` AND has at least one allocation to a `(customer, company, non-VOID)` invoice. Payment amount = sum of those in-scope allocations only (cross-company / VOID-allocated portions are excluded).
+- Sort by date asc; same-day tiebreaker: invoices before payments, then by invoiceNumber / transactionId asc.
+- Running balance: seeded with `openingBalance`, walked over rows: `balance[i] = balance[i-1] + amount[i] - payment[i]`.
+- Summary: `invoicedAmount` = Σ body invoice amounts (does NOT include opening); `amountReceived` = Σ body payment amounts; `balanceDue = openingBalance + invoicedAmount - amountReceived`.
+
+**Actions:**
+- PDF — opens `GET /statements/pdf` inline in a new tab.
+- Send — opens dialog pre-filled from `GET /statements/send-context` (From = billing company `accountsEmail`, To = customer `billingEmail1`, CC = customer `billingEmail2`, BCC = billing company `invoiceBcc`, subject + plain HTML body hardcoded). Posts to `POST /statements/send`; PDF is always attached. No DB-stored email template — change the body/subject defaults in `StatementsService.getSendContext`.
+
+**Math is computed server-side from `Invoice` + `Allocation` + `Transaction` directly — `Invoice.amountPaid` / `amountOutstanding` are NOT used (avoids drift if those columns lag).**
+
+**No schema changes** — Phase E is fully additive.
+
 ---
 
 ## Cross-module conventions
