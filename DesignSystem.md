@@ -40,8 +40,9 @@ The design language for the SimpleBooks / BizBooks self-hosted billing & account
 | `--card-foreground` | `#0F172A` | Text on cards |
 | `--popover` | `#FFFFFF` | Popover / menu surface |
 | `--popover-foreground` | `#0F172A` | Text in popovers |
-| `--primary` | `#1E3A5F` | **Navy** — primary actions, active nav, focus ring, key figures |
+| `--primary` | `#323D59` | **Navy** — primary actions, active nav, focus ring, key figures, switch checked-state track |
 | `--primary-foreground` | `#FFFFFF` | Text/icons on navy |
+| `--primary-hover` | `#283248` | Solid hover for primary buttons (a darker step from `--primary`, not an alpha fade) |
 | `--secondary` | `#E2E8F0` | Secondary solid-button surface — *derived from your Gray* |
 | `--secondary-foreground` | `#1E293B` | Text on secondary — *derived* |
 | `--tertiary` | `#2563EB` | **Blue** — links, tertiary actions, highlights |
@@ -49,7 +50,7 @@ The design language for the SimpleBooks / BizBooks self-hosted billing & account
 | `--muted` | `#F1F5F9` | Subtle backgrounds — table header, skeletons, inactive — *derived* |
 | `--muted-foreground` | `#6B7280` | **Gray** — secondary text, metadata, placeholders, axis ticks |
 | `--accent` | `#E8EEF6` | Hover tint (light navy) — *derived* |
-| `--accent-foreground` | `#1E3A5F` | Text/icon on accent |
+| `--accent-foreground` | `#323D59` | Text/icon on accent |
 | `--success` | `#16A34A` | **Green** — approved / active status, completed steps |
 | `--success-foreground` | `#FFFFFF` | Text on success |
 | `--warning` | `#CA8A04` | **Amber** — pending review, approaching limits |
@@ -60,7 +61,7 @@ The design language for the SimpleBooks / BizBooks self-hosted billing & account
 | `--info-foreground` | `#FFFFFF` | Text on info |
 | `--border` | `#E2E8F0` | Borders, dividers (slate-200) — *derived* |
 | `--input` | `#CBD5E1` | Input borders / disabled input bg (slate-300) — *derived* |
-| `--ring` | `#1E3A5F` | Focus ring (matches primary navy) |
+| `--ring` | `#323D59` | Focus ring (matches primary navy) |
 
 > Colours marked *derived* weren't in the supplied list; they're drawn from the same slate/navy family (Tailwind's slate scale plus a complementary teal) so they sit naturally with the navy, gray, and blue provided. **Info** intentionally reuses the **tertiary blue** — one blue does double duty for links and system notices.
 
@@ -70,18 +71,18 @@ The design language for the SimpleBooks / BizBooks self-hosted billing & account
 | :--- | :--- | :--- |
 | `--sidebar` | `#FFFFFF` | Sidebar surface |
 | `--sidebar-foreground` | `#334155` | Sidebar text (slate-700, softer than `--foreground`) |
-| `--sidebar-primary` | `#1E3A5F` | Active item text/icon, sidebar ring |
+| `--sidebar-primary` | `#323D59` | Active item text/icon, sidebar ring |
 | `--sidebar-primary-foreground` | `#FFFFFF` | Text on a solid sidebar-primary fill |
 | `--sidebar-accent` | `#E8EEF6` | Active / hover item background (light navy) |
-| `--sidebar-accent-foreground` | `#1E3A5F` | Text on sidebar accent |
+| `--sidebar-accent-foreground` | `#323D59` | Text on sidebar accent |
 | `--sidebar-border` | `#E2E8F0` | Sidebar divider / right edge |
-| `--sidebar-ring` | `#1E3A5F` | Sidebar focus ring |
+| `--sidebar-ring` | `#323D59` | Sidebar focus ring |
 
 #### Chart palette (5-colour categorical scale)
 
 | Token | Hex |
 | :--- | :--- |
-| `--chart-1` | `#1E3A5F` (navy — primary) |
+| `--chart-1` | `#323D59` (navy — primary) |
 | `--chart-2` | `#2563EB` (blue — tertiary / info) |
 | `--chart-3` | `#16A34A` (green — success) |
 | `--chart-4` | `#CA8A04` (amber — warning) |
@@ -102,8 +103,9 @@ The design language for the SimpleBooks / BizBooks self-hosted billing & account
   --popover-foreground: #0F172A;
 
   /* Brand */
-  --primary: #1E3A5F;            /* Navy */
+  --primary: #323D59;            /* Navy */
   --primary-foreground: #FFFFFF;
+  --primary-hover: #283248;      /* solid hover step for primary buttons */
 
   /* Secondary / tertiary / muted / accent */
   --secondary: #E2E8F0;
@@ -113,7 +115,7 @@ The design language for the SimpleBooks / BizBooks self-hosted billing & account
   --muted: #F1F5F9;
   --muted-foreground: #6B7280;   /* Gray — metadata */
   --accent: #E8EEF6;             /* light navy hover tint */
-  --accent-foreground: #1E3A5F;
+  --accent-foreground: #323D59;
 
   /* Status */
   --success: #16A34A;
@@ -128,20 +130,20 @@ The design language for the SimpleBooks / BizBooks self-hosted billing & account
   /* Lines & focus */
   --border: #E2E8F0;
   --input: #CBD5E1;
-  --ring: #1E3A5F;
+  --ring: #323D59;
 
   /* Sidebar */
   --sidebar: #FFFFFF;
   --sidebar-foreground: #334155;
-  --sidebar-primary: #1E3A5F;
+  --sidebar-primary: #323D59;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #E8EEF6;
-  --sidebar-accent-foreground: #1E3A5F;
+  --sidebar-accent-foreground: #323D59;
   --sidebar-border: #E2E8F0;
-  --sidebar-ring: #1E3A5F;
+  --sidebar-ring: #323D59;
 
   /* Charts */
-  --chart-1: #1E3A5F;
+  --chart-1: #323D59;
   --chart-2: #2563EB;
   --chart-3: #16A34A;
   --chart-4: #CA8A04;
@@ -158,7 +160,7 @@ The design language for the SimpleBooks / BizBooks self-hosted billing & account
 
 The system applies alpha to tokens rather than defining extra colours:
 
-- `bg-primary/90` — primary button hover
+- `bg-primary-hover` (`#283248`) — primary button hover (solid step, not an alpha fade)
 - `ring-ring/50` — focus ring (3px, primary @ 50%)
 - `ring-destructive/20` — invalid-field ring (destructive @ 20%)
 - `bg-black/50` (or `--muted`) — dialog/drawer overlay
@@ -413,7 +415,7 @@ Reusable primitives and their variants. All are state-driven via `data-slot`, `d
 
 | Variant | Resting | Hover | Notes |
 | :--- | :--- | :--- | :--- |
-| `default` (primary) | `bg-primary` / `text-primary-foreground` | `bg-primary/90` | Main CTA |
+| `default` (primary) | `bg-primary` (`#323D59`) / `text-primary-foreground` | `bg-primary-hover` (`#283248`) | Main CTA |
 | `secondary` | `bg-secondary` / `text-secondary-foreground` | darken | Lower-emphasis solid |
 | `outline` | transparent + `border` / `text-foreground` | `bg-accent` / `text-accent-foreground` | *Export*, *Filter* |
 | `ghost` | transparent | `bg-accent` / `text-accent-foreground` | Toolbar / icon actions |
@@ -453,7 +455,7 @@ Circular counterpart to Checkbox; selected → `--primary` ring + filled dot. Sa
 
 ### Switch / Toggle
 
-Pill track (`w-12 h-7`, ~46×26) + circular thumb (`size-5`+); `--muted` track off, `--primary` track on; thumb translates on `data-state=checked`. The whole switch row is the tap target (≥44px, ≥48px on mobile).
+Pill track (`w-12 h-7`, ~46×26) + circular thumb (`size-5`+); `slate-200` track when off, `--primary` (`#323D59`) track when on; thumb translates on `data-state=checked`. The whole switch row is the tap target (≥44px, ≥48px on mobile).
 
 ### Field
 
