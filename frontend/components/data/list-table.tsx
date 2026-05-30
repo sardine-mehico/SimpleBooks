@@ -97,7 +97,7 @@ export function ListTable<T extends { id: string }>({
   return (
     <Card className="flex max-h-[calc(100vh-12rem)] flex-col overflow-hidden">
       <div
-        className="grid shrink-0 items-center gap-x-4 border-b border-slate-100 bg-white px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-slate-400"
+        className="grid shrink-0 items-center gap-x-4 border-b border-slate-100 bg-[#b6bacb] px-5 py-2.5 text-[12px] font-medium uppercase tracking-wider text-white"
         style={{ gridTemplateColumns: gridTemplate }}
       >
         {columns.map((c) => {
@@ -111,7 +111,7 @@ export function ListTable<T extends { id: string }>({
               className={cn(
                 "flex items-center gap-1",
                 justify,
-                isSortable && "cursor-pointer select-none hover:text-slate-600"
+                isSortable && "cursor-pointer select-none hover:text-white/80"
               )}
               onClick={isSortable ? () => toggleSort(c.key) : undefined}
               role={isSortable ? "button" : undefined}
@@ -131,12 +131,12 @@ export function ListTable<T extends { id: string }>({
               {isSortable ? (
                 isActive ? (
                   sort!.direction === "asc" ? (
-                    <ChevronUp className="h-3 w-3 text-slate-700" />
+                    <ChevronUp className="h-3 w-3 text-white" />
                   ) : (
-                    <ChevronDown className="h-3 w-3 text-slate-700" />
+                    <ChevronDown className="h-3 w-3 text-white" />
                   )
                 ) : (
-                  <ChevronsUpDown className="h-3 w-3 text-slate-300" />
+                  <ChevronsUpDown className="h-3 w-3 text-white/60" />
                 )
               ) : null}
             </div>
