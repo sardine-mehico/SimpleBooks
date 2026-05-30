@@ -3,14 +3,74 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Core */
+    --background: #F8FAFC;
+    --foreground: #0F172A;
+
+    /* Surfaces */
+    --card: #FFFFFF;
+    --card-foreground: #0F172A;
+    --popover: #FFFFFF;
+    --popover-foreground: #0F172A;
+
+    /* Brand */
+    --primary: #1E3A5F;
+    --primary-foreground: #FFFFFF;
+
+    /* Secondary / tertiary / muted / accent */
+    --secondary: #E2E8F0;
+    --secondary-foreground: #1E293B;
+    --tertiary: #2563EB;
+    --tertiary-foreground: #FFFFFF;
+    --muted: #F1F5F9;
+    --muted-foreground: #6B7280;
+    --accent: #E8EEF6;
+    --accent-foreground: #1E3A5F;
+
+    /* Status */
+    --success: #16A34A;
+    --success-foreground: #FFFFFF;
+    --warning: #CA8A04;
+    --warning-foreground: #FFFFFF;
+    --destructive: #DC2626;
+    --destructive-foreground: #FFFFFF;
+    --info: #2563EB;
+    --info-foreground: #FFFFFF;
+
+    /* Lines & focus */
+    --border: #E2E8F0;
+    --input: #CBD5E1;
+    --ring: #1E3A5F;
+
+    /* Sidebar */
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #334155;
+    --sidebar-primary: #1E3A5F;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #E8EEF6;
+    --sidebar-accent-foreground: #1E3A5F;
+    --sidebar-border: #E2E8F0;
+    --sidebar-ring: #1E3A5F;
+
+    /* Charts */
+    --chart-1: #1E3A5F;
+    --chart-2: #2563EB;
+    --chart-3: #16A34A;
+    --chart-4: #CA8A04;
+    --chart-5: #0D9488;
+
+    --radius: 0.469rem;
+  }
+
   html, body {
-    background-color: #EDEEF3;
-    color: #0F172A;
+    background-color: var(--background);
+    color: var(--foreground);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
   * {
-    border-color: rgb(226 232 240);
+    border-color: var(--border);
   }
 }
 

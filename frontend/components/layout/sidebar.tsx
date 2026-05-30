@@ -99,7 +99,7 @@ const subIcons: Record<string, any> = {
 
 export function Sidebar() {
   return (
-    <aside className="hidden md:flex md:w-[240px] md:flex-col bg-[#323D59] text-slate-100">
+    <aside className="hidden md:flex md:w-[240px] md:flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <SidebarBody />
     </aside>
   );
@@ -123,11 +123,11 @@ export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
 
   return (
     <>
-      <div className="flex h-16 items-center gap-2.5 border-b border-white/10 px-5">
+      <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-5">
         <AppLogo />
         <div className="leading-none">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300/70">SIMPLE</div>
-          <div className="text-sm font-semibold tracking-tight text-white">BOOKS</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">SIMPLE</div>
+          <div className="text-sm font-semibold tracking-tight text-primary">BOOKS</div>
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4 text-sm">
@@ -150,11 +150,13 @@ function NavLink({ item, active, onNavigate }: { item: Item & { icon?: any }; ac
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        "flex items-center gap-2.5 rounded-lg px-3 py-2 font-medium transition-colors",
-        active ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+        "flex items-center gap-2.5 rounded-md px-3 py-2 font-medium transition-colors",
+        active
+          ? "bg-sidebar-accent text-sidebar-primary"
+          : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-primary"
       )}
     >
-      {Icon ? <Icon weight="fill" className={cn("h-4 w-4", active ? "text-white" : "text-slate-400")} /> : null}
+      {Icon ? <Icon weight="fill" className={cn("h-4 w-4", active ? "text-sidebar-primary" : "text-muted-foreground")} /> : null}
       <span>{item.label}</span>
     </Link>
   );
@@ -168,19 +170,19 @@ function NavGroup({ group, pathname, onNavigate, aiReviewCount, paymentsCount }:
     <div className="mt-0.5">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2.5 rounded-lg px-3 py-2 font-medium text-slate-300 hover:bg-white/[0.06] hover:text-white"
+        className="flex w-full items-center justify-between gap-2.5 rounded-md px-3 py-2 font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-primary"
       >
         <span className="flex items-center gap-2.5">
-          <Icon weight="fill" className="h-4 w-4 text-slate-400" />
+          <Icon weight="fill" className="h-4 w-4 text-muted-foreground" />
           {group.label}
         </span>
         <CaretDown
           weight="fill"
-          className={cn("h-3 w-3 text-slate-400 transition-transform", open && "rotate-180")}
+          className={cn("h-3 w-3 text-muted-foreground transition-transform", open && "rotate-180")}
         />
       </button>
       {open && (
-        <div className="ml-3 mt-0.5 border-l border-white/10 pl-3">
+        <div className="ml-3 mt-0.5 border-l border-sidebar-border pl-3">
           {group.items.map((item) => {
             const SubIcon = subIcons[item.href];
             const active = pathname === item.href;
@@ -196,14 +198,16 @@ function NavGroup({ group, pathname, onNavigate, aiReviewCount, paymentsCount }:
                 href={item.href}
                 onClick={onNavigate}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[15px] text-slate-300 transition-colors",
-                  active ? "bg-white/10" : "hover:bg-white/[0.04]"
+                  "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[15px] transition-colors",
+                  active
+                    ? "bg-sidebar-accent font-medium text-sidebar-primary"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-primary"
                 )}
               >
-                {SubIcon ? <SubIcon weight="fill" className={cn("h-3.5 w-3.5", active ? "text-white" : "text-slate-300/80")} /> : null}
+                {SubIcon ? <SubIcon weight="fill" className={cn("h-3.5 w-3.5", active ? "text-sidebar-primary" : "text-muted-foreground")} /> : null}
                 <span>{item.label}</span>
                 {badgeCount > 0 && (
-                  <span className="ml-auto rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
                     {badgeCount}
                   </span>
                 )}

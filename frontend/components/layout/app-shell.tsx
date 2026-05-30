@@ -20,7 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex flex-1 flex-col">
         <CommandBar />
-        <main className="flex-1 bg-[#EDEEF3]">{children}</main>
+        <main className="flex-1 bg-background">{children}</main>
       </div>
     </div>
   );
