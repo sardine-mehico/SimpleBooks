@@ -19,7 +19,7 @@ export function Pagination({
   if (totalPages <= 1) {
     // Still show summary on a single-page result so the row count is visible.
     return (
-      <div className="flex items-center justify-end border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+      <div className="flex shrink-0 items-center justify-end border-t border-slate-100 bg-white px-5 py-3 text-xs text-slate-500 shadow-[0_-1px_2px_rgba(0,0,0,0.04)]">
         Showing {total} of {total}
       </div>
     );
@@ -29,7 +29,7 @@ export function Pagination({
   const end = Math.min(total, (page + 1) * pageSize);
 
   return (
-    <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+    <div className="flex shrink-0 items-center justify-between border-t border-slate-100 bg-white px-5 py-3 text-xs text-slate-500 shadow-[0_-1px_2px_rgba(0,0,0,0.04)]">
       <span>
         Showing <span className="font-medium text-slate-700">{start}–{end}</span> of <span className="font-medium text-slate-700">{total}</span>
       </span>

@@ -545,9 +545,9 @@ export function TransactionsTable({
         </Card>
       )}
 
-      <Card className="overflow-hidden">
+      <Card className="flex max-h-[calc(100vh-12rem)] flex-col overflow-hidden">
         {selectedIds.size > 0 && (
-          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+          <div className="shrink-0 flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
             <span className="text-sm font-medium text-slate-700">{selectedIds.size} selected</span>
             <Button type="button" size="sm" variant="outline" onClick={() => bulkCategorise(false)}>
               <Sparkles className="h-3.5 w-3.5" /> Categorise with AI
@@ -564,7 +564,7 @@ export function TransactionsTable({
           </div>
         )}
         <div
-          className="grid items-center gap-x-4 border-b border-slate-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-slate-400"
+          className="grid shrink-0 items-center gap-x-4 border-b border-slate-100 bg-white px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-slate-400"
           style={{ gridTemplateColumns: gridTemplate }}
         >
           {cols.map((c) => {
@@ -604,7 +604,7 @@ export function TransactionsTable({
             );
           })}
         </div>
-        <ul className="divide-y divide-slate-100">
+        <ul className="flex-1 divide-y divide-slate-100 overflow-y-auto">
           {!loading && rows.length === 0 && (
             <li className="px-5 py-10 text-center text-sm text-slate-400">No transactions for this filter.</li>
           )}

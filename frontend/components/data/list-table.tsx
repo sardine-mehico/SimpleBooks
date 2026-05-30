@@ -95,9 +95,9 @@ export function ListTable<T extends { id: string }>({
   const gridTemplate = columns.map((c) => c.width ?? "1fr").join(" ");
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="flex max-h-[calc(100vh-12rem)] flex-col overflow-hidden">
       <div
-        className="grid items-center gap-x-4 border-b border-slate-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-slate-400"
+        className="grid shrink-0 items-center gap-x-4 border-b border-slate-100 bg-white px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-slate-400"
         style={{ gridTemplateColumns: gridTemplate }}
       >
         {columns.map((c) => {
@@ -143,7 +143,7 @@ export function ListTable<T extends { id: string }>({
           );
         })}
       </div>
-      <ul className="divide-y divide-slate-100">
+      <ul className="flex-1 divide-y divide-slate-100 overflow-y-auto">
         {sorted.length === 0 && (
           <li className="px-5 py-10 text-center text-sm text-slate-400">
             {emptyMessage ?? "No records yet"}

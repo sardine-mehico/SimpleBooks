@@ -258,8 +258,8 @@ export function TasksBoard({ initial }: { initial: Task[] }) {
         />
       )}
 
-      <Card className="overflow-hidden">
-        <div className="grid grid-cols-[auto_1fr_120px_140px_140px_auto] items-center gap-x-4 border-b border-slate-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
+      <Card className="flex max-h-[calc(100vh-12rem)] flex-col overflow-hidden">
+        <div className="grid shrink-0 grid-cols-[auto_1fr_120px_140px_140px_auto] items-center gap-x-4 border-b border-slate-100 bg-white px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
           <div className="w-4" />
           <div>Task</div>
           <div>Status</div>
@@ -267,7 +267,7 @@ export function TasksBoard({ initial }: { initial: Task[] }) {
           <div>Completed at</div>
           <div />
         </div>
-        <ul className="divide-y divide-slate-100">
+        <ul className="flex-1 divide-y divide-slate-100 overflow-y-auto">
           {filtered.length === 0 && (
             <li className="px-5 py-10 text-center text-sm text-slate-400">
               {activeCount > 0 ? "No tasks match the current filters." : "No tasks yet — create one to get started."}
