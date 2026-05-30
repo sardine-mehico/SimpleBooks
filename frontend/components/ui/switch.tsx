@@ -21,7 +21,7 @@ export function Switch({
       onClick={() => onCheckedChange(!checked)}
       className={cn(
         "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors",
-        checked ? "bg-indigo-600" : "bg-slate-200"
+        checked ? "bg-[#323D59]" : "bg-slate-200"
       )}
     >
       <span

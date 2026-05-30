@@ -41,7 +41,7 @@ export function SettingsNav() {
   const pathname = usePathname();
   return (
     <nav className="w-[184px] shrink-0">
-      <ul className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <ul className="overflow-hidden rounded-lg bg-[#323D59] p-2 text-sm text-slate-100">
         {sections.map((s) => {
           const Icon = s.icon;
           const active = pathname === s.href || pathname.startsWith(s.href + "/");
@@ -50,15 +50,15 @@ export function SettingsNav() {
               <Link
                 href={s.href}
                 className={cn(
-                  "flex items-center gap-2.5 border-l-2 px-3.5 py-2.5 text-sm transition-colors",
+                  "flex items-center gap-2.5 rounded-md px-3 py-2 font-medium transition-colors",
                   active
-                    ? "border-indigo-600 bg-indigo-50/60 font-medium text-indigo-700"
-                    : "border-transparent text-slate-600 hover:bg-slate-50"
+                    ? "bg-white/10 text-white"
+                    : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
                 )}
               >
                 <Icon
                   weight="fill"
-                  className={cn("h-4 w-4", active ? "text-indigo-600" : "text-slate-400")}
+                  className={cn("h-4 w-4", active ? "text-white" : "text-slate-400")}
                 />
                 {s.label}
               </Link>
