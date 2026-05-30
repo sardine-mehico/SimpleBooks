@@ -125,8 +125,8 @@ export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
     <>
       <div className="flex h-16 items-center border-b border-white/10 px-5">
         <span
-          className="select-none font-black leading-none tracking-tight text-white"
-          style={{ fontSize: 26, width: 190, height: 32, display: "inline-flex", alignItems: "center" }}
+          className="select-none font-black leading-none tracking-tight"
+          style={{ fontSize: 26, width: 190, height: 32, display: "inline-flex", alignItems: "center", color: "rgb(203 213 225 / 0.7)" }}
           aria-label="$impleBooks"
         >
           $impleBooks
