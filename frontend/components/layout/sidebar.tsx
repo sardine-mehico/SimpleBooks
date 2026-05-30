@@ -99,7 +99,7 @@ const subIcons: Record<string, any> = {
 
 export function Sidebar() {
   return (
-    <aside className="hidden md:flex md:w-[240px] md:flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="hidden md:flex md:w-[240px] md:flex-col bg-[#323D59] text-slate-100">
       <SidebarBody />
     </aside>
   );
@@ -123,12 +123,14 @@ export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
 
   return (
     <>
-      <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-5">
-        <AppLogo />
-        <div className="leading-none">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">SIMPLE</div>
-          <div className="text-sm font-semibold tracking-tight text-primary">BOOKS</div>
-        </div>
+      <div className="flex h-16 items-center border-b border-white/10 px-5">
+        <span
+          className="select-none font-black leading-none tracking-tight text-white"
+          style={{ fontSize: 26, width: 190, height: 32, display: "inline-flex", alignItems: "center" }}
+          aria-label="$impleBooks"
+        >
+          $impleBooks
+        </span>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4 text-sm">
         {nav.map((entry, i) =>
@@ -150,13 +152,11 @@ function NavLink({ item, active, onNavigate }: { item: Item & { icon?: any }; ac
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-3 py-2 font-medium transition-colors",
-        active
-          ? "bg-sidebar-accent text-sidebar-primary"
-          : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-primary"
+        "flex items-center gap-2.5 rounded-lg px-3 py-2 font-medium transition-colors",
+        active ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
       )}
     >
-      {Icon ? <Icon weight="fill" className={cn("h-4 w-4", active ? "text-sidebar-primary" : "text-muted-foreground")} /> : null}
+      {Icon ? <Icon weight="fill" className={cn("h-4 w-4", active ? "text-white" : "text-slate-400")} /> : null}
       <span>{item.label}</span>
     </Link>
   );
@@ -170,19 +170,19 @@ function NavGroup({ group, pathname, onNavigate, aiReviewCount, paymentsCount }:
     <div className="mt-0.5">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2.5 rounded-md px-3 py-2 font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-primary"
+        className="flex w-full items-center justify-between gap-2.5 rounded-lg px-3 py-2 font-medium text-slate-300 hover:bg-white/[0.06] hover:text-white"
       >
         <span className="flex items-center gap-2.5">
-          <Icon weight="fill" className="h-4 w-4 text-muted-foreground" />
+          <Icon weight="fill" className="h-4 w-4 text-slate-400" />
           {group.label}
         </span>
         <CaretDown
           weight="fill"
-          className={cn("h-3 w-3 text-muted-foreground transition-transform", open && "rotate-180")}
+          className={cn("h-3 w-3 text-slate-400 transition-transform", open && "rotate-180")}
         />
       </button>
       {open && (
-        <div className="ml-3 mt-0.5 border-l border-sidebar-border pl-3">
+        <div className="ml-3 mt-0.5 border-l border-white/10 pl-3">
           {group.items.map((item) => {
             const SubIcon = subIcons[item.href];
             const active = pathname === item.href;
@@ -198,16 +198,14 @@ function NavGroup({ group, pathname, onNavigate, aiReviewCount, paymentsCount }:
                 href={item.href}
                 onClick={onNavigate}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[15px] transition-colors",
-                  active
-                    ? "bg-sidebar-accent font-medium text-sidebar-primary"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-primary"
+                  "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[15px] text-slate-300 transition-colors",
+                  active ? "bg-white/10" : "hover:bg-white/[0.04]"
                 )}
               >
-                {SubIcon ? <SubIcon weight="fill" className={cn("h-3.5 w-3.5", active ? "text-sidebar-primary" : "text-muted-foreground")} /> : null}
+                {SubIcon ? <SubIcon weight="fill" className={cn("h-3.5 w-3.5", active ? "text-white" : "text-slate-300/80")} /> : null}
                 <span>{item.label}</span>
                 {badgeCount > 0 && (
-                  <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                  <span className="ml-auto rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                     {badgeCount}
                   </span>
                 )}
@@ -220,28 +218,3 @@ function NavGroup({ group, pathname, onNavigate, aiReviewCount, paymentsCount }:
   );
 }
 
-function AppLogo() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="32"
-      height="32"
-      viewBox="0 0 300 300"
-      className="h-8 w-8"
-      aria-label="SimpleBooks"
-    >
-      <path
-        fill="#616a7f"
-        d="M247.47 300H52.53C23.52 300 0 276.48 0 247.47V52.53C0 23.52 23.52 0 52.53 0h194.94C276.48 0 300 23.52 300 52.53v194.94c0 29.01-23.52 52.53-52.53 52.53z"
-      />
-      <path
-        fill="#465069"
-        d="M247.47 283.78H52.53C23.52 283.78 0 260.26 0 231.25V52.53C0 23.52 23.52 0 52.53 0h194.94C276.48 0 300 23.52 300 52.53v178.72c0 29.01-23.52 52.53-52.53 52.53z"
-      />
-      <path
-        fill="#ffffff"
-        d="M85.92 213.11c-1.18-4.72 11.8-42.96 14.63-42.01 4.96 1.65 24.31 14.63 43.66 14.63 10.62 0 15.81-2.6 15.81-7.79 0-4.72-2.83-8.73-24.31-12.75-30.45-5.67-48.86-19.83-48.86-54.05 0-28.09 22.89-52.16 65.38-52.16 25.73 0 48.86 6.14 58.06 13.22 3.54 2.6-12.98 40.36-15.58 40.6-1.65.47-20.53-9.21-41.54-9.21-10.39 0-14.63 2.83-14.63 6.84 0 5.9 3.78 7.08 23.84 11.33 27.62 5.9 53.34 17.47 53.34 53.11 0 23.37-18.41 53.1-69.39 53.1-26.42.01-50.97-8.96-60.41-14.86z"
-      />
-    </svg>
-  );
-}
