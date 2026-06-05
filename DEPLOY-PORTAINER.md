@@ -15,8 +15,7 @@ The compose file you want is [`docker-compose.portainer.yml`](./docker-compose.p
   - Verify: in Portainer → **Networks** → confirm `npm_proxy` exists and that the
     NPM container is attached to it
 - DNS A-record for `bookkeeping.officepc.online` pointing at the public IP NPM listens on
-- Persistent data path on the host: **`/srv/docker/simplebooks`** (per your setup —
-  double-check this is the directory you actually want; most setups use `/srv/docker`)
+- Persistent data path on the host: **`/srv/docker/simplebooks`**
 
 ---
 
