@@ -40,7 +40,7 @@ export const sections: SettingsSection[] = [
 export function SettingsNav() {
   const pathname = usePathname();
   return (
-    <nav className="w-[184px] shrink-0">
+    <nav className="w-full shrink-0 md:w-[184px]">
       <ul className="overflow-hidden rounded-lg bg-[#323D59] p-2 text-sm text-slate-100">
         {sections.map((s) => {
           const Icon = s.icon;

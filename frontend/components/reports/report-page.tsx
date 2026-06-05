@@ -120,9 +120,9 @@ export function ReportPage({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="mx-auto max-w-6xl p-6"
+      className="mx-auto max-w-6xl p-4 md:p-6"
     >
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
         <Button variant="outline" size="sm" onClick={onExport} disabled={!report || loading || exporting}>
           <Download className="h-4 w-4" /> {exporting ? "Exporting…" : "Export to Excel"}

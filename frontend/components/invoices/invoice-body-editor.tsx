@@ -261,7 +261,7 @@ export function InvoiceBodyEditor({
             Select a customer to add line items.
           </div>
         ) : null}
-        <div className="grid grid-cols-[1fr_140px_180px_40px] gap-x-3 bg-slate-50 px-5 py-3 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+        <div className="hidden grid-cols-[1fr_140px_180px_40px] gap-x-3 bg-slate-50 px-5 py-3 text-[11px] font-medium uppercase tracking-wider text-slate-500 md:grid">
           <div>Items &amp; Description</div>
           <div className="text-right">Amount</div>
           <div>Tax</div>
@@ -269,15 +269,17 @@ export function InvoiceBodyEditor({
         </div>
         <ul className="divide-y divide-slate-100">
           {lines.map((l, idx) => (
-            <li key={idx} className="grid grid-cols-[1fr_140px_180px_40px] items-center gap-x-3 px-5 py-3">
-              <BodyItemDescriptionField
-                value={l.description}
-                items={items}
-                onChangeText={(v) => updateLine(idx, { description: v, itemId: "" })}
-                onPickItem={(id) => pickItem(idx, id)}
-                placeholder="Item / service description"
-                disabled={!customerId}
-              />
+            <li key={idx} className="grid grid-cols-[1fr_1fr_44px] items-center gap-x-2 gap-y-2 px-4 py-3 md:grid-cols-[1fr_140px_180px_40px] md:gap-x-3 md:gap-y-0 md:px-5">
+              <div className="col-span-3 md:col-span-1">
+                <BodyItemDescriptionField
+                  value={l.description}
+                  items={items}
+                  onChangeText={(v) => updateLine(idx, { description: v, itemId: "" })}
+                  onPickItem={(id) => pickItem(idx, id)}
+                  placeholder="Item / service description"
+                  disabled={!customerId}
+                />
+              </div>
               <div className="relative">
                 <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-slate-400">$</span>
                 <Input
@@ -351,8 +353,8 @@ export function InvoiceBodyEditor({
 
 function LabeledRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[1fr_160px] items-center gap-3">
-      <label className="text-right text-sm text-slate-600">{label}</label>
+    <div className="flex flex-col gap-1.5 md:grid md:grid-cols-[1fr_160px] md:items-center md:gap-3">
+      <label className="text-sm text-slate-600 md:text-right">{label}</label>
       {children}
     </div>
   );

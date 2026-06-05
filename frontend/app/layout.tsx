@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Noto_Sans,
   Inter,
@@ -12,6 +12,7 @@ import {
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
 import { Toaster } from "@/components/ui/toaster";
+import { ServiceWorkerRegister } from "@/components/pwa/sw-register";
 import { readRuntimeConfig } from "@/lib/runtime-config";
 
 // Force the root layout to render fresh on every request so process.env reads
@@ -40,6 +41,23 @@ const plusJakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["400", "700
 export const metadata: Metadata = {
   title: "SimpleBooks",
   description: "Minimalist accounting for modern operators.",
+  applicationName: "SimpleBooks",
+  appleWebApp: {
+    capable: true,
+    title: "SimpleBooks",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: "/icon.svg",
+    apple: "/apple-icon-180.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#323D59",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -66,6 +84,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans">
         <AppShell>{children}</AppShell>
         <Toaster />
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

@@ -52,21 +52,21 @@ export function EditPageChrome({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="px-6 py-6 md:px-8 md:py-8"
+      className="px-4 py-5 md:px-8 md:py-8"
     >
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 md:mb-6">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
             type="button"
             onClick={() => router.push(backHref)}
             aria-label="Back"
-            className="grid h-9 w-9 place-items-center rounded-[0.3rem] border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-[0.3rem] border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 md:h-9 md:w-9"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <h1 className="text-[28px] font-semibold tracking-tight text-slate-900">{title}</h1>
+          <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900 md:text-[28px]">{title}</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="ghost" onClick={cancel}>
             Cancel
           </Button>

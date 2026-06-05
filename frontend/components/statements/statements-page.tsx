@@ -87,11 +87,11 @@ export function StatementsPage({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="mx-auto max-w-6xl p-6"
+      className="mx-auto max-w-6xl p-4 md:p-6"
     >
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-2xl font-semibold text-slate-900">Customer Statements</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" disabled={!canAct} onClick={() => setSendOpen(true)}>
             <Mail className="h-4 w-4" /> Send
           </Button>

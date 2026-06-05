@@ -69,7 +69,7 @@ export function TagsReportPage({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="mx-auto max-w-5xl p-6"
+      className="mx-auto max-w-5xl p-4 md:p-6"
     >
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-slate-900">Tags Report</h1>

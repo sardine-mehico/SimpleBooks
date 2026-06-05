@@ -385,11 +385,11 @@ export function TransactionsTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="text-sm text-slate-500">
           {loading ? "Loading…" : `${totalCount.toLocaleString("en-AU")} transaction${totalCount === 1 ? "" : "s"}`}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" /> Add Transaction
           </Button>
@@ -547,7 +547,7 @@ export function TransactionsTable({
 
       <Card className="flex max-h-[calc(100vh-12rem)] flex-col overflow-hidden">
         {selectedIds.size > 0 && (
-          <div className="shrink-0 flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+          <div className="shrink-0 flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
             <span className="text-sm font-medium text-slate-700">{selectedIds.size} selected</span>
             <Button type="button" size="sm" variant="outline" onClick={() => bulkCategorise(false)}>
               <Sparkles className="h-3.5 w-3.5" /> Categorise with AI
@@ -563,6 +563,8 @@ export function TransactionsTable({
             </Button>
           </div>
         )}
+        <div className="flex w-full flex-1 flex-col overflow-x-auto overflow-y-hidden md:overflow-visible">
+        <div className="flex min-w-[820px] flex-1 flex-col md:min-w-0">
         <div
           className="grid shrink-0 items-center gap-x-4 border-b border-slate-100 bg-[#b6bacb] px-5 py-2.5 text-[12px] font-medium uppercase tracking-wider text-white"
           style={{ gridTemplateColumns: gridTemplate }}
@@ -681,6 +683,8 @@ export function TransactionsTable({
             );
           })}
         </ul>
+        </div>
+        </div>
         <Pagination
           page={page - 1}
           pageSize={PAGE_SIZE}
