@@ -68,7 +68,7 @@ services:
       - internal
 
   backend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.4}
+    image: ghcr.io/sardine-mehico/simplebooks-backend:latest
     container_name: simplebooks-backend
     restart: unless-stopped
     depends_on:
@@ -93,7 +93,7 @@ services:
       - npm_proxy   # NPM proxies /api/* here
 
   frontend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.4}
+    image: ghcr.io/sardine-mehico/simplebooks-frontend:latest
     container_name: simplebooks-frontend
     restart: unless-stopped
     depends_on:

@@ -39,7 +39,7 @@ services:
       retries: 10
 
   backend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.4}
+    image: ghcr.io/sardine-mehico/simplebooks-backend:latest
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
@@ -60,7 +60,7 @@ services:
       AI_BULK_CONCURRENCY: ${AI_BULK_CONCURRENCY:-5}
 
   frontend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.4}
+    image: ghcr.io/sardine-mehico/simplebooks-frontend:latest
     restart: unless-stopped
     depends_on:
       - backend
