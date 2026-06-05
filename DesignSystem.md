@@ -673,6 +673,28 @@ Drive every `font-size` from these tokens and override them once inside the mobi
 | Font sizes | +1px (all) | base | base |
 | Content padding | `p-4` | `p-5`–`p-6` | `p-6` + max-width |
 
+### v0.5 implementation notes — what's actually wired
+
+The spec above is aspirational. This is what's in code as of v0.5, where it diverges and why:
+
+- **Breakpoint boundary is `md` (768px), not `lg`.** Sidebar collapses to a drawer below `md`. The persistent `w-64` shell appears at `md:` and above. This shifts the "stacked content" tier from <1024px to <768px — chosen so iPad-portrait (768px) gets the full shell instead of the drawer.
+- **List tables: horizontal scroll, not stacked cards.** Explicit project choice (carried forward from earlier dev). Lists wrap their grid in an outer `overflow-x-auto` + inner `min-w-[640/700/820]px` so columns keep natural widths on mobile and the user swipes horizontally to reach off-screen columns. Implemented in `list-table.tsx`, `tasks-board.tsx`, `transactions-table.tsx`. The "stacked cards" pattern in the spec above is not used.
+- **Page header chrome stacks.** `PageShell` and `EditPageChrome` use `flex flex-col gap-3 md:flex-row md:items-center md:justify-between` so title sits above its action cluster on mobile, side-by-side on `md:`. Title shrinks (`text-2xl` mobile, `text-[28px]` `md:`); `EditPageChrome` adds `truncate` so long invoice/customer names don't push the action buttons off-screen.
+- **Critical `min-w-0` on the app-shell column.** `app-shell.tsx` wraps the right column in `flex min-w-0 flex-1 flex-col` (and the inner `<main>` also gets `min-w-0`). Without `min-w-0` on a flex column, wide intrinsic content (tables, long lines) widens the parent past the viewport and defeats every `overflow-x-auto` downstream — silently. This was the root cause of the earlier "tables appear to render but won't scroll" bug.
+- **Invoice line items reshape on mobile.** Two-row layout: row 1 description spans full width; row 2 = amount + tax select + delete icon (3 columns). Desktop keeps the 4-col single row (`grid-cols-[1fr_140px_180px_40px]`). Pattern in `invoice-body-editor.tsx`.
+- **CommandBar search hides on mobile.** `hidden md:block` on the search input. The hamburger + brand text + bell fit comfortably; adding the search makes the bell overflow. The aspirational "icon-that-expands" pattern from the spec is not built — search is desktop/tablet-only today.
+- **Touch heights came in earlier.** Button (`h-9 max-sm:h-10`), Input (`h-9 max-sm:h-10`), Select trigger (`h-9 max-sm:h-10`), Textarea (`min-h-[88px] max-sm:min-h-[97px]`) were already in place pre-v0.5. The 48px-mobile target in the cheatsheet is not enforced — controls bump to 40px (`h-10`) on mobile.
+
+### PWA shell
+
+Installable since v0.5.
+
+- **Manifest** at `app/manifest.ts` (Next 15 metadata route → `/manifest.webmanifest`). `display: 'standalone'`, theme color `#323D59` (sidebar navy), background `#EDEEF3` (page bg).
+- **Icons** in `frontend/public/`: `icon.svg` (favicon), `icon-192.png`, `icon-512.png`, `icon-maskable.png` (full-bleed), `apple-icon-180.png`. All hand-rendered from the `$` glyph that anchors the brand wordmark.
+- **Service worker** at `public/sw.js`. Cache strategies: cache-first for `/_next/static/*` and the icon set; network-first for HTML navigation with a cached-shell fallback (so the app opens offline showing the last-good page); never caches `/api/*`. `CACHE_VERSION` is bumped per release so stale caches purge on activate.
+- **Registration** is gated to `production` builds in `components/pwa/sw-register.tsx` — dev never registers, so HMR isn't fought.
+- **iOS Add-to-Home-Screen** uses `apple-icon-180.png` + the `appleWebApp` metadata in `app/layout.tsx`. `viewport.themeColor` paints the status bar bezel.
+
 ---
 
 ## Implementation Notes

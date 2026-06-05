@@ -9,6 +9,8 @@ Conventions used here:
 - "auto" = set by the service or database, not by the user.
 - List/edit pages live under the route shown; both inherit the global layout (sidebar + command bar) automatically.
 
+**Optimistic concurrency on every edit form.** As of v0.4, the six entity edit forms (Billing Companies, Customers, Items, Invoices, Recurring Invoices, Tasks) seed an ETag from the loaded row's `updatedAt`, send it as `If-Match` on PATCH, refresh from the response, and surface "Stale data — reload required" on HTTP 412. The backend's `EtagInterceptor` emits the matching strong ETag on single-resource GETs. See [Architecture.md → Optimistic concurrency](Architecture.md#optimistic-concurrency-etag--if-match) for the full data flow.
+
 ---
 
 ## Billing Companies

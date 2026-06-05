@@ -283,6 +283,24 @@ Each AI-sourced `CategorisationEvent` (`AI_DRAFT` / `AI_APPLIED` / `AI_REJECTED`
 
 There is currently no host-side `npm` workflow, no test suite, and no host linter. The frontend builds via Next.js standalone; the backend builds via the NestJS CLI inside its Dockerfile.
 
+### Optimistic concurrency (ETag / If-Match)
+- Backend: `EtagInterceptor` (global) emits a strong `ETag` header derived from `updatedAt` on single-resource GETs. `assertIfMatch(updatedAt, ifMatch)` in `common/etag.ts` throws `PreconditionFailedException` (HTTP 412) when the client-supplied `If-Match` doesn't match. Wired into PATCH on six entities: invoices, customers, companies, items, recurring rules, tasks. Express's default weak ETag is disabled in `main.ts` via `app.set('etag', false)` so the strong ETag isn't overwritten.
+- Frontend: every edit form (`invoice-form.tsx`, `customer-form.tsx`, `company-form.tsx`, `item-form.tsx`, `recurring-form.tsx`) seeds an `etag` state from `etagFor(initial.updatedAt)`, passes `{ ifMatch: etag }` to `apiClient.patch`, refreshes the ETag from the PATCH response so two consecutive saves in the same session work without a reload, and shows a toast + inline alert ("Stale data — reload required") on 412.
+- `ApiError.isPreconditionFailed` (in `lib/api.ts`) is the convention forms use to branch on the conflict case.
+
+### PWA shell (v0.5)
+- `app/manifest.ts` returns the Web App Manifest (Next 15 `MetadataRoute.Manifest` convention); served at `/manifest.webmanifest`. Entries: name, short_name, description, start_url `/`, display `standalone`, orientation `portrait`, background_color `#EDEEF3`, theme_color `#323D59`.
+- Icons in `public/`: `icon.svg` (favicon), `icon-192.png`, `icon-512.png`, `icon-maskable.png` (full-bleed for Android maskable slot), `apple-icon-180.png` (iOS home screen). Hand-rendered from the `$` glyph at build-prep time — no external image dep.
+- Service worker at `public/sw.js`. Strategies: cache-first for `/_next/static/*`, `/icon*`, `/apple-icon*`, `/manifest.webmanifest`; network-first for HTML navigation with cached-shell fallback for offline; **never** caches `/api/*` (always network-only). `CACHE_VERSION` bump on every release purges stale caches on `activate`.
+- Registration: `components/pwa/sw-register.tsx` runs only when `NODE_ENV === 'production'` and `serviceWorker` is supported. Mounted in `app/layout.tsx`.
+
+### Mobile UI architecture
+- Layout chrome (`CommandBar`, `PageShell`, `EditPageChrome`) stacks header content vertically below `md` (768px) and reverts to horizontal at `md:` and up. Search input in CommandBar is hidden below `md`.
+- `components/layout/app-shell.tsx` applies `min-w-0` to the right flex column so wide content (tables) can't expand the viewport — a flexbox sizing quirk that defeats `overflow-x-auto` if not set.
+- List tables (`list-table.tsx`, `tasks-board.tsx`, `transactions-table.tsx`) wrap their header + rows in a two-layer container: outer `overflow-x-auto` (mobile-only), inner `min-w-[640/700/820]px` so columns keep natural widths and the user scrolls horizontally to see remaining columns. Pattern reverts to no-scroll at `md:`.
+- Invoice line-item rows reshape on mobile: description spans full width row 1, amount + tax select + delete share row 2 in a 3-col grid.
+- `LabeledRow` in `invoice-body-editor.tsx` stacks label above input on mobile, reverts to right-aligned label + 160px input on `md:`.
+
 ### Background jobs
 - **Recurring invoice sweep** — `recurring.processor.ts`, BullMQ `recurring-invoices` queue with repeat pattern `* * * * *`. Timezone read from `Preferences.timezone` once at boot. Generates at most one invoice per rule per sweep; `SEND_DIRECTLY` rules route the generated invoice straight into `InvoiceMailService.send`.
 - **Invoice mail retry queue** — BullMQ `invoice-mail` queue. Triggered by `POST /invoices/:id/send` (manual send) when the synchronous first attempt fails, and by the recurring sweep's `SEND_DIRECTLY` path on the same failure. **3 retry attempts** (so 4 total tries including the synchronous first attempt), **fixed 10-minute backoff** between attempts. On final failure: flips the invoice's `status` to `FAILED_TO_SEND` and fires Telegram + Resend notifications.
