@@ -1,6 +1,6 @@
 # SimpleBooks — VPS deployment guide
 
-End-to-end setup on a fresh Linux VPS to bring up SimpleBooks v0.1 at your own
+End-to-end setup on a fresh Linux VPS to bring up SimpleBooks v0.2 at your own
 domain. Tested against Ubuntu 22.04+ / Debian 12+.
 
 This guide assumes:
@@ -8,7 +8,7 @@ This guide assumes:
 - A VPS reachable on a public IP, with ports **80** and **443** open in the
   firewall.
 - A DNS A-record pointing your chosen domain (e.g.
-  `bookkeeping.officepc.online`) at the VPS IP.
+  `simplebooks.officepc.online`) at the VPS IP.
 - You can SSH in as a user with `sudo`.
 
 The production stack pulls pre-built images from **GitHub Container Registry
@@ -62,17 +62,17 @@ Edit at minimum:
 
 - `POSTGRES_PASSWORD` — pick a long random string. Update it in two places
   (POSTGRES_PASSWORD **and** the password inside DATABASE_URL).
-- `NEXT_PUBLIC_API_URL` — `https://<your-domain>/api`  (keep the `/api`)
-- `PUBLIC_APP_URL` — `https://<your-domain>` (no `/api`)
+- `API_URL` — `https://<your-domain>/api`  (keep the `/api`; injected into HTML at runtime)
+- `PUBLIC_APP_URL` — `https://<your-domain>` (no `/api`; used by backend for invoice links)
 - `TELEGRAM_WEBHOOK_DOMAIN` — your domain (or leave empty to disable bot)
 - `TELEGRAM_WEBHOOK_SECRET` — long random string
 
-Leave `TAG=0.1` for the first deploy.
+Leave `TAG=0.2` for the first deploy.
 
 ## 4. Update the domain in `Caddyfile`
 
 ```bash
-sed -i 's/bookkeeping.officepc.online/your-domain.example/g' Caddyfile
+sed -i 's/simplebooks.officepc.online/your-domain.example/g' Caddyfile
 ```
 
 Caddy auto-provisions Let's Encrypt certificates on first boot — no extra
@@ -183,6 +183,6 @@ changes automatically.
 |---|---|
 | Caddy logs `connection refused` for backend or frontend | Containers still starting; wait ~30s after `up -d` |
 | HTTPS not working / cert error | DNS A-record not pointing at this VPS, or port 80 not open (LE challenge fails) |
-| "View PDF" button goes to `localhost:4000` in browser | `NEXT_PUBLIC_API_URL` was wrong at image build time; for v0.1 the value is baked at build, so you must use the image we built. Override is to mount an entrypoint that runs `next build` with the right env — not recommended; bump the tag instead |
+| "View PDF" button goes to `localhost:4000` in browser | `API_URL` env var unset on the frontend container — set it in `.env` (e.g. `API_URL=https://your-domain.com/api`) and restart. No rebuild required (runtime-injected). |
 | Emails not sending | Configure SMTP via Settings → Mail Configuration (not via env). Then the backend uses what's in the database. |
 | Telegram bot inactive | Token unset OR backend can't reach api.telegram.org (rare; some hosts firewall Telegram IPs) |

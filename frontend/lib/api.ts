@@ -1,15 +1,45 @@
-const isServer = typeof window === "undefined";
-const SERVER_URL = process.env.NEXT_PUBLIC_API_URL_INTERNAL || "http://backend:4000";
-const BROWSER_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+// URLs are resolved at RUNTIME, not baked into the bundle, so the same
+// Docker image works for any domain. The root layout injects
+// `window.__SB_CONFIG__` from process.env on the server; browser reads it.
+//
+// Server-side (SSR inside the frontend container): reads API_URL_INTERNAL
+// straight from process.env at request time, defaulting to the compose
+// service name `http://backend:4000`.
+//
+// Browser-side: reads `window.__SB_CONFIG__.apiUrl` injected by the root
+// layout, defaulting to localhost so `next dev` works out of the box.
 
-export const apiBase = () => (isServer ? SERVER_URL : BROWSER_URL);
+declare global {
+  interface Window {
+    __SB_CONFIG__?: { apiUrl?: string };
+  }
+}
+
+const isServer = typeof window === "undefined";
+
+function serverUrl(): string {
+  return (
+    process.env.API_URL_INTERNAL ||
+    process.env.NEXT_PUBLIC_API_URL_INTERNAL ||
+    "http://backend:4000"
+  );
+}
+
+function browserUrl(): string {
+  if (typeof window !== "undefined" && window.__SB_CONFIG__?.apiUrl) {
+    return window.__SB_CONFIG__.apiUrl;
+  }
+  return "http://localhost:4000";
+}
+
+export const apiBase = () => (isServer ? serverUrl() : browserUrl());
 
 // Use for URLs that will be followed by the user's browser (anchor hrefs,
 // window.open, image src, etc) — never for server-side fetch. `apiBase()`
 // is context-sensitive and during SSR returns the in-compose hostname
 // (`http://backend:4000`), which a customer's browser can't resolve. This
 // helper is always the public, browser-reachable URL.
-export const browserApiBase = () => BROWSER_URL;
+export const browserApiBase = () => browserUrl();
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${apiBase()}${path}`, {

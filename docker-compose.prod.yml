@@ -10,7 +10,7 @@ name: simplebooks
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -28,7 +28,7 @@ services:
     # ports: ["127.0.0.1:55432:5432"]
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -39,7 +39,7 @@ services:
       retries: 10
 
   backend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.1}
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.2}
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
@@ -60,16 +60,16 @@ services:
       AI_BULK_CONCURRENCY: ${AI_BULK_CONCURRENCY:-5}
 
   frontend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.1}
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.2}
     restart: unless-stopped
     depends_on:
       - backend
     environment:
-      # Server-side fetches (inside Docker network)
-      NEXT_PUBLIC_API_URL_INTERNAL: http://backend:4000
-      # Browser-side fetches — bound at build time but read at boot via runtime env
-      # to give better error messages if not set.
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      # Server-side fetches (inside Docker network).
+      API_URL_INTERNAL: http://backend:4000
+      # Browser-facing backend URL — injected into HTML at request time so the
+      # same image works on any domain. Change in .env + restart; no rebuild.
+      API_URL: ${API_URL}
 
   # Reverse proxy. Front the whole stack on :80/:443 and route /api/* to backend.
   # Comment this out if you're terminating TLS elsewhere (e.g. Cloudflare Tunnel,

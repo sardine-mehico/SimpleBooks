@@ -14,7 +14,7 @@ The compose file you want is [`docker-compose.portainer.yml`](./docker-compose.p
 - Nginx Proxy Manager already deployed; the network it uses is named **`npm_proxy`**
   - Verify: in Portainer → **Networks** → confirm `npm_proxy` exists and that the
     NPM container is attached to it
-- DNS A-record for `bookkeeping.officepc.online` pointing at the public IP NPM listens on
+- DNS A-record for `simplebooks.officepc.online` pointing at the public IP NPM listens on
 - Persistent data path on the host: **`/srv/docker/simplebooks`**
 
 ---
@@ -42,7 +42,7 @@ sudo chown -R 999:1000 /srv/docker/simplebooks/redis
 2. **Name:** `simplebooks`
 3. **Build method:** Repository
    - **Repository URL:** `https://github.com/sardine-mehico/SimpleBooks`
-   - **Reference:** `refs/tags/v0.1`
+   - **Reference:** `refs/tags/v0.2`
    - **Compose path:** `docker-compose.portainer.yml`
    - *(Or paste the file contents directly under "Web editor")*
 4. **Environment variables** — add these (everything in the env section maps to
@@ -57,10 +57,10 @@ sudo chown -R 999:1000 /srv/docker/simplebooks/redis
    | `POSTGRES_DB` | `simplebooks` |
    | `DATABASE_URL` | `postgresql://simplebooks:<PASSWORD>@postgres:5432/simplebooks?schema=public` |
    | `REDIS_URL` | `redis://redis:6379` |
-   | `PUBLIC_APP_URL` | `https://bookkeeping.officepc.online` |
-   | `NEXT_PUBLIC_API_URL` | `https://bookkeeping.officepc.online/api` *(reminder only; already baked at image-build time)* |
+   | `PUBLIC_APP_URL` | `https://simplebooks.officepc.online` |
+   | `API_URL` | `https://simplebooks.officepc.online/api` *(runtime-injected; change anytime)* |
    | `TELEGRAM_BOT_TOKEN` | *(optional — leave empty to disable the bot)* |
-   | `TELEGRAM_WEBHOOK_DOMAIN` | `bookkeeping.officepc.online` *(if bot enabled)* |
+   | `TELEGRAM_WEBHOOK_DOMAIN` | `simplebooks.officepc.online` *(if bot enabled)* |
    | `TELEGRAM_WEBHOOK_SECRET` | *(long random string if bot enabled)* |
    | `RESEND_API_KEY` | *(optional)* |
    | `RESEND_FROM` | *(optional)* |
@@ -90,7 +90,7 @@ In NPM → **Hosts → Proxy Hosts → Add Proxy Host**:
 
 | Field | Value |
 |---|---|
-| **Domain Names** | `bookkeeping.officepc.online` |
+| **Domain Names** | `simplebooks.officepc.online` |
 | **Scheme** | `http` |
 | **Forward Hostname / IP** | `simplebooks-frontend` |
 | **Forward Port** | `3000` |
@@ -142,7 +142,7 @@ Save. NPM provisions a cert in ~30 seconds.
 
 ## 4. First-load checks
 
-Open `https://bookkeeping.officepc.online` in your browser:
+Open `https://simplebooks.officepc.online` in your browser:
 
 - Dashboard should load.
 - Open **Settings → Tax Types** → should show GST 10% and No tax (seeded automatically).
@@ -152,7 +152,7 @@ Open `https://bookkeeping.officepc.online` in your browser:
 Direct API ping:
 
 ```bash
-curl -s https://bookkeeping.officepc.online/api/dashboard/summary | head -c 200
+curl -s https://simplebooks.officepc.online/api/dashboard/summary | head -c 200
 # should return JSON like: {"totals":{...},"monthly":[...]}
 ```
 
@@ -208,10 +208,10 @@ cat /srv/docker/simplebooks/backups/20260605.dump \
 
 ## 7. Upgrading
 
-When v0.2 (or later) lands:
+When a new tag lands (e.g. `0.3`):
 
 1. Portainer → Stacks → `simplebooks` → **Editor**
-2. Change `TAG=0.1` to `TAG=0.2` in the environment variables
+2. Change `TAG=0.2` to `TAG=0.3` in the environment variables
 3. Click **Update the stack**
 4. Tick **Re-pull image and redeploy** → Update
 
@@ -227,6 +227,6 @@ automatically.
 | Backend keeps restarting | `POSTGRES_PASSWORD` ≠ password inside `DATABASE_URL`. Fix and redeploy stack. |
 | Frontend loads but every API call fails with HTML 404 | `/api/` custom location not configured (or rewrite missing) in NPM |
 | Cert provisioning fails | A-record not pointing here, OR port 80 not reachable for the LE HTTP-01 challenge |
-| "View PDF" hits `localhost:4000` | You're using an image not built for this domain. The `0.1` image is baked for `bookkeeping.officepc.online`. If your domain differs, build a fork with the right `NEXT_PUBLIC_API_URL`. |
+| "View PDF" hits `localhost:4000` | `API_URL` env var unset on the frontend container — set it in the stack env (e.g. `API_URL=https://your-domain.com/api`) and **Update the stack**. No image rebuild required (runtime-injected). |
 | `simplebooks-backend` can't resolve `postgres` | Ensure backend has the `internal` network attached (default in the compose) |
 | `simplebooks-backend` can't resolve `simplebooks-backend` from NPM | Ensure the `npm_proxy` external network exists and both NPM and the backend/frontend are on it |

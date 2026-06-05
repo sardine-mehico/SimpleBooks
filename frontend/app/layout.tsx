@@ -12,6 +12,11 @@ import {
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
 import { Toaster } from "@/components/ui/toaster";
+import { readRuntimeConfig } from "@/lib/runtime-config";
+
+// Force the root layout to render fresh on every request so process.env reads
+// pick up runtime values from the container (not build-time inlined).
+export const dynamic = "force-dynamic";
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
@@ -48,8 +53,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     lora.variable,
     plusJakarta.variable,
   ].join(" ");
+  const cfg = readRuntimeConfig();
   return (
     <html lang="en" className={fontVars}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__SB_CONFIG__=${JSON.stringify({ apiUrl: cfg.apiUrl })};`,
+          }}
+        />
+      </head>
       <body className="font-sans">
         <AppShell>{children}</AppShell>
         <Toaster />

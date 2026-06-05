@@ -10,7 +10,7 @@
 #   - External network: npm_proxy  (the network NPM uses; must already exist)
 #
 #   - Reverse proxy: not in this compose. Configure NPM with two locations:
-#       1. Proxy host bookkeeping.officepc.online
+#       1. Proxy host simplebooks.officepc.online
 #          Scheme http, Forward Hostname/IP: simplebooks-frontend, Port: 3000
 #          ✓ Block Common Exploits, ✓ Websockets Support
 #          (Frontend serves everything except /api/*)
@@ -35,7 +35,7 @@ name: simplebooks
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     container_name: simplebooks-postgres
     restart: unless-stopped
     environment:
@@ -54,7 +54,7 @@ services:
     # NOT exposed publicly. Use the Portainer console for ad-hoc psql.
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: simplebooks-redis
     restart: unless-stopped
     volumes:
@@ -68,7 +68,7 @@ services:
       - internal
 
   backend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.1}
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.2}
     container_name: simplebooks-backend
     restart: unless-stopped
     depends_on:
@@ -93,17 +93,18 @@ services:
       - npm_proxy   # NPM proxies /api/* here
 
   frontend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.1}
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.2}
     container_name: simplebooks-frontend
     restart: unless-stopped
     depends_on:
       - backend
     environment:
-      # Server-side fetches use the in-network hostname; browser-side URL is
-      # baked into the JS bundle at build time (set on the image to
-      # https://bookkeeping.officepc.online/api). If you change domain, you
-      # need a new image build.
-      NEXT_PUBLIC_API_URL_INTERNAL: http://simplebooks-backend:4000
+      # Server-side fetches (in-container hostname).
+      API_URL_INTERNAL: http://simplebooks-backend:4000
+      # Browser-facing backend URL — read at runtime from this env var and
+      # injected into the HTML at request time. Change here + redeploy stack;
+      # no image rebuild needed for a domain change.
+      API_URL: ${API_URL}
     networks:
       - internal    # talks to backend (server-side renders)
       - npm_proxy   # NPM proxies / here

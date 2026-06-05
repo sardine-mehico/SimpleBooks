@@ -5,8 +5,8 @@ RUN npm install --no-audit --no-fund --legacy-peer-deps
 
 FROM node:22-alpine AS build
 WORKDIR /app
-ARG NEXT_PUBLIC_API_URL=http://localhost:4000
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# URLs are resolved at RUNTIME by lib/runtime-config.ts + the root layout.
+# Nothing public is baked here — same image works on any domain.
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
