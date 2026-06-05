@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateItemDto, UpdateItemDto } from './dto';
+import { assertIfMatch } from '../common/etag';
 
 @Injectable()
 export class ItemsService {
@@ -20,8 +21,9 @@ export class ItemsService {
     return this.prisma.item.create({ data: { ...data, isActive: data.isActive ?? true } });
   }
 
-  async update(id: string, data: UpdateItemDto) {
-    await this.get(id);
+  async update(id: string, data: UpdateItemDto, ifMatch?: string) {
+    const existing = await this.get(id);
+    assertIfMatch(existing.updatedAt, ifMatch);
     return this.prisma.item.update({ where: { id }, data });
   }
 

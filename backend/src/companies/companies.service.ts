@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompanyDto, UpdateCompanyDto } from './dto';
+import { assertIfMatch } from '../common/etag';
 
 @Injectable()
 export class CompaniesService {
@@ -54,8 +55,9 @@ export class CompaniesService {
     });
   }
 
-  async update(id: string, data: UpdateCompanyDto) {
+  async update(id: string, data: UpdateCompanyDto, ifMatch?: string) {
     const existing = await this.get(id);
+    assertIfMatch(existing.updatedAt, ifMatch);
     const patch: Record<string, unknown> = { ...data };
     // Auto-stamp deactivatedAt when isActive transitions true → false.
     // Clear it when re-activating.

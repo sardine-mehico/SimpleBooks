@@ -43,7 +43,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - /srv/docker/simplebooks/postgres:/var/lib/postgresql/data
+      - /srv/docker/simplebooks/postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -68,7 +68,7 @@ services:
       - internal
 
   backend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.2}
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.3}
     container_name: simplebooks-backend
     restart: unless-stopped
     depends_on:
@@ -93,7 +93,7 @@ services:
       - npm_proxy   # NPM proxies /api/* here
 
   frontend:
-    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.2}
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.3}
     container_name: simplebooks-frontend
     restart: unless-stopped
     depends_on:

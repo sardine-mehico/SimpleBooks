@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { PDFDocument } from 'pdf-lib';
 import { InvoicesService } from './invoices.service';
@@ -32,6 +32,25 @@ export class InvoicesController {
       return this.invoices.list({ openOnly: openOnly === 'true', search });
     }
     return this.invoices.list();
+  }
+
+  // Trash endpoints — literal paths must come BEFORE the `:id` routes so
+  // Nest doesn't try to match `:id = "trash"`.
+  @Get('trash')
+  listTrash() {
+    return this.invoices.listTrash();
+  }
+
+  @Post(':id/restore')
+  @HttpCode(200)
+  restore(@Param('id') id: string) {
+    return this.invoices.restore(id);
+  }
+
+  @Delete(':id/purge')
+  @HttpCode(200)
+  purge(@Param('id') id: string) {
+    return this.invoices.purge(id);
   }
 
   // Concatenate PDFs for a set of invoices into a single downloadable file.
@@ -91,7 +110,13 @@ export class InvoicesController {
 
   @Get(':id') get(@Param('id') id: string) { return this.invoices.get(id); }
   @Post() create(@Body() dto: CreateInvoiceDto) { return this.invoices.create(dto); }
-  @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateInvoiceDto) { return this.invoices.update(id, dto); }
+  @Patch(':id') update(
+    @Param('id') id: string,
+    @Body() dto: UpdateInvoiceDto,
+    @Headers('if-match') ifMatch?: string,
+  ) {
+    return this.invoices.update(id, dto, ifMatch);
+  }
   @Delete(':id') remove(@Param('id') id: string, @Body() dto: DeleteInvoiceDto) { return this.invoices.remove(id, dto.reason); }
 
   // Manual "Send Invoice" trigger. Always returns 2xx — the body shape tells

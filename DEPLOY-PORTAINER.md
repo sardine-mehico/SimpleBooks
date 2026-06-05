@@ -42,7 +42,7 @@ sudo chown -R 999:1000 /srv/docker/simplebooks/redis
 2. **Name:** `simplebooks`
 3. **Build method:** Repository
    - **Repository URL:** `https://github.com/sardine-mehico/SimpleBooks`
-   - **Reference:** `refs/tags/v0.2`
+   - **Reference:** `refs/tags/v0.3`
    - **Compose path:** `docker-compose.portainer.yml`
    - *(Or paste the file contents directly under "Web editor")*
 4. **Environment variables** — add these (everything in the env section maps to
@@ -211,12 +211,48 @@ cat /srv/docker/simplebooks/backups/20260605.dump \
 When a new tag lands (e.g. `0.3`):
 
 1. Portainer → Stacks → `simplebooks` → **Editor**
-2. Change `TAG=0.2` to `TAG=0.3` in the environment variables
+2. Change `TAG=0.3` to `TAG=0.3` in the environment variables
 3. Click **Update the stack**
 4. Tick **Re-pull image and redeploy** → Update
 
 Backend boot will run `prisma db push` and apply any additive schema changes
 automatically.
+
+### One-time migration: v0.2 → v0.3 (only if you actually ran pg 17 data)
+
+v0.3 fixes a postgres-volume bug introduced in v0.2: the mount path was
+`/var/lib/postgresql/data` (pg ≤17 convention) but the pg 18 image expects
+`/var/lib/postgresql` (parent dir, with PG writing data into a version-specific
+subdir). If your `/srv/docker/simplebooks/postgres` was populated by pg 17,
+the layout has to be reinitialised. Steps:
+
+```bash
+# 1. SSH to the host. Take a logical backup first.
+docker exec simplebooks-postgres pg_dump -U simplebooks -F c simplebooks \
+  > /srv/docker/simplebooks/backups/pre-v0.3.dump
+
+# 2. Stop the stack (Portainer → Stacks → simplebooks → Stop).
+
+# 3. Move the old pg 17 datadir out of the way.
+sudo mv /srv/docker/simplebooks/postgres /srv/docker/simplebooks/postgres-v0.2.bak
+sudo mkdir -p /srv/docker/simplebooks/postgres
+sudo chown -R 999:999 /srv/docker/simplebooks/postgres
+
+# 4. In Portainer, edit the stack to TAG=0.3 and Update (pulls the new compose
+#    which now mounts /var/lib/postgresql).
+
+# 5. The stack comes up with an empty pg 18 cluster. Restore from the backup:
+cat /srv/docker/simplebooks/backups/pre-v0.3.dump \
+  | docker exec -i simplebooks-postgres \
+    pg_restore -U simplebooks -d simplebooks --clean --if-exists
+
+# 6. Once verified working, remove the v0.2 backup directory:
+sudo rm -rf /srv/docker/simplebooks/postgres-v0.2.bak
+```
+
+If you deployed v0.2 fresh and the postgres container was running pg 18 the
+whole time (i.e. the empty mount let pg 18 initialise its own layout), you
+don't need this migration — just bump TAG and update.
 
 ---
 

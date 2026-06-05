@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PreferencesService } from '../preferences/preferences.service';
 import { RECURRING_QUEUE } from './recurring.constants';
 import { CreateRecurringRuleDto, UpdateRecurringRuleDto } from './dto';
+import { assertIfMatch } from '../common/etag';
 
 @Injectable()
 export class RecurringService implements OnModuleInit {
@@ -108,8 +109,9 @@ export class RecurringService implements OnModuleInit {
     });
   }
 
-  async update(id: string, data: UpdateRecurringRuleDto) {
+  async update(id: string, data: UpdateRecurringRuleDto, ifMatch?: string) {
     const existing = await this.get(id);
+    assertIfMatch(existing.updatedAt, ifMatch);
 
     // Re-derive scheduleName if customer or schedule changed.
     let scheduleName: string | undefined;

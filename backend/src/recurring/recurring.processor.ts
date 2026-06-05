@@ -49,6 +49,13 @@ export class RecurringProcessor extends WorkerHost {
 
   async process(_job: Job) {
     const now = new Date();
+    // Daily trash sweep — runs cheaply on every tick (no-op when no rows
+    // qualify); 30-day cutoff lives in InvoicesService.sweepTrash.
+    try {
+      await this.invoices.sweepTrash();
+    } catch (e) {
+      this.log.warn(`Trash sweep failed (will retry next tick): ${(e as Error).message}`);
+    }
     const due = await this.prisma.recurringRule.findMany({
       where: { active: true, nextRunAt: { lte: now } },
       include: {

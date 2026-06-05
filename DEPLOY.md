@@ -67,7 +67,7 @@ Edit at minimum:
 - `TELEGRAM_WEBHOOK_DOMAIN` — your domain (or leave empty to disable bot)
 - `TELEGRAM_WEBHOOK_SECRET` — long random string
 
-Leave `TAG=0.2` for the first deploy.
+Leave `TAG=0.3` for the first deploy.
 
 ## 4. Update the domain in `Caddyfile`
 

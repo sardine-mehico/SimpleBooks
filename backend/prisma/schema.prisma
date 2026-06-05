@@ -38,6 +38,10 @@ model Customer {
   isActive         Boolean       @default(true)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
+  // Soft-delete. Set to the time of DELETE; a daily sweep hard-deletes after
+  // 30 days. NULL = live row. List/get queries filter out non-null.
+  deletedAt        DateTime?
+  @@index([deletedAt])
 
   billingCompany BillingCompany? @relation(fields: [billingCompanyId], references: [id], onDelete: SetNull)
   invoices       Invoice[]
@@ -132,6 +136,10 @@ model Invoice {
   terms            String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
+  // Soft-delete. Set to the time of DELETE; a daily sweep hard-deletes after
+  // 30 days. NULL = live row. List/get queries filter out non-null.
+  deletedAt        DateTime?
+  @@index([deletedAt])
 
   customer        Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
   billingCompany  BillingCompany? @relation(fields: [billingCompanyId], references: [id], onDelete: SetNull)

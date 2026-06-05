@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto, LineItemDto, UpdateInvoiceDto } from './dto';
 import { applyDynamicFields } from '../common/dynamic-fields';
+import { assertIfMatch } from '../common/etag';
 
 const PAYMENT_TERM_DAYS: Record<PaymentTerms, number> = {
   IN_28_DAYS: 28,
@@ -47,7 +48,7 @@ export class InvoicesService {
   constructor(private prisma: PrismaService) {}
 
   list(opts?: { openOnly?: boolean; search?: string }) {
-    const where: any = {};
+    const where: any = { deletedAt: null };
     if (opts?.openOnly) {
       where.status = { in: ['SENT', 'VIEWED', 'PARTIAL_PAID'] };
     }
@@ -85,7 +86,7 @@ export class InvoicesService {
         },
       },
     });
-    if (!row) throw new NotFoundException();
+    if (!row || row.deletedAt) throw new NotFoundException();
     return row;
   }
 
@@ -197,8 +198,9 @@ export class InvoicesService {
     }));
   }
 
-  async update(id: string, data: UpdateInvoiceDto) {
-    await this.get(id);
+  async update(id: string, data: UpdateInvoiceDto, ifMatch?: string) {
+    const existing = await this.get(id);
+    assertIfMatch(existing.updatedAt, ifMatch);
     if (data.status && !MANUAL_STATUSES.has(data.status)) {
       throw new BadRequestException(
         `Status '${data.status}' is derived from allocations or send activity and cannot be set manually. Use POST /invoices/:id/void to void; PAID/PARTIAL_PAID/SENT/VIEWED are managed by the payments and send pipelines.`,
@@ -263,14 +265,68 @@ export class InvoicesService {
 
   async remove(id: string, reason: string) {
     const inv = await this.get(id);
-    // Reason is captured in the destructive-confirmation modal. The row is
-    // about to disappear so the only place we can keep the audit trail is
-    // the server log — grep for "Invoice deleted" if you need to retrace.
+    // Soft-delete: stamp deletedAt; lists/get filter rows with non-null
+    // deletedAt out. The reason is captured in the destructive-confirmation
+    // modal and goes to the server log so the audit trail survives even after
+    // the 30-day sweep hard-deletes the row.
     this.log.warn(
-      `Invoice deleted: INV-${inv.invoiceNumber} (id=${id}) — reason: ${reason}`,
+      `Invoice moved to trash: INV-${inv.invoiceNumber} (id=${id}) — reason: ${reason}`,
     );
+    await this.prisma.invoice.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  // List rows in the trash. UI surfaces these on /invoices/trash with restore
+  // and "Empty trash" actions.
+  async listTrash() {
+    return this.prisma.invoice.findMany({
+      where: { deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
+      include: { customer: true, billingCompany: true },
+    });
+  }
+
+  // Restore a soft-deleted invoice. Idempotent on rows already restored.
+  async restore(id: string) {
+    const row = await this.prisma.invoice.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException();
+    await this.prisma.invoice.update({
+      where: { id },
+      data: { deletedAt: null },
+    });
+    this.log.log(`Invoice restored: INV-${row.invoiceNumber} (id=${id})`);
+    return { ok: true };
+  }
+
+  // Hard-delete (irreversible). Only allowed on already-trashed rows so a
+  // user can't accidentally bypass the soft-delete safety.
+  async purge(id: string) {
+    const row = await this.prisma.invoice.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException();
+    if (!row.deletedAt) {
+      throw new BadRequestException(
+        'Invoice must be in the trash before it can be purged. Use DELETE /invoices/:id first.',
+      );
+    }
+    this.log.warn(`Invoice purged: INV-${row.invoiceNumber} (id=${id})`);
     await this.prisma.invoice.delete({ where: { id } });
     return { ok: true };
+  }
+
+  // Sweep — hard-delete rows soft-deleted ≥ 30 days ago. Called by the
+  // recurring sweep so it runs daily without needing a separate cron.
+  async sweepTrash(): Promise<number> {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const result = await this.prisma.invoice.deleteMany({
+      where: { deletedAt: { lt: cutoff } },
+    });
+    if (result.count > 0) {
+      this.log.log(`Trash sweep: hard-deleted ${result.count} invoice(s) older than 30 days`);
+    }
+    return result.count;
   }
 
   // Duplicate an existing invoice into a new DRAFT. The clone gets a fresh

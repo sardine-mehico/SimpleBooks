@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TaskStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto, UpdateTaskDto } from './dto';
+import { assertIfMatch } from '../common/etag';
 
 @Injectable()
 export class TasksService {
@@ -32,8 +33,9 @@ export class TasksService {
     });
   }
 
-  async update(id: string, data: UpdateTaskDto) {
+  async update(id: string, data: UpdateTaskDto, ifMatch?: string) {
     const existing = await this.get(id);
+    assertIfMatch(existing.updatedAt, ifMatch);
     const patch: Prisma.TaskUpdateInput = {
       title: data.title,
       description: data.description,
