@@ -1,0 +1,120 @@
+# Portainer + Nginx Proxy Manager compose for SimpleBooks v0.1.
+#
+# Deploy as a Stack in Portainer. The stack pulls images from GHCR (no build).
+#
+#   - Host path for persistent data: /srv/docker/simplebooks
+#       /srv/docker/simplebooks/postgres
+#       /srv/docker/simplebooks/redis
+#       /srv/docker/simplebooks/backups   (created by you for pg_dump if you wish)
+#
+#   - External network: npm_proxy  (the network NPM uses; must already exist)
+#
+#   - Reverse proxy: not in this compose. Configure NPM with two locations:
+#       1. Proxy host bookkeeping.officepc.online
+#          Scheme http, Forward Hostname/IP: simplebooks-frontend, Port: 3000
+#          ✓ Block Common Exploits, ✓ Websockets Support
+#          (Frontend serves everything except /api/*)
+#       2. Custom Location  /api/
+#          Scheme http, Forward Hostname/IP: simplebooks-backend, Port: 4000
+#          Custom Nginx Config:
+#               proxy_set_header Host $host;
+#               proxy_set_header X-Real-IP $remote_addr;
+#               proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#               proxy_set_header X-Forwarded-Proto $scheme;
+#               # NPM by default strips the leading /api when forwarding to a custom
+#               # location. The backend listens at the root, which is what we want,
+#               # so the routes /api/companies -> backend /companies all match.
+#
+# Bring up:
+#   sudo mkdir -p /srv/docker/simplebooks/{postgres,redis,backups}
+#   sudo chown -R 999:999 /srv/docker/simplebooks/postgres   # postgres uid in image
+#   sudo chown -R 999:1000 /srv/docker/simplebooks/redis     # redis uid
+#   # In Portainer: Stacks → Add stack → paste this file → set env vars → Deploy
+
+name: simplebooks
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: simplebooks-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - /srv/docker/simplebooks/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+    # NOT exposed publicly. Use the Portainer console for ad-hoc psql.
+
+  redis:
+    image: redis:7-alpine
+    container_name: simplebooks-redis
+    restart: unless-stopped
+    volumes:
+      - /srv/docker/simplebooks/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  backend:
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.1}
+    container_name: simplebooks-backend
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      PORT: 4000
+      NODE_ENV: production
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_DOMAIN: ${TELEGRAM_WEBHOOK_DOMAIN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      AI_TIMEOUT_INLINE_MS: ${AI_TIMEOUT_INLINE_MS:-20000}
+      AI_TIMEOUT_BULK_MS: ${AI_TIMEOUT_BULK_MS:-60000}
+      AI_BULK_CONCURRENCY: ${AI_BULK_CONCURRENCY:-5}
+    networks:
+      - internal    # talks to postgres + redis
+      - npm_proxy   # NPM proxies /api/* here
+
+  frontend:
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.1}
+    container_name: simplebooks-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # Server-side fetches use the in-network hostname; browser-side URL is
+      # baked into the JS bundle at build time (set on the image to
+      # https://bookkeeping.officepc.online/api). If you change domain, you
+      # need a new image build.
+      NEXT_PUBLIC_API_URL_INTERNAL: http://simplebooks-backend:4000
+    networks:
+      - internal    # talks to backend (server-side renders)
+      - npm_proxy   # NPM proxies / here
+
+networks:
+  # Internal network — postgres + redis live here only.
+  internal:
+    name: simplebooks_internal
+    driver: bridge
+
+  # NPM's network. Must already exist; the NPM container itself runs on it.
+  npm_proxy:
+    name: npm_proxy
+    external: true
