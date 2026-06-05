@@ -25,3 +25,7 @@ temp/
 *.swp
 *.swo
 backups/
+
+# User-private working files (per project owner: do not commit)
+Bank Data/
+designsystem2.md
