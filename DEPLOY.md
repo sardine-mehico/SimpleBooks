@@ -1,6 +1,6 @@
 # SimpleBooks — VPS deployment guide
 
-End-to-end setup on a fresh Linux VPS to bring up SimpleBooks v0.2 at your own
+End-to-end setup on a fresh Linux VPS to bring up SimpleBooks v0.3 at your own
 domain. Tested against Ubuntu 22.04+ / Debian 12+.
 
 This guide assumes:
@@ -166,8 +166,8 @@ cat /var/backups/simplebooks/20260605.dump \
 When a new tag is published:
 
 ```bash
-# In .env, change TAG to the new version
-TAG=0.2
+# In .env, change TAG to the new version (e.g. 0.4)
+TAG=0.4
 
 # Then:
 docker compose -f docker-compose.prod.yml --env-file .env pull

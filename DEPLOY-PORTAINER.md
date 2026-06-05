@@ -50,7 +50,7 @@ sudo chown -R 999:1000 /srv/docker/simplebooks/redis
 
    | Variable | Value |
    |---|---|
-   | `TAG` | `0.1` |
+   | `TAG` | `0.3` |
    | `IMAGE_OWNER` | `sardine-mehico` (or your fork) |
    | `POSTGRES_USER` | `simplebooks` |
    | `POSTGRES_PASSWORD` | *(long random string)* |
@@ -208,10 +208,10 @@ cat /srv/docker/simplebooks/backups/20260605.dump \
 
 ## 7. Upgrading
 
-When a new tag lands (e.g. `0.3`):
+When a new tag lands (e.g. `0.4`):
 
 1. Portainer → Stacks → `simplebooks` → **Editor**
-2. Change `TAG=0.3` to `TAG=0.3` in the environment variables
+2. Change `TAG=0.3` to the new version (e.g. `TAG=0.4`) in the environment variables
 3. Click **Update the stack**
 4. Tick **Re-pull image and redeploy** → Update
 
