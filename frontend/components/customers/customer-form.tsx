@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { EditPageChrome } from "@/components/layout/edit-page-chrome";
-import { apiClient } from "@/lib/api";
+import { ApiError, apiClient, etagFor } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 import { PAYMENT_TERMS, type Customer, type BillingCompany, type PaymentTerms } from "@/lib/types";
 
@@ -27,6 +28,9 @@ export function CustomerForm({ initial, companies }: { initial?: Customer; compa
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [etag, setEtag] = useState<string | undefined>(
+    initial ? etagFor((initial as any).updatedAt) : undefined,
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,12 +51,27 @@ export function CustomerForm({ initial, companies }: { initial?: Customer; compa
       isActive,
     };
     try {
-      if (initial) await apiClient.patch(`/customers/${initial.id}`, payload);
-      else await apiClient.post("/customers", payload);
+      if (initial) {
+        const updated = await apiClient.patch<{ updatedAt: string }>(
+          `/customers/${initial.id}`,
+          payload,
+          { ifMatch: etag },
+        );
+        setEtag(etagFor(updated.updatedAt));
+      } else {
+        await apiClient.post("/customers", payload);
+      }
       router.push("/customers");
       router.refresh();
     } catch (e: any) {
-      setError(parseError(e?.message));
+      if (e instanceof ApiError && e.isPreconditionFailed) {
+        toast.error(
+          "This customer was modified by someone else. Reload the page to see the latest before re-saving.",
+        );
+        setError("Stale data — reload required.");
+      } else {
+        setError(parseError(e?.message));
+      }
     } finally {
       setSaving(false);
     }

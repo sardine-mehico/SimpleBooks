@@ -10,8 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EditPageChrome } from "@/components/layout/edit-page-chrome";
-import { apiClient } from "@/lib/api";
+import { ApiError, apiClient, etagFor } from "@/lib/api";
 import { parseApiError } from "@/lib/api-errors";
+import { toast } from "@/lib/toast";
 import {
   SENDING_OPTIONS,
   type BillingCompany,
@@ -94,6 +95,9 @@ export function RecurringForm({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [etag, setEtag] = useState<string | undefined>(
+    initial ? etagFor((initial as any).updatedAt) : undefined,
+  );
 
   // Derived Schedule Name — re-runs whenever customer or schedule changes.
   const scheduleName = useMemo(() => {
@@ -153,12 +157,27 @@ export function RecurringForm({
       })),
     };
     try {
-      if (initial) await apiClient.patch(`/recurring/${initial.id}`, payload);
-      else await apiClient.post("/recurring", payload);
+      if (initial) {
+        const updated = await apiClient.patch<{ updatedAt: string }>(
+          `/recurring/${initial.id}`,
+          payload,
+          { ifMatch: etag },
+        );
+        setEtag(etagFor(updated.updatedAt));
+      } else {
+        await apiClient.post("/recurring", payload);
+      }
       router.push("/recurring");
       router.refresh();
     } catch (e: any) {
-      setError(parseApiError(e?.message));
+      if (e instanceof ApiError && e.isPreconditionFailed) {
+        toast.error(
+          "This recurring rule was modified by someone else. Reload before re-saving.",
+        );
+        setError("Stale data — reload required.");
+      } else {
+        setError(parseApiError(e?.message));
+      }
     } finally {
       setSaving(false);
     }

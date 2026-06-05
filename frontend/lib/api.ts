@@ -41,6 +41,20 @@ export const apiBase = () => (isServer ? serverUrl() : browserUrl());
 // helper is always the public, browser-reachable URL.
 export const browserApiBase = () => browserUrl();
 
+// Structured error so callers can branch on status (esp. 412 Precondition
+// Failed for ETag conflicts). The legacy `Error` shape is preserved via the
+// message so existing `e?.message`-based catches still work.
+export class ApiError extends Error {
+  constructor(public status: number, public path: string, public body: string) {
+    super(`${status} ${path}: ${body}`);
+    this.name = "ApiError";
+  }
+  // Convenience for the most common case in forms.
+  get isPreconditionFailed() {
+    return this.status === 412;
+  }
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${apiBase()}${path}`, {
     ...init,
@@ -49,17 +63,32 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${path}: ${body}`);
+    throw new ApiError(res.status, path, body);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
+// PATCH/PUT options bag — `ifMatch` is the ETag captured from the form's
+// initial load (or the previous successful PATCH response). When set, the
+// server enforces optimistic concurrency; mismatch yields a 412 ApiError.
+export interface MutateOpts {
+  ifMatch?: string;
+}
+
+function withIfMatch(init: RequestInit, opts?: MutateOpts): RequestInit {
+  if (!opts?.ifMatch) return init;
+  return { ...init, headers: { ...init.headers, "If-Match": opts.ifMatch } };
+}
+
 export const apiClient = {
   get: <T,>(path: string) => api<T>(path),
-  post: <T,>(path: string, body: any) => api<T>(path, { method: "POST", body: JSON.stringify(body) }),
-  put: <T,>(path: string, body: any) => api<T>(path, { method: "PUT", body: JSON.stringify(body) }),
-  patch: <T,>(path: string, body: any) => api<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+  post: <T,>(path: string, body: any) =>
+    api<T>(path, { method: "POST", body: JSON.stringify(body) }),
+  put: <T,>(path: string, body: any, opts?: MutateOpts) =>
+    api<T>(path, withIfMatch({ method: "PUT", body: JSON.stringify(body) }, opts)),
+  patch: <T,>(path: string, body: any, opts?: MutateOpts) =>
+    api<T>(path, withIfMatch({ method: "PATCH", body: JSON.stringify(body) }, opts)),
   // DELETE accepts an optional body — used by the destructive-confirmation
   // flow that captures a "reason to delete" alongside the request.
   delete: <T,>(path: string, body?: any) =>
@@ -69,13 +98,21 @@ export const apiClient = {
     }),
 };
 
+// Helper: build an ETag value from an entity's updatedAt. The backend's
+// EtagInterceptor uses the same shape so the strings line up exactly.
+export function etagFor(updatedAt: string | Date | null | undefined): string | undefined {
+  if (!updatedAt) return undefined;
+  const iso = typeof updatedAt === "string" ? updatedAt : updatedAt.toISOString();
+  return `"${iso}"`;
+}
+
 // Multipart helper for CSV import endpoints. `formData` is constructed by the
 // caller (browser-side only — these endpoints are never hit during SSR).
 export async function apiMultipart<T>(path: string, formData: FormData): Promise<T> {
   const res = await fetch(`${apiBase()}${path}`, { method: 'POST', body: formData, cache: 'no-store' });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`${res.status} ${path}: ${body}`);
+    throw new ApiError(res.status, path, body);
   }
   return res.json() as Promise<T>;
 }

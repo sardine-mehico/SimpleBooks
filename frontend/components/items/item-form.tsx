@@ -10,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { EditPageChrome } from "@/components/layout/edit-page-chrome";
-import { apiClient } from "@/lib/api";
+import { ApiError, apiClient, etagFor } from "@/lib/api";
 import { parseApiError } from "@/lib/api-errors";
+import { toast } from "@/lib/toast";
 import type { Item } from "@/lib/types";
 
 export function ItemForm({ initial }: { initial?: Item }) {
@@ -22,6 +23,9 @@ export function ItemForm({ initial }: { initial?: Item }) {
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [etag, setEtag] = useState<string | undefined>(
+    initial ? etagFor((initial as any).updatedAt) : undefined,
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,12 +33,25 @@ export function ItemForm({ initial }: { initial?: Item }) {
     setSaving(true);
     const payload = { name, unitPrice: Number(unitPrice), description: description || undefined, isActive };
     try {
-      if (initial) await apiClient.patch(`/items/${initial.id}`, payload);
-      else await apiClient.post("/items", payload);
+      if (initial) {
+        const updated = await apiClient.patch<{ updatedAt: string }>(
+          `/items/${initial.id}`,
+          payload,
+          { ifMatch: etag },
+        );
+        setEtag(etagFor(updated.updatedAt));
+      } else {
+        await apiClient.post("/items", payload);
+      }
       router.push("/items");
       router.refresh();
     } catch (e: any) {
-      setError(parseApiError(e?.message));
+      if (e instanceof ApiError && e.isPreconditionFailed) {
+        toast.error("This item was modified by someone else. Reload before re-saving.");
+        setError("Stale data — reload required.");
+      } else {
+        setError(parseApiError(e?.message));
+      }
     } finally {
       setSaving(false);
     }

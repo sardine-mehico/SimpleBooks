@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, Copy, FileText, Menu, Send, Trash2 } from "lucide-react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { apiBase, apiClient } from "@/lib/api";
+import { ApiError, apiBase, apiClient, etagFor } from "@/lib/api";
 import { parseApiError } from "@/lib/api-errors";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { EditPageChrome } from "@/components/layout/edit-page-chrome";
 import {
@@ -140,6 +141,12 @@ export function InvoiceForm({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // ETag for optimistic concurrency. Initialised from the loaded entity's
+  // updatedAt; refreshed from every successful PATCH response so subsequent
+  // saves stay in lock-step with the server's view.
+  const [etag, setEtag] = useState<string | undefined>(
+    initial ? etagFor((initial as any).updatedAt) : undefined,
+  );
   const [sendOpen, setSendOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -208,12 +215,27 @@ export function InvoiceForm({
       })),
     };
     try {
-      if (initial) await apiClient.patch(`/invoices/${initial.id}`, payload);
-      else await apiClient.post("/invoices", payload);
+      if (initial) {
+        const updated = await apiClient.patch<{ updatedAt: string }>(
+          `/invoices/${initial.id}`,
+          payload,
+          { ifMatch: etag },
+        );
+        setEtag(etagFor(updated.updatedAt));
+      } else {
+        await apiClient.post("/invoices", payload);
+      }
       router.push("/invoices");
       router.refresh();
     } catch (e: any) {
-      setError(parseApiError(e?.message));
+      if (e instanceof ApiError && e.isPreconditionFailed) {
+        toast.error(
+          "This invoice was modified by someone else. Reload the page to see the latest changes before re-saving.",
+        );
+        setError("Stale data — reload required.");
+      } else {
+        setError(parseApiError(e?.message));
+      }
     } finally {
       setSaving(false);
     }

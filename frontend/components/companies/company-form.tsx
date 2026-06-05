@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Trash2 } from "lucide-react";
 import { EditPageChrome } from "@/components/layout/edit-page-chrome";
-import { apiClient } from "@/lib/api";
+import { ApiError, apiClient, etagFor } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { EMAIL_ENCRYPTIONS, type BillingCompany, type EmailEncryption, type SendVia } from "@/lib/types";
 import { TestEmailDialog } from "@/components/mail/test-email-dialog";
 
@@ -48,6 +49,9 @@ export function CompanyForm({ initial }: { initial?: BillingCompany }) {
   const [smtpPassword, setSmtpPassword] = useState(initial?.customSmtpPassword ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [etag, setEtag] = useState<string | undefined>(
+    initial ? etagFor((initial as any).updatedAt) : undefined,
+  );
   const [testOpen, setTestOpen] = useState(false);
 
   const isCustom = sendVia === "CUSTOM_SMTP";
@@ -82,12 +86,27 @@ export function CompanyForm({ initial }: { initial?: BillingCompany }) {
       customSmtpPassword: isCustom ? smtpPassword || undefined : undefined,
     };
     try {
-      if (initial) await apiClient.patch(`/companies/${initial.id}`, payload);
-      else await apiClient.post("/companies", payload);
+      if (initial) {
+        const updated = await apiClient.patch<{ updatedAt: string }>(
+          `/companies/${initial.id}`,
+          payload,
+          { ifMatch: etag },
+        );
+        setEtag(etagFor(updated.updatedAt));
+      } else {
+        await apiClient.post("/companies", payload);
+      }
       router.push("/companies");
       router.refresh();
     } catch (e: any) {
-      setError(parseError(e?.message));
+      if (e instanceof ApiError && e.isPreconditionFailed) {
+        toast.error(
+          "This billing company was modified by someone else. Reload before re-saving.",
+        );
+        setError("Stale data — reload required.");
+      } else {
+        setError(parseError(e?.message));
+      }
     } finally {
       setSaving(false);
     }
