@@ -11,6 +11,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
+import { Toaster } from "@/components/ui/toaster";
 
 const notoSans = Noto_Sans({
   subsets: ["latin"],
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={fontVars}>
       <body className="font-sans">
         <AppShell>{children}</AppShell>
+        <Toaster />
       </body>
     </html>
   );

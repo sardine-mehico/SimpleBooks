@@ -44,6 +44,7 @@ model Customer {
   recurringRules RecurringRule[]
   tags           Tag[]
   categories     Category[]
+  linkedTransactions Transaction[] @relation("LinkedTransactions")
 }
 
 enum SendVia {
@@ -425,6 +426,13 @@ model Transaction {
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
+  // Per-transaction customer link populated by the deterministic linker
+  // (POST /transactions/link-customers). When set, takes precedence over
+  // category.customerId / tag.customerId in the payments candidate query.
+  linkedCustomerId String?
+  linkedCustomer   Customer? @relation("LinkedTransactions", fields: [linkedCustomerId], references: [id], onDelete: SetNull)
+  linkedCustomerSource String?  // "INVOICE_NUMBER" | "EXACT_AMOUNT" | "NAME_TOKEN" | "MANUAL"
+
   notes String?
 
   ruleId String?
@@ -544,6 +552,11 @@ model Tag {
   aliases    String[] // extra description-substring patterns that match this tag
   color      String?  // optional UI badge color (hex without # or tailwind token)
   notes      String?
+  // Free-text classifier for the tag (e.g. "Vehicle", "Property",
+  // "Subcontractor", "Customer", "Family"). Surfaced in /tags filtering so
+  // users can scope to one facet of their tag list. Not enforced as an enum
+  // so users can introduce new kinds without a schema change.
+  kind       String?
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

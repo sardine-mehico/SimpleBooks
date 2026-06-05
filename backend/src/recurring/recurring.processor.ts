@@ -106,7 +106,7 @@ export class RecurringProcessor extends WorkerHost {
 
       let invoice: { id: string; invoiceNumber: number };
       try {
-        invoice = await this.invoices.create(dto as any);
+        invoice = (await this.invoices.create(dto as any)) as { id: string; invoiceNumber: number };
       } catch (e) {
         this.log.error(`Rule ${rule.id} invoice create failed: ${(e as Error).message}`);
         continue; // don't advance nextRunAt — try again next sweep

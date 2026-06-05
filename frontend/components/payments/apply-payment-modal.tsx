@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { applyPayment, getCandidates, getCustomerCredit, listOpenInvoices } from "@/lib/payments";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 import type { CandidatesResponse, Customer, CustomerCredit, Invoice, PaymentQueueItem, ScoredInvoice } from "@/lib/types";
 
 function fmt(n: string | number) {
@@ -214,7 +215,7 @@ function TransactionContextModal({
               <Select value={pickedCustomerId} onValueChange={setPickedCustomerId}>
                 <SelectTrigger><SelectValue placeholder="Select customer…" /></SelectTrigger>
                 <SelectContent>
-                  {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  {sortActiveFirst(customers).map((c) => <SelectItem key={c.id} value={c.id}>{labelForOption(c)}</SelectItem>)}
                 </SelectContent>
               </Select>
               <div className="text-[10px] text-slate-500">

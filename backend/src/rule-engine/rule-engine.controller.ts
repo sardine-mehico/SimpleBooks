@@ -12,7 +12,7 @@ export class RuleEngineController {
   async recategorise(@Body() dto: RecategoriseDto) {
     const result = await this.engine.run({
       filter: {
-        scope: dto.scope,
+        scope: dto.scope ?? 'uncategorised',
         accountIds: dto.accountIds,
         dateFrom: dto.dateFrom,
         dateTo: dto.dateTo,

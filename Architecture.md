@@ -199,10 +199,43 @@ Templates are assigned to `BillingCompany` rows at creation via the rotation rul
 
 ### Frontend ↔ backend networking
 `lib/api.ts` chooses base URL by execution context:
-- **Server-side (inside the frontend container)** → `http://backend:4000` (compose service name).
-- **Browser** → `http://localhost:4000` (host-mapped port).
+- **Server-side (inside the frontend container)** → `http://backend:4000` (compose service name, from `NEXT_PUBLIC_API_URL_INTERNAL`).
+- **Browser** → value of `NEXT_PUBLIC_API_URL`, defaulting to `http://localhost:4000`.
 
 Both paths matter — App Router pages fetch on the server *and* the client.
+
+**Production URL convention.** Deploy the frontend at `https://<your-domain>` and route the backend behind the same origin under `/api`:
+
+```
+                                      ┌─────────────────────────┐
+                                      │ frontend (Next.js)      │
+https://billing.officepc.online ─────►│  internal :3000         │
+                                      └─────────────────────────┘
+                                      ┌─────────────────────────┐
+                                      │ backend  (NestJS)       │
+https://billing.officepc.online/api ─►│  internal :4000         │
+                                      └─────────────────────────┘
+```
+
+Why `/api`:
+- The backend does **not** strip `/api` itself. The reverse proxy (Caddy / Nginx / Traefik) strips `/api/*` → `backend:4000/*` before forwarding.
+- Without `/api`, the frontend would hit `https://<domain>/companies`, `https://<domain>/invoices`, etc. directly and collide with frontend page routes (`/companies` is a real Next.js page).
+- Single-origin avoids CORS configuration.
+
+Example Caddy block:
+
+```caddy
+billing.officepc.online {
+    handle_path /api/* {
+        reverse_proxy backend:4000
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
+```
+
+`NEXT_PUBLIC_*` values are baked into the JS bundle at `next build`. Changing `NEXT_PUBLIC_API_URL` requires `docker compose build frontend` + restart — exporting the var at run time has no effect.
 
 ### Environment variables (host `.env`)
 | Var | Purpose |
@@ -215,8 +248,8 @@ Both paths matter — App Router pages fetch on the server *and* the client.
 | `TELEGRAM_BOT_TOKEN` | Empty = bot disabled. Live token activates the bot on backend start. |
 | `TELEGRAM_WEBHOOK_DOMAIN` | If set, bot uses webhook mode. If unset, long-polling. |
 | `TELEGRAM_WEBHOOK_SECRET` | Path component for webhook URL (defaults to `telegram`). |
-| `NEXT_PUBLIC_API_URL` | Browser-side backend URL (baked at build time). |
-| `PUBLIC_APP_URL` | Customer-facing absolute URL where the public invoice page is reachable (e.g. `http://localhost:3000` locally, `https://books.example.com` in prod). Used by the backend to construct the link injected via `{{invoice link}}` / `{{invoice link button}}` into outgoing invoice emails. **Required for sending** — `MailService` throws if unset. |
+| `NEXT_PUBLIC_API_URL` | Browser-side backend URL — **baked into the JS bundle at build time**. Local dev: `http://localhost:4000`. Production with the `/api` convention above: `https://<your-domain>/api` (the `/api` suffix is required). Used by `lib/api.ts` for every browser-side fetch, the "View PDF" button, and any other `apiBase()`-anchored URL. Changing it needs a frontend rebuild. |
+| `PUBLIC_APP_URL` | Customer-facing absolute URL where the public invoice page is reachable (e.g. `http://localhost:3000` locally, `https://billing.officepc.online` in prod — **no `/api` suffix**; this is the frontend root). Used by the backend to build the `/i/<token>` link injected via `{{invoice link}}` / `{{invoice link button}}` into outgoing invoice emails. **Required for sending** — `MailService.sendInvoice` throws if unset. `InvoicesService.sendContext` falls back to `http://localhost:3000` if unset, so set it explicitly in production to avoid the preview showing a localhost link. |
 | `RESEND_API_KEY` | Resend API key for the direct-email channel used by invoice-send failure notifications. Used so a broken customer-facing SMTP can't suppress its own failure alert. If unset, the notification email path becomes a no-op and Telegram remains the primary channel. Free tier 100/day. |
 | `RESEND_FROM` | "From" address for Resend-sent failure notifications (e.g. `alerts@yourdomain.com`). |
 | `AI_TIMEOUT_INLINE_MS` | Timeout in ms for inline (modal) AI calls. Default `20000`. |

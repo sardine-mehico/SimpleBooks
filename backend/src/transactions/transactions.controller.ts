@@ -1,13 +1,25 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
+import { CustomerLinkerService } from './customer-linker.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TagsService } from '../tags/tags.service';
 import { ApplyTagsToTransactionDto } from '../tags/dto';
-import { BulkDeleteDto, CreateTransactionDto, ListTransactionsDto, SetCategoryDto, SetSplitsDto, UpdateTransactionDto } from './dto';
+import { BulkDeleteDto, CreateTransactionDto, LinkCustomersDto, ListTransactionsDto, SetCategoryDto, SetSplitsDto, UpdateTransactionDto } from './dto';
 
 @Controller('transactions')
 export class TransactionsController {
-  constructor(private service: TransactionsService, private prisma: PrismaService, private tags: TagsService) {}
+  constructor(
+    private service: TransactionsService,
+    private linker: CustomerLinkerService,
+    private prisma: PrismaService,
+    private tags: TagsService,
+  ) {}
+
+  @Post('link-customers')
+  @HttpCode(200)
+  linkCustomers(@Body() dto: LinkCustomersDto) {
+    return this.linker.linkAll({ transactionIds: dto.transactionIds, force: dto.force });
+  }
 
   @Get() list(@Query() q: ListTransactionsDto) { return this.service.list(q); }
 

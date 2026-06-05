@@ -35,6 +35,15 @@ frontend (Next.js :3000)  →  backend (NestJS :4000)  →  postgres + redis
 
 The frontend calls the backend over `NEXT_PUBLIC_API_URL`. When rendering on the server (inside Docker), `lib/api.ts` swaps to the internal hostname `http://backend:4000`; in the browser it uses `http://localhost:4000`. **Both paths matter** — fetches happen on both sides for App Router pages.
 
+**Production deployment convention.** Frontend at `https://<domain>` and backend at `https://<domain>/api`, with a reverse proxy (Caddy / Nginx / Traefik) routing `/api/*` → `backend:4000` and everything else → `frontend:3000`. Set in `.env` before `docker compose build frontend`:
+
+```
+NEXT_PUBLIC_API_URL=https://<domain>/api      # MUST include /api — backend doesn't strip it
+PUBLIC_APP_URL=https://<domain>                # NO /api — this is the frontend root, used for the public `/i/<token>` invoice link
+```
+
+`NEXT_PUBLIC_*` values are baked into the JS bundle at build time, so any change to `NEXT_PUBLIC_API_URL` needs `docker compose build frontend` + restart. `PUBLIC_APP_URL` is read at runtime by `MailService.sendInvoice` (refuses to send if unset) and `InvoicesService.sendContext` (falls back to `http://localhost:3000` if unset — set it explicitly in production).
+
 ### Backend (NestJS)
 
 Module structure mirrors top-level domains: `tasks`, `customers`, `companies`, `items`, `invoices`, `recurring`, `dashboard`, `telegram`, `payments`. Each is a `*.module.ts` with controller + service + DTO (where applicable). All wired in `src/app.module.ts`.
@@ -77,13 +86,11 @@ Four sibling docs sit alongside this file. Read the relevant one **before** the 
 | [DesignSystem.md](DesignSystem.md) | Any UI change. Documents palette, radii, fonts, list-table sorting/pagination/filter rules, sidebar tokens, motion. | Tokens / patterns introduced or modified. |
 
 Quick design-system highlights (full detail in the file):
-- **CSS variables are the source of truth.** Tokens live in `frontend/app/globals.css` (`:root`) and are exposed via `tailwind.config.ts` as Tailwind utilities — `bg-background`, `bg-primary`, `text-muted-foreground`, `bg-sidebar`, `text-sidebar-primary`, `border-border`, etc. **Never hard-code hex** in components; use the tokens so a future dark mode or rebrand is a single token swap.
-- Page bg `--background` (`#F8FAFC`, cool slate). Card surfaces `--card` (`#FFFFFF`).
-- Sidebar is WHITE (`--sidebar`) with `--sidebar-foreground` (slate-700) text. Active items use `bg-sidebar-accent text-sidebar-primary` (light-navy tint + navy text, `font-medium`). Brand navy is `--primary` (`#1E3A5F`); tertiary blue `--tertiary` (`#2563EB`) is reserved for links.
-- Cards/dialog `rounded-lg` (≈7.5px, from `--radius: 0.469rem`). Buttons/inputs `rounded-md`.
+- Page bg `#EDEEF3`, sidebar `#323D59`, navy on-dark text `slate-300` (always — no active-state color change on sub-nav).
+- Cards/dialog `rounded-lg` (0.5rem). Buttons/form fields `rounded-[0.3rem]`.
 - Font is Noto Sans via `next/font/google`.
+- Filter panel uses `bg-[rgb(212_215_225_/_79%)]`.
 - Lists: 100 rows/page, every column sortable, default sort is active-first then alphabetical for entities with `isActive`.
-- **Migration note (2026-05-30):** sidebar flipped from dark navy (`#323D59` + slate-100 text) to white + navy active-state; page bg from `#EDEEF3` to `#F8FAFC`. Existing components still use literal `rounded-[0.3rem]`, `bg-slate-*` etc.; new code should consume the tokens above. Eventual full migration would convert those literals to token utilities, but it's not a single-PR effort.
 
 ## Project rules (from prior CLAUDE.md, retained)
 

@@ -104,3 +104,10 @@ export class UpdateTransactionDto {
   @IsString() @IsOptional() @MaxLength(500) description?: string;
   @IsString() @IsOptional() @MaxLength(2000) notes?: string;
 }
+
+// POST /transactions/link-customers — run the deterministic linker.
+// Empty body = link every transaction whose linkedCustomerId is null.
+export class LinkCustomersDto {
+  @IsArray() @IsUUID('all', { each: true }) @IsOptional() transactionIds?: string[];
+  @IsOptional() force?: boolean;
+}

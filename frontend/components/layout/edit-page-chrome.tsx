@@ -27,6 +27,7 @@ export function EditPageChrome({
   formId,
   onCancel,
   saving,
+  disabled,
   isViewMode,
   onEditClick,
   rightActions,
@@ -37,6 +38,7 @@ export function EditPageChrome({
   formId: string;
   onCancel?: () => void;
   saving?: boolean;
+  disabled?: boolean;
   isViewMode?: boolean;
   onEditClick?: () => void;
   rightActions?: React.ReactNode;
@@ -74,7 +76,7 @@ export function EditPageChrome({
               Edit
             </Button>
           ) : null}
-          <Button type="submit" form={formId} disabled={saving || isViewMode}>
+          <Button type="submit" form={formId} disabled={saving || disabled || isViewMode}>
             {saving ? "Saving…" : "Save"}
           </Button>
           {rightActions}

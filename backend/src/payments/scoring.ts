@@ -41,7 +41,7 @@ export interface ScoreResult {
   signals: ScoreSignals;
 }
 
-const INVOICE_NUMBER_RE = /INV[-\s]?0*(\d{3,6})/i;
+const INVOICE_NUMBER_RE = /\bINV(?:OICE)?[-\s#]*0*(\d{3,6})\b/i;
 const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
 
 export function scoreInvoice(

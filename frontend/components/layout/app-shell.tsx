@@ -12,7 +12,11 @@ import { CommandBar } from "./command-bar";
 // render without internal nav leaking through.
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname?.startsWith("/i/") || pathname?.startsWith("/preview/")) {
+  if (
+    pathname?.startsWith("/i/") ||
+    pathname?.startsWith("/preview/") ||
+    pathname === "/login"
+  ) {
     return <>{children}</>;
   }
   return (
@@ -20,7 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex flex-1 flex-col">
         <CommandBar />
-        <main className="flex-1 bg-background">{children}</main>
+        <main className="flex-1 bg-[#EDEEF3]">{children}</main>
       </div>
     </div>
   );

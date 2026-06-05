@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CATEGORY_KINDS, type Category, type CategoryKind, type Customer } from "@/lib/types";
 import { createCategory, updateCategory } from "@/lib/banking-rules";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 
 type ParentOption = Pick<Category, "id" | "name" | "kind">;
-type CustomerOption = Pick<Customer, "id" | "name">;
+type CustomerOption = Pick<Customer, "id" | "name" | "isActive">;
 
 type Props = {
   open: boolean;
@@ -145,8 +146,8 @@ export function CategoryFormDialog({
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">(none)</SelectItem>
-                  {customers!.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  {sortActiveFirst(customers!).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{labelForOption(c)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

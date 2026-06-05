@@ -22,24 +22,26 @@ export class CustomersService {
     return row;
   }
 
-  private async nextNumber() {
-    const top = await this.prisma.customer.findFirst({ orderBy: { customerNumber: 'desc' } });
-    return (top?.customerNumber ?? 1000) + 1;
-  }
-
   async create(data: CreateCustomerDto) {
-    return this.prisma.customer.create({
-      data: {
-        name: data.name,
-        billingEmail1: data.billingEmail1,
-        billingEmail2: data.billingEmail2,
-        billingCompanyId: data.billingCompanyId,
-        paymentTerms: data.paymentTerms,
-        address: data.address,
-        notes: data.notes,
-        isActive: data.isActive ?? true,
-        customerNumber: await this.nextNumber(),
-      },
+    // Advisory lock key 7302 serializes customer-number generation under
+    // concurrent creates (mirror of invoices.service.ts approach).
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(7302)`);
+      const top = await tx.customer.findFirst({ orderBy: { customerNumber: 'desc' } });
+      const customerNumber = (top?.customerNumber ?? 1000) + 1;
+      return tx.customer.create({
+        data: {
+          name: data.name,
+          billingEmail1: data.billingEmail1,
+          billingEmail2: data.billingEmail2,
+          billingCompanyId: data.billingCompanyId,
+          paymentTerms: data.paymentTerms,
+          address: data.address,
+          notes: data.notes,
+          isActive: data.isActive ?? true,
+          customerNumber,
+        },
+      });
     });
   }
 

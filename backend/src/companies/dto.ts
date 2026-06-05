@@ -1,5 +1,6 @@
-import { IsBoolean, IsEmail, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength, Validate } from 'class-validator';
 import { EmailEncryption, SendVia } from '@prisma/client';
+import { IsNonEmptyHtml } from '../common/validators';
 
 export class CreateCompanyDto {
   @IsString()
@@ -9,7 +10,7 @@ export class CreateCompanyDto {
 
   @IsString() @MinLength(1) @MaxLength(60) abn!: string;
   @IsString() @MinLength(1) address!: string;
-  @IsString() @MinLength(1) paymentDetails!: string;
+  @IsString() @MinLength(1) @Validate(IsNonEmptyHtml) paymentDetails!: string;
   @IsEmail({}, { message: 'Accounts Email is required and must be a valid email' }) accountsEmail!: string;
 
   @IsEmail({}, { message: 'Invoice Backup Email (BCC) is required and must be a valid email' })
@@ -30,7 +31,7 @@ export class UpdateCompanyDto {
   @IsString() @IsOptional() @MinLength(1) @MaxLength(200) name?: string;
   @IsString() @IsOptional() @MaxLength(60) abn?: string;
   @IsString() @IsOptional() address?: string;
-  @IsString() @IsOptional() paymentDetails?: string;
+  @IsString() @IsOptional() @Validate(IsNonEmptyHtml) paymentDetails?: string;
   @IsEmail() @IsOptional() accountsEmail?: string;
   @IsEmail({}, { message: 'Invoice Backup Email (BCC) must be a valid email' }) @IsOptional() invoiceBcc?: string;
   @IsString() @IsOptional() @MaxLength(2000) notes?: string;

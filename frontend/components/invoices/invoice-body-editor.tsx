@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 import { RichTextView } from "@/components/ui/rich-text-view";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { applyDynamicFields } from "@/lib/dynamic-fields";
@@ -201,8 +202,8 @@ export function InvoiceBodyEditor({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">—</SelectItem>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  {sortActiveFirst(customers).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{labelForOption(c)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -2,7 +2,9 @@ import { IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Vali
 import { Type } from 'class-transformer';
 
 export class RecategoriseDto {
-  @IsIn(['uncategorised', 'all']) scope!: 'uncategorised' | 'all';
+  // Optional — defaults to 'uncategorised' (the safe choice, won't overwrite
+  // existing categorisations).
+  @IsOptional() @IsIn(['uncategorised', 'all']) scope?: 'uncategorised' | 'all';
   @IsArray() @IsOptional() @IsUUID('all', { each: true }) accountIds?: string[];
   @IsISO8601() @IsOptional() dateFrom?: string;
   @IsISO8601() @IsOptional() dateTo?: string;

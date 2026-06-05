@@ -124,13 +124,13 @@ export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
   return (
     <>
       <div className="flex h-16 items-center border-b border-white/10 px-5">
-        <span
-          className="select-none font-black leading-none tracking-tight"
-          style={{ fontSize: 26, width: 190, height: 32, display: "inline-flex", alignItems: "center", color: "rgb(203 213 225 / 0.7)" }}
-          aria-label="$impleBooks"
-        >
-          $impleBooks
-        </span>
+        <img
+          src="/simplebooks-wordmark.svg"
+          alt="$impleBooks"
+          className="select-none"
+          style={{ height: 28, width: "auto" }}
+          draggable={false}
+        />
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4 text-sm">
         {nav.map((entry, i) =>

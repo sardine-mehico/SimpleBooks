@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X } from "lucide-react";
 import { createTag, updateTag } from "@/lib/banking-rules";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 import type { Customer, Tag } from "@/lib/types";
 
 export function TagFormDialog({
@@ -115,8 +116,8 @@ export function TagFormDialog({
               <SelectTrigger><SelectValue placeholder="— none —" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">— none —</SelectItem>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                {sortActiveFirst(customers).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{labelForOption(c)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

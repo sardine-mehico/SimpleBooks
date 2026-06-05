@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { SectionHeader } from "./section-header";
 import { apiClient } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import type { Preferences } from "@/lib/types";
 
 const TIMEZONES = [
@@ -42,10 +44,10 @@ const MONTHS = [
 ];
 
 export function PreferencesForm({ initial }: { initial: Preferences }) {
+  const router = useRouter();
   const [timezone, setTimezone] = useState(initial.timezone);
   const [fyStart, setFyStart] = useState(String(initial.financialYearStart));
   const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function save(e: React.FormEvent) {
@@ -57,9 +59,12 @@ export function PreferencesForm({ initial }: { initial: Preferences }) {
         timezone,
         financialYearStart: Number(fyStart),
       });
-      setSavedAt(new Date().toLocaleTimeString());
+      toast.success("Preferences saved — restart backend to pick up new timezone");
+      router.refresh();
     } catch (e: any) {
-      setError(e?.message ?? "Save failed");
+      const msg = e?.message ?? "Save failed";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -91,9 +96,7 @@ export function PreferencesForm({ initial }: { initial: Preferences }) {
           </Field>
           <div className="md:col-span-2 flex items-center justify-between border-t border-slate-100 pt-4">
             <div className="text-xs">
-              {error ? <span className="text-rose-600">{error}</span> : null}
-              {!error && savedAt ? <span className="text-emerald-600">Saved at {savedAt}. Restart the backend to apply the new timezone to the cron job.</span> : null}
-              {!error && !savedAt ? <span className="text-slate-400">Click Save to update.</span> : null}
+              {error ? <span className="text-rose-600">{error}</span> : <span className="text-slate-400">Click Save to update.</span>}
             </div>
             <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
           </div>

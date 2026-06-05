@@ -12,6 +12,7 @@ const TX_CUSTOMER_INCLUDE = {
   allocations: true,
   account: true,
   category: { select: { customerId: true } },
+  linkedCustomer: { select: { id: true } },
   transactionTags: {
     select: {
       tag: { select: { id: true, name: true, color: true, customerId: true } },
@@ -49,9 +50,49 @@ export class PaymentsService {
     // ranking can break ties between competing labelled customers.
     const categoryCustomerId: string | null = (tx as any).category?.customerId ?? null;
     const tagCustomerIds = extractTagCustomerIds(tx);
+    const linkedCustomerId: string | null = (tx as any).linkedCustomerId ?? null;
     const candidateCustomerIds = new Set<string>();
+    if (linkedCustomerId) candidateCustomerIds.add(linkedCustomerId);
     if (categoryCustomerId) candidateCustomerIds.add(categoryCustomerId);
     for (const id of tagCustomerIds) candidateCustomerIds.add(id);
+
+    // Cold-start signals: when category/tag linkage isn't set up yet, pull
+    // candidate customers from the description and amount directly so the
+    // scorer's invoice-number / exact-amount / name-token signals aren't dead.
+    const description: string = (tx as any).description ?? '';
+    const invoiceNumberHits = [...description.matchAll(/\bINV[-\s]?(\d{3,6})\b|\b(\d{4,6})\b/gi)]
+      .map((m) => Number(m[1] ?? m[2]))
+      .filter(Number.isFinite);
+    if (invoiceNumberHits.length) {
+      const matches = await this.prisma.invoice.findMany({
+        where: { invoiceNumber: { in: invoiceNumberHits }, status: { in: OPEN_STATUSES as any } },
+        select: { customerId: true },
+      });
+      for (const m of matches) if (m.customerId) candidateCustomerIds.add(m.customerId);
+    }
+
+    const absAmount = unallocated.abs();
+    if (absAmount.gt(0)) {
+      const amountMatches = await this.prisma.invoice.findMany({
+        where: { status: { in: OPEN_STATUSES as any }, amountOutstanding: absAmount as any },
+        select: { customerId: true },
+        take: 20,
+      });
+      for (const m of amountMatches) if (m.customerId) candidateCustomerIds.add(m.customerId);
+    }
+
+    if (candidateCustomerIds.size === 0) {
+      const tokens = description.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+      if (tokens.length) {
+        const nameHits = await this.prisma.customer.findMany({
+          where: { OR: tokens.map((t) => ({ name: { contains: t, mode: 'insensitive' as const } })) },
+          select: { id: true },
+          take: 20,
+        });
+        for (const c of nameHits) candidateCustomerIds.add(c.id);
+      }
+    }
+
     if (candidateCustomerIds.size === 0) {
       return { candidates: [], bundleSuggestion: null };
     }
@@ -290,6 +331,7 @@ export class PaymentsService {
         account: true,
         allocations: true,
         category: { select: { customerId: true, customer: { select: { id: true, name: true } } } },
+        linkedCustomer: { select: { id: true, name: true } },
         transactionTags: {
           select: {
             tag: {
@@ -315,15 +357,18 @@ export class PaymentsService {
         const tags = (t.transactionTags ?? []).map((tt: any) => ({
           id: tt.tag.id, name: tt.tag.name, color: tt.tag.color ?? null,
         }));
+        const directlyLinked = t.linkedCustomer ?? null;
         const categoryCustomer = t.category?.customer ?? null;
         const firstTagWithCustomer = (t.transactionTags ?? [])
           .map((tt: any) => tt.tag)
           .find((tag: any) => tag.customer) ?? null;
-        const linked = categoryCustomer
-          ? { id: categoryCustomer.id, name: categoryCustomer.name }
-          : firstTagWithCustomer?.customer
-            ? { id: firstTagWithCustomer.customer.id, name: firstTagWithCustomer.customer.name }
-            : null;
+        const linked = directlyLinked
+          ? { id: directlyLinked.id, name: directlyLinked.name }
+          : categoryCustomer
+            ? { id: categoryCustomer.id, name: categoryCustomer.name }
+            : firstTagWithCustomer?.customer
+              ? { id: firstTagWithCustomer.customer.id, name: firstTagWithCustomer.customer.name }
+              : null;
         return {
           id: t.id,
           date: t.date.toISOString().slice(0, 10),

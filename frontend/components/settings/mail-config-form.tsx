@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
@@ -14,17 +16,19 @@ import {
 } from "@/components/ui/select";
 import { SectionHeader } from "./section-header";
 import { apiClient } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { EMAIL_ENCRYPTIONS, type EmailEncryption, type MailConfiguration } from "@/lib/types";
 import { TestEmailDialog } from "@/components/mail/test-email-dialog";
 
 export function MailConfigForm({ initial }: { initial: MailConfiguration }) {
+  const router = useRouter();
   const [smtpServer, setSmtpServer] = useState(initial.smtpServer ?? "");
   const [port, setPort] = useState(String(initial.port ?? 587));
   const [encryption, setEncryption] = useState<EmailEncryption>(initial.encryption ?? "STARTTLS");
   const [user, setUser] = useState(initial.user ?? "");
   const [password, setPassword] = useState(initial.password ?? "");
+  const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [testOpen, setTestOpen] = useState(false);
 
@@ -40,9 +44,12 @@ export function MailConfigForm({ initial }: { initial: MailConfiguration }) {
         user,
         password,
       });
-      setSavedAt(new Date().toLocaleTimeString());
+      toast.success("Mail configuration saved");
+      router.refresh();
     } catch (e: any) {
-      setError(e?.message ?? "Save failed");
+      const msg = e?.message ?? "Save failed";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -91,18 +98,27 @@ export function MailConfigForm({ initial }: { initial: MailConfiguration }) {
             />
           </Field>
           <Field label="Password" className="md:col-span-2">
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="off"
-            />
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="off"
+                className="pr-9"
+              />
+              <button
+                type="button"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((s) => !s)}
+                className="absolute inset-y-0 right-2 my-auto grid h-7 w-7 place-items-center rounded text-slate-500 hover:text-slate-900"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </Field>
           <div className="md:col-span-2 flex items-center justify-between border-t border-slate-100 pt-4">
             <div className="text-xs">
-              {error ? <span className="text-rose-600">{error}</span> : null}
-              {!error && savedAt ? <span className="text-emerald-600">Saved at {savedAt}</span> : null}
-              {!error && !savedAt ? <span className="text-slate-400">Click Save to update.</span> : null}
+              {error ? <span className="text-rose-600">{error}</span> : <span className="text-slate-400">Click Save to update.</span>}
             </div>
             <div className="flex gap-2">
               <Button

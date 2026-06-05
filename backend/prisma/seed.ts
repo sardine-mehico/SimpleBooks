@@ -392,6 +392,17 @@ async function main() {
     ],
   });
 
+  // Tax types catalog — AU-default GST and a passthrough "No tax" so invoice
+  // line items always have a sensible dropdown source on a fresh boot.
+  if ((await prisma.taxType.count()) === 0) {
+    await prisma.taxType.createMany({
+      data: [
+        { name: 'GST', rate: 10, isActive: true },
+        { name: 'No tax', rate: 0, isActive: true },
+      ],
+    });
+  }
+
   // Recurring schedules catalog
   const schedules = await Promise.all([
     prisma.recurringSchedule.upsert({
@@ -507,36 +518,97 @@ async function main() {
     },
   });
 
-  // ── Categories (Banking Phase B) ─────────────────────────────────────────
-  const CATEGORIES = [
-    { name: 'Income — Customer payments', kind: 'INCOME' as const, sortOrder: 10 },
-    { name: 'Income — Personal', kind: 'INCOME' as const, sortOrder: 20 },
-    { name: 'Income — Refunds', kind: 'INCOME' as const, sortOrder: 30 },
-    { name: 'Income — Other', kind: 'INCOME' as const, sortOrder: 40 },
-    { name: 'Expense — Rent', kind: 'EXPENSE' as const, sortOrder: 110 },
-    { name: 'Expense — Utilities', kind: 'EXPENSE' as const, sortOrder: 120 },
-    { name: 'Expense — Telecom', kind: 'EXPENSE' as const, sortOrder: 130 },
-    { name: 'Expense — Insurance', kind: 'EXPENSE' as const, sortOrder: 140 },
-    { name: 'Expense — Groceries', kind: 'EXPENSE' as const, sortOrder: 150 },
-    { name: 'Expense — Fuel', kind: 'EXPENSE' as const, sortOrder: 160 },
-    { name: 'Expense — Subscriptions & Online', kind: 'EXPENSE' as const, sortOrder: 170 },
-    { name: 'Expense — Personal', kind: 'EXPENSE' as const, sortOrder: 180 },
-    { name: 'Expense — Bank fees', kind: 'EXPENSE' as const, sortOrder: 190 },
-    { name: 'Transfer — Between own accounts', kind: 'TRANSFER' as const, sortOrder: 210 },
-    { name: 'Other — Uncategorised review', kind: 'OTHER' as const, sortOrder: 999 },
+  // ── Categories (taxonomy seeded from accounting-team CSV) ────────────────
+  // Two-level taxonomy: each parent is a top-level group; children become
+  // subcategories whose `parentId` points at the parent's id. Transactions
+  // can only be assigned to a leaf — `TransactionsService.setCategory` rejects
+  // assignment to any category with children (see CLAUDE.md). Parents with no
+  // children act as leaves themselves.
+  //
+  // Idempotent: skipped if any category row already exists. To replace the
+  // taxonomy, wipe the table or edit individual rows from `/categories`.
+  const TAXONOMY: Array<{ kind: 'INCOME'|'EXPENSE'|'TRANSFER'; parent: string; children: string[] }> = [
+    { kind: 'INCOME', parent: "Customer Payment", children: [] },
+    { kind: 'INCOME', parent: "Refund", children: ["Merchant Refund", "Bank Fee Refund", "Insurance Refund"] },
+    { kind: 'INCOME', parent: "Cashback/Rewards", children: [] },
+    { kind: 'INCOME', parent: "Government Benefits", children: ["Family Tax Benefit", "Medicare Benefit"] },
+    { kind: 'INCOME', parent: "Insurance Claim", children: [] },
+    { kind: 'INCOME', parent: "Friends/Family", children: [] },
+    { kind: 'INCOME', parent: "Interest Income", children: [] },
+    { kind: 'INCOME', parent: "Other Income", children: [] },
+    { kind: 'EXPENSE', parent: "Advertising", children: ["Facebook/Meta Ads", "Google Ads", "Other"] },
+    { kind: 'EXPENSE', parent: "Marketing", children: ["Cold Calling", "SEO/Lead Gen", "Other"] },
+    { kind: 'EXPENSE', parent: "Banking", children: ["Account Fee", "Annual Fee", "Monthly Fee", "ATM Withdrawal Fee", "Cash Advance Fee", "Credit Card Interest", "Excess Interest Charge", "International Transaction Fee", "Late Payment Fee", "Overdrawing/Dishonour Fee", "Overlimit Fee"] },
+    { kind: 'EXPENSE', parent: "Cash", children: ["ATM Withdrawal"] },
+    { kind: 'EXPENSE', parent: "Cleaning Services", children: ["Carpet Cleaning", "Specialist (Window/Pressure/Other)"] },
+    { kind: 'EXPENSE', parent: "Cleaning Supplies", children: ["Chemicals (Perishable)", "Consumables (Non-Chemical)", "Equipment"] },
+    { kind: 'EXPENSE', parent: "Workwear", children: ["Uniforms", "Shoes", "Other PPE (sunscreen, gloves, hats, bottles)"] },
+    { kind: 'EXPENSE', parent: "Dining", children: ["Fast Food", "Restaurant", "Cafe", "Catering", "Market/Event Vendor"] },
+    { kind: 'EXPENSE', parent: "Liquor", children: [] },
+    { kind: 'EXPENSE', parent: "Donations", children: ["Religious", "Charity"] },
+    { kind: 'EXPENSE', parent: "Education", children: ["Tuition Fees", "University/TAFE", "School Supplies", "Books", "Sports", "Music"] },
+    { kind: 'EXPENSE', parent: "Employee", children: ["Wages", "Superannuation", "Holidays", "Other"] },
+    { kind: 'EXPENSE', parent: "Subcontractor Wages", children: [] },
+    { kind: 'EXPENSE', parent: "Entertainment", children: ["Cinema", "Attractions/Activities", "Streaming Subscriptions", "Events/Tickets"] },
+    { kind: 'EXPENSE', parent: "Recreation", children: ["Sports/Hobby", "Gym"] },
+    { kind: 'EXPENSE', parent: "Friends/Family", children: [] },
+    { kind: 'EXPENSE', parent: "Fuel", children: [] },
+    { kind: 'EXPENSE', parent: "General Merchandise", children: [] },
+    { kind: 'EXPENSE', parent: "Government Fees", children: ["ASIC (Company Registration)", "ATO", "Council Rates/Fees", "Australian Federal Police", "Bupa Medical Visa Services", "VFS Visa Services", "Police Infringement/Fine", "Other"] },
+    { kind: 'EXPENSE', parent: "Groceries", children: ["Supermarket", "Ethnic/Indian Grocery", "Bakery", "Specialty Food"] },
+    { kind: 'EXPENSE', parent: "Hardware/DIY", children: [] },
+    { kind: 'EXPENSE', parent: "Healthcare", children: ["Pharmacy", "Medical Centre", "Hospital", "Pathology/Radiology", "Dental", "Optical", "Physiotherapy", "Other"] },
+    { kind: 'EXPENSE', parent: "Home", children: ["Furniture", "Whitegoods", "Soft Furnishings", "Plants/Garden", "Home Improvement"] },
+    { kind: 'EXPENSE', parent: "Insurance", children: ["Health Insurance", "Vehicle Insurance", "Life Insurance", "Home/Contents Insurance", "Commercial Insurance", "Public Liability", "Other"] },
+    { kind: 'EXPENSE', parent: "IT", children: ["Cloud Hosting", "Software Subscription", "AI Services", "Domain Names", "Hardware/Equipment"] },
+    { kind: 'EXPENSE', parent: "Money Transfer", children: ["International", "Domestic"] },
+    { kind: 'EXPENSE', parent: "Office Supplies", children: ["Stationery", "Printing"] },
+    { kind: 'EXPENSE', parent: "Office Equipment", children: ["Furniture", "Electronics", "Shelving/Storage"] },
+    { kind: 'EXPENSE', parent: "Online Payments", children: ["PayPal (Unclassified)"] },
+    { kind: 'EXPENSE', parent: "Online Shopping", children: [] },
+    { kind: 'EXPENSE', parent: "Personal Care", children: ["Hair/Salon/Nail/Beauty"] },
+    { kind: 'EXPENSE', parent: "Pets", children: ["Pet Food", "Pet Supplies", "Vet"] },
+    { kind: 'EXPENSE', parent: "Postage/Shipping", children: ["Australia Post", "Courier (DHL/FedEx/StarTrack)", "Delivery Fee (incoming)"] },
+    { kind: 'EXPENSE', parent: "Professional Services", children: ["Accountant", "Bookkeeper", "Legal", "Airtasker", "Consulting"] },
+    { kind: 'EXPENSE', parent: "Property Maintenance", children: ["Gutter Cleaning", "Landscaping", "Plumbing", "Electrical", "Pest Control", "Other"] },
+    { kind: 'EXPENSE', parent: "Rent", children: ["Residential", "Office", "Storage"] },
+    { kind: 'EXPENSE', parent: "Taxes", children: ["GST", "Personal Income Tax", "Company Income Tax", "PAYG Withholding"] },
+    { kind: 'EXPENSE', parent: "Telecommunications", children: ["Mobile", "Internet", "VOIP", "Landline"] },
+    { kind: 'EXPENSE', parent: "Travel", children: ["Flights", "Stays/Hotels", "Activities", "Ground Transport", "Travel Insurance", "Other"] },
+    { kind: 'EXPENSE', parent: "Utilities", children: ["Electricity", "Gas", "Water"] },
+    { kind: 'EXPENSE', parent: "Vehicle", children: ["Service/Parts", "Registration", "Tyres", "Toll Roads", "Parking", "Car Wash", "Roadside Assist", "Other"] },
+    { kind: 'EXPENSE', parent: "Uncategorised", children: ["Other Expense"] },
+    { kind: 'TRANSFER', parent: "Between Own Accounts", children: ["Credit Card Payment", "Personal Account", "Partner Account", "Business→Personal", "Personal→Business"] },
+    { kind: 'TRANSFER', parent: "Loan", children: ["Loan Drawdown", "Loan Repayment", "Loan to Business"] },
   ];
-  for (const c of CATEGORIES) {
-    const existing = await prisma.category.findFirst({ where: { name: c.name, parentId: null } });
-    if (!existing) {
-      await prisma.category.create({ data: c });
+  if ((await prisma.category.count()) === 0) {
+    let sortOrder = 10;
+    for (const entry of TAXONOMY) {
+      const parent = await prisma.category.create({
+        data: { name: entry.parent, kind: entry.kind, sortOrder },
+      });
+      sortOrder += 10;
+      let childSortOrder = 10;
+      for (const childName of entry.children) {
+        await prisma.category.create({
+          data: { name: childName, kind: entry.kind, parentId: parent.id, sortOrder: childSortOrder },
+        });
+        childSortOrder += 10;
+      }
     }
   }
 
   // ── Starter Tags ─────────────────────────────────────────────────────────
-  // Common merchant/bank names with description-fragment aliases. The
-  // auto-alias pass uses these to attach the tag whenever the description
-  // contains any of them. Users can edit / delete via /settings/tags.
-  const TAGS: Array<{ name: string; aliases: string[] }> = [
+  // Two seed blocks:
+  //   1. Merchant catalog (kind=null) — description-fragment aliases drive
+  //      the auto-alias pass that attaches a tag to every CSV-imported
+  //      transaction whose description contains any alias.
+  //   2. Entity catalog (kind=Vehicle/Property/Subcontractor/Customer/Family)
+  //      — no aliases, used by the operator to tag transactions manually with
+  //      a specific car, property, person, or client.
+  // Users can edit / delete via /settings/tags (or /tags). Each entry upserts
+  // on case-insensitive name match so this is idempotent across re-runs.
+  const TAGS: Array<{ name: string; aliases: string[]; kind?: string }> = [
     { name: 'BP', aliases: ['bp ', 'bp australia', 'bp connect'] },
     { name: 'Caltex', aliases: ['caltex', 'ampol caltex'] },
     { name: 'Shell', aliases: ['shell ', 'shell coles'] },
@@ -576,13 +648,113 @@ async function main() {
     { name: 'NAB', aliases: ['national australia bank', 'nab '] },
     { name: 'Westpac', aliases: ['westpac'] },
     { name: 'ANZ', aliases: ['anz '] },
+
+    // Entity catalog (kind-tagged, no aliases) — operator-applied facets.
+    { name: "Honda CRV 2006", aliases: [], kind: "Vehicle" },
+    { name: "Toyota Yaris 2008", aliases: [], kind: "Vehicle" },
+    { name: "38 Torridon", aliases: [], kind: "Property" },
+    { name: "Maddington Office", aliases: [], kind: "Property" },
+    { name: "Dawa Sonam", aliases: [], kind: "Subcontractor" },
+    { name: "Norbu", aliases: [], kind: "Subcontractor" },
+    { name: "Rakesh Chloe", aliases: [], kind: "Subcontractor" },
+    { name: "Poojana", aliases: [], kind: "Subcontractor" },
+    { name: "Tendin/Tandin Sonam", aliases: [], kind: "Subcontractor" },
+    { name: "Jigme Sherab", aliases: [], kind: "Subcontractor" },
+    { name: "Tshering Pema", aliases: [], kind: "Subcontractor" },
+    { name: "Kinley", aliases: [], kind: "Subcontractor" },
+    { name: "Sonam Bassendean (Tshewang)", aliases: [], kind: "Subcontractor" },
+    { name: "Pema Dorji", aliases: [], kind: "Subcontractor" },
+    { name: "Namgay", aliases: [], kind: "Subcontractor" },
+    { name: "Dorji Sonam", aliases: [], kind: "Subcontractor" },
+    { name: "Sagar Niketa", aliases: [], kind: "Subcontractor" },
+    { name: "Rishal Kowlessur", aliases: [], kind: "Subcontractor" },
+    { name: "Sonam Jamtsho", aliases: [], kind: "Subcontractor" },
+    { name: "Tshuelthrim", aliases: [], kind: "Subcontractor" },
+    { name: "Mandeep Harwinder Sohi", aliases: [], kind: "Subcontractor" },
+    { name: "Beant Ravinder", aliases: [], kind: "Subcontractor" },
+    { name: "Sonam Cannington", aliases: [], kind: "Subcontractor" },
+    { name: "Ajay (Canning Vale)", aliases: [], kind: "Subcontractor" },
+    { name: "Rupinder", aliases: [], kind: "Subcontractor" },
+    { name: "Krishna", aliases: [], kind: "Subcontractor" },
+    { name: "Tashi (Cedarwoods)", aliases: [], kind: "Subcontractor" },
+    { name: "Udip", aliases: [], kind: "Subcontractor" },
+    { name: "Pasang", aliases: [], kind: "Subcontractor" },
+    { name: "Prakash Jyoti", aliases: [], kind: "Subcontractor" },
+    { name: "Abdul Sami Waheedy", aliases: [], kind: "Subcontractor" },
+    { name: "Karma (Sealy)", aliases: [], kind: "Subcontractor" },
+    { name: "Mani Dawa", aliases: [], kind: "Subcontractor" },
+    { name: "Karma Dorji (Maddington)", aliases: [], kind: "Subcontractor" },
+    { name: "Woodhams", aliases: [], kind: "Customer" },
+    { name: "Angas Securities", aliases: [], kind: "Customer" },
+    { name: "DCW Enterprises", aliases: [], kind: "Customer" },
+    { name: "S.S. Chang Architects", aliases: [], kind: "Customer" },
+    { name: "DWK Investment Trust (Herald Ave)", aliases: [], kind: "Customer" },
+    { name: "SME", aliases: [], kind: "Customer" },
+    { name: "Pharmacy Guild of Australia WA (PGAWA)", aliases: [], kind: "Customer" },
+    { name: "Fundamentals Australia", aliases: [], kind: "Customer" },
+    { name: "Mass Resources", aliases: [], kind: "Customer" },
+    { name: "Sarre Insurance", aliases: [], kind: "Customer" },
+    { name: "Industrial Power / I.Power Tools", aliases: [], kind: "Customer" },
+    { name: "Colliers International", aliases: [], kind: "Customer" },
+    { name: "Connect Staffing", aliases: [], kind: "Customer" },
+    { name: "Gough Recruitment", aliases: [], kind: "Customer" },
+    { name: "Systemcorp", aliases: [], kind: "Customer" },
+    { name: "Galmon Pty Ltd (Stirling Health)", aliases: [], kind: "Customer" },
+    { name: "Whites Group", aliases: [], kind: "Customer" },
+    { name: "Westforce", aliases: [], kind: "Customer" },
+    { name: "Dyson Appliances", aliases: [], kind: "Customer" },
+    { name: "Lempira Holdings (WA Steel)", aliases: [], kind: "Customer" },
+    { name: "Mass Recruitment", aliases: [], kind: "Customer" },
+    { name: "Airco Fasteners", aliases: [], kind: "Customer" },
+    { name: "West to West Car Group", aliases: [], kind: "Customer" },
+    { name: "Raubex Construction", aliases: [], kind: "Customer" },
+    { name: "Doors Doors Doors Pty Ltd", aliases: [], kind: "Customer" },
+    { name: "Hima Australia", aliases: [], kind: "Customer" },
+    { name: "Design Collision", aliases: [], kind: "Customer" },
+    { name: "Alpha 1 Group", aliases: [], kind: "Customer" },
+    { name: "M Residential Pty Ltd", aliases: [], kind: "Customer" },
+    { name: "Ukawa Pty Ltd", aliases: [], kind: "Customer" },
+    { name: "Annasar Pty Ltd", aliases: [], kind: "Customer" },
+    { name: "Genesis Care", aliases: [], kind: "Customer" },
+    { name: "Armonia Holdings (Enhance Physio)", aliases: [], kind: "Customer" },
+    { name: "Datacity Pty Ltd (Merit Lining Systems)", aliases: [], kind: "Customer" },
+    { name: "Global Packaging", aliases: [], kind: "Customer" },
+    { name: "IMT Australia (Roobix)", aliases: [], kind: "Customer" },
+    { name: "Planfarm Pty Ltd", aliases: [], kind: "Customer" },
+    { name: "Sealy of Australia", aliases: [], kind: "Customer" },
+    { name: "Samios", aliases: [], kind: "Customer" },
+    { name: "Australian Institute of Marine and Power Engineers", aliases: [], kind: "Customer" },
+    { name: "Carrier Australia", aliases: [], kind: "Customer" },
+    { name: "Clearview", aliases: [], kind: "Customer" },
+    { name: "Douglas Partners", aliases: [], kind: "Customer" },
+    { name: "Mechanical Projects", aliases: [], kind: "Customer" },
+    { name: "Raine and Horne", aliases: [], kind: "Customer" },
+    { name: "Activa Developments", aliases: [], kind: "Customer" },
+    { name: "Beeliar Drive Psychology", aliases: [], kind: "Customer" },
+    { name: "DC Collision", aliases: [], kind: "Customer" },
+    { name: "DigiTelecomm", aliases: [], kind: "Customer" },
+    { name: "Penno Pty Ltd (LJ Hooker Shelley)", aliases: [], kind: "Customer" },
+    { name: "Porta Craft P/L", aliases: [], kind: "Customer" },
+    { name: "Samsung", aliases: [], kind: "Customer" },
+    { name: "Soltex Pty Ltd", aliases: [], kind: "Customer" },
+    { name: "Studco Australia", aliases: [], kind: "Customer" },
+    { name: "Varner Contracting", aliases: [], kind: "Customer" },
+    { name: "Westpac OLP Payment", aliases: [], kind: "Customer" },
+    { name: "Satyam Dave", aliases: [], kind: "Family" },
+    { name: "Snehalkumar Dabhi", aliases: [], kind: "Family" },
+    { name: "Ashvinkumar Patel", aliases: [], kind: "Family" },
+    { name: "Mr Vinodsinh Dabhi", aliases: [], kind: "Family" },
+    { name: "Bhatt Family", aliases: [], kind: "Family" },
+    { name: "Dushyant Dabhi", aliases: [], kind: "Family" },
+    { name: "Ashvin Patel", aliases: [], kind: "Family" },
+    { name: "Sam Dabhi", aliases: [], kind: "Family" },
   ];
   for (const t of TAGS) {
     const existing = await prisma.tag.findFirst({ where: { name: { equals: t.name, mode: 'insensitive' } } });
     if (existing) {
-      await prisma.tag.update({ where: { id: existing.id }, data: { aliases: t.aliases } });
+      await prisma.tag.update({ where: { id: existing.id }, data: { aliases: t.aliases, kind: t.kind ?? existing.kind } });
     } else {
-      await prisma.tag.create({ data: { name: t.name, aliases: t.aliases } });
+      await prisma.tag.create({ data: { name: t.name, aliases: t.aliases, kind: t.kind } });
     }
   }
 

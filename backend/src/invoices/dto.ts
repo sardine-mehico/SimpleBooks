@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
@@ -10,20 +10,22 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MinLength,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { InvoiceStatus } from '@prisma/client';
+import { toNumberOrUndefined } from '../common/validators';
 
 export class LineItemDto {
   @IsString() @IsOptional() id?: string;
   @IsString() @IsOptional() itemId?: string;
-  @IsString() description!: string;
-  @Type(() => Number) @IsNumber() @Min(0) quantity!: number;
-  @Type(() => Number) @IsNumber() @Min(0) unitPrice!: number;
+  @IsString() @MinLength(1) description!: string;
+  @Transform(toNumberOrUndefined) @IsNumber() @Min(0) quantity!: number;
+  @Transform(toNumberOrUndefined) @IsNumber() @Min(0) unitPrice!: number;
   @IsString() @IsOptional() taxTypeId?: string;
   @IsString() @IsOptional() taxName?: string;
-  @Type(() => Number) @IsNumber() @IsOptional() @Min(0) taxRate?: number;
+  @Transform(toNumberOrUndefined) @IsNumber() @IsOptional() @Min(0) taxRate?: number;
 }
 
 export class CreateInvoiceDto {

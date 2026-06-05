@@ -181,7 +181,8 @@ export function RecurringForm({
       title={initial ? `Recurring · ${scheduleName || "rule"}` : "New recurring invoice"}
       backHref="/recurring"
       formId="recurring-form"
-      saving={saving || !canSave}
+      saving={saving}
+      disabled={!canSave}
       rightActions={
         initial ? (
           <Button type="button" variant="danger" size="icon" onClick={remove} aria-label="Delete">

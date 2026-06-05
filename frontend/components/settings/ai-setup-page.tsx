@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { createAiProvider, deleteAiProvider, setAiProviderPrimary, updateAiProvider, moveAiProvider, testAiProvider, listAiProviders } from "@/lib/ai-providers";
 import type { ProviderTestResult } from "@/lib/ai-providers";
 import { api } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import type { AiProvider } from "@/lib/types";
 
 type Draft = {
@@ -56,14 +57,20 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
   }
 
   async function save(d: Draft) {
-    if (d.isNew) {
-      const created = await createAiProvider({ name: d.name, model: d.model, apiBaseUrl: d.apiBaseUrl, apiKey: d.apiKey, requestsPerMinute: d.requestsPerMinute });
-      setDrafts((curr) => curr.map((x) => (x.id === d.id ? { ...toDraft(created) } : x)));
-    } else {
-      const updated = await updateAiProvider(d.id, { name: d.name, model: d.model, apiBaseUrl: d.apiBaseUrl, apiKey: d.apiKey, requestsPerMinute: d.requestsPerMinute });
-      setDrafts((curr) => curr.map((x) => (x.id === d.id ? { ...toDraft(updated), showKey: x.showKey } : x)));
+    try {
+      if (d.isNew) {
+        const created = await createAiProvider({ name: d.name, model: d.model, apiBaseUrl: d.apiBaseUrl, apiKey: d.apiKey, requestsPerMinute: d.requestsPerMinute });
+        setDrafts((curr) => curr.map((x) => (x.id === d.id ? { ...toDraft(created) } : x)));
+        toast.success(`Added "${created.name}"`);
+      } else {
+        const updated = await updateAiProvider(d.id, { name: d.name, model: d.model, apiBaseUrl: d.apiBaseUrl, apiKey: d.apiKey, requestsPerMinute: d.requestsPerMinute });
+        setDrafts((curr) => curr.map((x) => (x.id === d.id ? { ...toDraft(updated), showKey: x.showKey } : x)));
+        toast.success(`Saved "${updated.name}"`);
+      }
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Save failed");
     }
-    router.refresh();
   }
 
   async function makePrimary(d: Draft) {
@@ -271,6 +278,10 @@ export function AiSetupPage({ initial, prefs }: { initial: AiProvider[]; prefs?:
               setSavingThreshold(true);
               try {
                 await api('/preferences', { method: 'PUT', body: JSON.stringify({ aiMiningThreshold: threshold }) });
+                toast.success(`Rule-drafting threshold set to ${threshold}`);
+                router.refresh();
+              } catch (e: any) {
+                toast.error(e?.message ?? "Save failed");
               } finally { setSavingThreshold(false); }
             }}
           >

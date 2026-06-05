@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { EditPageChrome } from "@/components/layout/edit-page-chrome";
 import { apiClient } from "@/lib/api";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 import { PAYMENT_TERMS, type Customer, type BillingCompany, type PaymentTerms } from "@/lib/types";
 
 export function CustomerForm({ initial, companies }: { initial?: Customer; companies: BillingCompany[] }) {
@@ -111,7 +112,7 @@ export function CustomerForm({ initial, companies }: { initial?: Customer; compa
             <Select value={billingCompanyId || ""} onValueChange={(v) => setBillingCompanyId(v)}>
               <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
               <SelectContent>
-                {companies.map((c) => (<SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>))}
+                {sortActiveFirst(companies).map((c) => (<SelectItem key={c.id} value={c.id}>{labelForOption(c)}</SelectItem>))}
               </SelectContent>
             </Select>
           </Field>

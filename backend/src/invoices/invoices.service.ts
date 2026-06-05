@@ -1,8 +1,25 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InvoiceStatus, PaymentTerms } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto, LineItemDto, UpdateInvoiceDto } from './dto';
 import { applyDynamicFields } from '../common/dynamic-fields';
+
+const PAYMENT_TERM_DAYS: Record<PaymentTerms, number> = {
+  IN_28_DAYS: 28,
+  IN_15_DAYS: 15,
+  IN_7_DAYS: 7,
+  DUE_ON_RECEIPT: 0,
+};
+
+const MANUAL_STATUSES = new Set<InvoiceStatus>(['DRAFT']);
+
+function deriveDueDate(invoiceDate: Date, terms: PaymentTerms | null | undefined): Date | null {
+  if (!terms) return null;
+  const d = new Date(invoiceDate);
+  d.setDate(d.getDate() + (PAYMENT_TERM_DAYS[terms] ?? 0));
+  return d;
+}
 
 function computeLine(line: LineItemDto) {
   const lineAmount = +(line.quantity * line.unitPrice).toFixed(2);
@@ -72,36 +89,80 @@ export class InvoicesService {
     return row;
   }
 
-  private async nextNumber() {
-    const top = await this.prisma.invoice.findFirst({ orderBy: { invoiceNumber: 'desc' } });
-    return (top?.invoiceNumber ?? 999) + 1;
+  // Atomically allocate the next invoice number and run the caller's
+  // build(number) callback inside the same transaction. We take a
+  // pg_advisory_xact_lock at a fixed key (7301) so concurrent invoice
+  // creators serialize through this lock instead of racing on MAX+1.
+  // The lock is released when the transaction commits or rolls back.
+  // Combined with the `@unique` constraint, this guarantees no two
+  // invoices ever get the same number under any load.
+  private async createWithNumber<T>(
+    build: (tx: any, number: number) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(7301)`);
+      const top = await tx.invoice.findFirst({ orderBy: { invoiceNumber: 'desc' } });
+      const number = (top?.invoiceNumber ?? 999) + 1;
+      return build(tx, number);
+    });
+  }
+
+  // Expand line.taxTypeId → taxName/taxRate so tax math is symmetric with the
+  // ad-hoc taxName+taxRate path. UI sends both already; raw API callers often
+  // send only taxTypeId and would otherwise silently get zero tax.
+  private async expandTaxTypes(lines: LineItemDto[]) {
+    const needsExpand = lines.filter((l) => l.taxTypeId && l.taxRate == null);
+    if (!needsExpand.length) return;
+    const ids = [...new Set(needsExpand.map((l) => l.taxTypeId!))];
+    const types = await this.prisma.taxType.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, rate: true },
+    });
+    const byId = new Map(types.map((t) => [t.id, t]));
+    for (const l of needsExpand) {
+      const t = byId.get(l.taxTypeId!);
+      if (!t) continue;
+      l.taxName = l.taxName ?? t.name;
+      l.taxRate = Number(t.rate);
+    }
   }
 
   async create(data: CreateInvoiceDto) {
-    const totals = computeTotals(data.lineItems);
-    const number = await this.nextNumber();
-    // Snapshot the parent BillingCompany's template assignment onto every
-    // new Invoice so historical renders stay reproducible even if the
-    // company's live assignment ever changed (it doesn't today — assignments
-    // are immutable post-create — but the snapshot keeps that guarantee
-    // local to each invoice).
+    let customer: { billingCompanyId: string | null; paymentTerms: PaymentTerms } | null = null;
+    if (data.customerId) {
+      customer = await this.prisma.customer.findUnique({
+        where: { id: data.customerId },
+        select: { billingCompanyId: true, paymentTerms: true },
+      });
+    }
+
+    const billingCompanyId = data.billingCompanyId ?? customer?.billingCompanyId ?? null;
+
     let invoiceTemplateId: string | null = null;
     let emailTemplateId: string | null = null;
-    if (data.billingCompanyId) {
+    if (billingCompanyId) {
       const company = await this.prisma.billingCompany.findUnique({
-        where: { id: data.billingCompanyId },
+        where: { id: billingCompanyId },
         select: { invoiceTemplateId: true, emailTemplateId: true },
       });
       invoiceTemplateId = company?.invoiceTemplateId ?? null;
       emailTemplateId = company?.emailTemplateId ?? null;
     }
-    return this.prisma.invoice.create({
+
+    await this.expandTaxTypes(data.lineItems);
+    const totals = computeTotals(data.lineItems);
+    const invoiceDate = data.invoiceDate ? new Date(data.invoiceDate) : new Date();
+    const dueDate = data.dueDate
+      ? new Date(data.dueDate)
+      : deriveDueDate(invoiceDate, customer?.paymentTerms);
+
+    return this.createWithNumber((tx, number) => tx.invoice.create({
       data: {
         invoiceNumber: number,
-        invoiceDate: data.invoiceDate ? new Date(data.invoiceDate) : new Date(),
-        dueDate: data.dueDate ? new Date(data.dueDate) : null,
+        invoiceDate,
+        dueDate,
         customerId: data.customerId || null,
-        billingCompanyId: data.billingCompanyId || null,
+        billingCompanyId,
         invoiceTemplateId,
         emailTemplateId,
         status: data.status ?? 'DRAFT',
@@ -112,6 +173,8 @@ export class InvoicesService {
         subtotal: totals.subtotal,
         taxAmount: totals.taxAmount,
         totalAmount: totals.totalAmount,
+        amountPaid: 0,
+        amountOutstanding: totals.totalAmount,
         lineItems: {
           create: data.lineItems.map((l, idx) => {
             const c = computeLine(l);
@@ -131,11 +194,17 @@ export class InvoicesService {
         },
       },
       include: { lineItems: true },
-    });
+    }));
   }
 
   async update(id: string, data: UpdateInvoiceDto) {
     await this.get(id);
+    if (data.status && !MANUAL_STATUSES.has(data.status)) {
+      throw new BadRequestException(
+        `Status '${data.status}' is derived from allocations or send activity and cannot be set manually. Use POST /invoices/:id/void to void; PAID/PARTIAL_PAID/SENT/VIEWED are managed by the payments and send pipelines.`,
+      );
+    }
+    if (data.lineItems) await this.expandTaxTypes(data.lineItems);
     const headerOnly = {
       invoiceDate: data.invoiceDate ? new Date(data.invoiceDate) : undefined,
       dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
@@ -159,6 +228,8 @@ export class InvoicesService {
     const totals = computeTotals(data.lineItems);
     return this.prisma.$transaction(async (tx) => {
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
+      const cur = await tx.invoice.findUnique({ where: { id }, select: { amountPaid: true } });
+      const paid = Number(cur?.amountPaid ?? 0);
       return tx.invoice.update({
         where: { id },
         data: {
@@ -166,6 +237,7 @@ export class InvoicesService {
           subtotal: totals.subtotal,
           taxAmount: totals.taxAmount,
           totalAmount: totals.totalAmount,
+          amountOutstanding: Math.max(0, +(totals.totalAmount - paid).toFixed(2)),
           lineItems: {
             create: data.lineItems!.map((l, idx) => {
               const c = computeLine(l);
@@ -207,8 +279,7 @@ export class InvoicesService {
   // when the user opens the clone. Send-tracking columns are reset.
   async clone(id: string) {
     const src = await this.get(id);
-    const number = await this.nextNumber();
-    return this.prisma.invoice.create({
+    return this.createWithNumber((tx, number) => tx.invoice.create({
       data: {
         invoiceNumber: number,
         invoiceDate: new Date(),
@@ -244,7 +315,7 @@ export class InvoicesService {
         },
       },
       include: { lineItems: true },
-    });
+    }));
   }
 
   // Cancel an invoice. The row stays in the system so the audit trail is

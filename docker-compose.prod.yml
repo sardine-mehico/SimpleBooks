@@ -1,0 +1,95 @@
+# Standalone production compose — pulls pre-built images from GHCR.
+# Use this on your VPS; the host-side docker-compose.yml stays as the dev/build version.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
+#
+# Set TAG in .env (defaults to "0.1"). Image source defaults to GitHub Container
+# Registry under the project owner's namespace; override with IMAGE_OWNER if
+# you forked.
+name: simplebooks
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # On a VPS, postgres should NOT be exposed publicly. If you need direct
+    # access for backups, expose 127.0.0.1:55432 only.
+    # ports: ["127.0.0.1:55432:5432"]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-backend:${TAG:-0.1}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      PORT: ${PORT:-4000}
+      NODE_ENV: production
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_DOMAIN: ${TELEGRAM_WEBHOOK_DOMAIN}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_FROM: ${RESEND_FROM}
+      AI_TIMEOUT_INLINE_MS: ${AI_TIMEOUT_INLINE_MS:-20000}
+      AI_TIMEOUT_BULK_MS: ${AI_TIMEOUT_BULK_MS:-60000}
+      AI_BULK_CONCURRENCY: ${AI_BULK_CONCURRENCY:-5}
+
+  frontend:
+    image: ghcr.io/${IMAGE_OWNER:-sardine-mehico}/simplebooks-frontend:${TAG:-0.1}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # Server-side fetches (inside Docker network)
+      NEXT_PUBLIC_API_URL_INTERNAL: http://backend:4000
+      # Browser-side fetches — bound at build time but read at boot via runtime env
+      # to give better error messages if not set.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+
+  # Reverse proxy. Front the whole stack on :80/:443 and route /api/* to backend.
+  # Comment this out if you're terminating TLS elsewhere (e.g. Cloudflare Tunnel,
+  # a host-level Caddy/Nginx, etc).
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
