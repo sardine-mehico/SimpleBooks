@@ -32,6 +32,7 @@ import {
 } from "@/components/data/filter-panel";
 import { Pagination } from "@/components/data/pagination";
 import { DEFAULT_PAGE_SIZE } from "@/components/data/list-table";
+import { apiBase } from "@/lib/api";
 import Link from "next/link";
 import { cn, formatAuditStamp } from "@/lib/utils";
 
@@ -84,7 +85,6 @@ const filterFields: FilterFieldDef[] = [
   },
 ];
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export function TasksBoard({ initial }: { initial: Task[] }) {
   const [tasks, setTasks] = useState(initial);
@@ -132,7 +132,7 @@ export function TasksBoard({ initial }: { initial: Task[] }) {
   useEffect(() => { setPage(0); }, [filters]);
 
   async function refresh() {
-    const res = await fetch(`${API}/tasks`, { cache: "no-store" });
+    const res = await fetch(`${apiBase()}/tasks`, { cache: "no-store" });
     if (res.ok) setTasks(await res.json());
   }
 
@@ -143,7 +143,7 @@ export function TasksBoard({ initial }: { initial: Task[] }) {
       setCreateError("Title is required.");
       return;
     }
-    const res = await fetch(`${API}/tasks`, {
+    const res = await fetch(`${apiBase()}/tasks`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title, description: description || undefined, status }),
@@ -167,13 +167,13 @@ export function TasksBoard({ initial }: { initial: Task[] }) {
   }
 
   async function removeTask(id: string) {
-    await fetch(`${API}/tasks/${id}`, { method: "DELETE" });
+    await fetch(`${apiBase()}/tasks/${id}`, { method: "DELETE" });
     setTasks((t) => t.filter((x) => x.id !== id));
   }
 
   async function toggleComplete(t: Task) {
     const next: Status = t.status === "COMPLETED" ? "PENDING" : "COMPLETED";
-    await fetch(`${API}/tasks/${t.id}`, {
+    await fetch(`${apiBase()}/tasks/${t.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ status: next }),
