@@ -1,6 +1,6 @@
 # Banking — User Guide
 
-Last updated: 2026-05-22 (Phase C complete — AI categorisation, review queue, AI-drafted rules, history drawer)
+Last updated: 2026-06-06 (Phase D complete — Payments queue, invoice payment matching, allocation un-apply audit)
 
 A note on navigation: every detail or wizard page under Banking has a back button (←) in the top-left that returns you to the parent listing — `/accounts/[id]` → `/accounts`, `/vendors/extract` → `/vendors`, `/rules/test` → `/rules`. Edit pages use the existing EditPageChrome back button that was introduced in Phase A.
 
@@ -8,12 +8,13 @@ A note on navigation: every detail or wizard page under Banking has a back butto
 
 ## 1. What Banking is
 
-The Banking module tracks accounts, transactions, and categorises them — either manually, via rules you write, via the CSV import flow, or via AI. Phase A added accounts and CSV import. Phase B added Categories, Vendors, Rules, an automatic categorisation engine, and a sandbox for testing rules. Phase C adds AI-assisted categorisation throughout.
+The Banking module tracks accounts, transactions, and categorises them — either manually, via rules you write, via the CSV import flow, or via AI. Phase A added accounts and CSV import. Phase B added Categories, Vendors, Rules, an automatic categorisation engine, and a sandbox for testing rules. Phase C added AI-assisted categorisation throughout. Phase D added the Payments queue that matches bank deposits to invoices.
 
 The module lives under the Banking section of the sidebar. Its pages are:
 
 - `/accounts` — your bank accounts
 - `/transactions` — all transactions across all accounts
+- `/banking/payments` — queue of bank deposits waiting to be matched to invoices
 - `/transactions/ai-review` — review queue for AI-suggested categorisations
 - `/categories` — category definitions
 - `/vendors` — vendor (merchant/payee) definitions
@@ -79,7 +80,7 @@ Filters available:
 The Actions menu (three-dots button on each row) offers three options:
 
 - **Edit** — open the edit modal (see 3.4 below).
-- **Split** — open the split modal directly to divide the transaction across multiple categories (see Section 11).
+- **Split** — open the split modal directly to divide the transaction across multiple categories (see Section 12).
 - **Create rule** — open the rule editor so you can write a rule for similar transactions (you fill in the conditions and outcome).
 
 ### 3.4 Edit modal
@@ -93,7 +94,7 @@ The edit modal lets you change the parts of a transaction that you control, whil
   - **Notes** — free-text, up to 2000 characters.
 - **Manage splits** — a button at the bottom switches from the edit modal to the split modal. Use this if the transaction needs a multi-category breakdown instead of a single category.
 - **Banner for split transactions** — if the transaction already has splits, the modal shows an amber warning: setting a single Category here resets the splits. Click "Manage splits" instead to preserve the breakdown.
-- Manual edits write a `CategorisationEvent` row with `source=USER`. The AI uses these events as few-shot examples when suggesting categories (see §15).
+- Manual edits write a `CategorisationEvent` row with `source=USER`. The AI uses these events as few-shot examples when suggesting categories (see §16).
 
 ---
 
@@ -183,7 +184,113 @@ Every import is permanently recorded. Go to `/settings/import-logs` to see a lis
 
 ---
 
-## 5. Categories
+## 5. Payments — matching transactions to invoices
+
+When a customer pays an invoice, the bank deposit lands as a regular Transaction (via CSV import). The Payments module is what links that deposit to the invoice it pays for, so the invoice's status flips from `SENT` to `PARTIAL_PAID` or `PAID`, the customer's outstanding balance updates, and statements stay accurate.
+
+The module lives at `/banking/payments` (sidebar → Banking → Payments). It's a queue of bank transactions waiting to be matched.
+
+### 5.1 What appears in the queue
+
+By default the queue shows transactions that are positive (incoming money) AND categorised as **Income → Customer payments**. The category gates the queue: if a deposit hasn't been categorised yet — or was categorised as something else — it won't show up.
+
+Two escape hatches if a deposit isn't appearing:
+
+- **"Show all positive" checkbox** (top-right of the queue). Includes every uncategorised or non-customer-payment positive transaction. Useful right after a CSV import before you've categorised anything.
+- **Re-categorise the transaction** as Income → Customer payments. It'll show in the default queue on the next page load.
+
+### 5.2 Applying a payment
+
+Click **Apply** on a row. The modal opens with the transaction's date, amount, description, and account in a header strip.
+
+**Candidate invoices.** Below the header, the modal lists open invoices for the linked customer with a numeric **score** next to each. Score reflects how well the deposit matches the invoice:
+
+| Signal | Worth | What it means |
+|---|---|---|
+| Invoice number match | +60 | The deposit's description contains the invoice number (e.g. "INV-1234" or just "1234") |
+| Exact amount | +40 | Deposit amount equals the invoice's outstanding balance |
+| Customer name token | +15 | A word from the customer name appears in the description |
+| Category customer link | +30 | The transaction's category has a `customerId` pointing at this invoice's customer |
+| Tag customer link | +30 | A tag on the transaction has a `customerId` pointing at this customer (one +30 per matching tag) |
+| Date plausible | +10 | Deposit is on or after the invoice's invoice-date |
+| Partial bonus | +5 | The invoice is already in `PARTIAL_PAID` (slightly favours topping up existing partials) |
+
+Hover the score on any row to see which signals contributed. **Higher score = better match**, but the score is advisory only — you always pick. Top-of-list is the best automatic guess.
+
+**Picking and amount.** Tick a candidate to apply against it. The amount field auto-fills with the smaller of: the deposit's unallocated balance, or the invoice's outstanding amount. You can override it (e.g. to apply a deliberate partial payment). The footer keeps a running total — **Applied** + **Remaining** + **Credit to customer** — so you can see at a glance whether the whole deposit was used.
+
+**Click Apply** when you're done. The invoice's status updates immediately (`SENT` → `PARTIAL_PAID` or `PAID`), the transaction is marked as allocated, and the queue row disappears.
+
+### 5.3 What if the candidate list is empty?
+
+Three common causes:
+
+1. **The transaction isn't linked to a customer.** This happens when the deposit's category and tags don't carry a `customerId` pointing at any customer. In that case the modal shows an amber **"This transaction isn't linked to a customer"** banner with a customer picker — pick one, and the list reloads with that customer's open invoices.
+
+2. **No open invoices for that customer.** Everything outstanding is already paid. Either the deposit is an overpayment (see Customer credit, §5.6) or it isn't actually a customer payment (see Dismissing, §5.7).
+
+3. **You want to apply across customers.** Expand the **▸ Apply to any invoice** disclosure at the bottom. Search by invoice number, customer name, or amount — picks from the entire open-invoice book regardless of customer.
+
+### 5.4 Bundle payments (one deposit, multiple invoices)
+
+When one bank deposit pays for several invoices at once, the modal often detects it: a yellow banner at the top reads *"Looks like this pays N invoices: INV-A $X + INV-B $Y = $total"*, and those invoices come pre-ticked with their full outstanding amounts.
+
+If the bundle suggestion is wrong, just untick the candidates you don't want and tick the ones you do. The footer total updates live.
+
+You can also manually build a bundle by ticking multiple candidates and setting the amount per row — the deposit's value will be distributed however you choose.
+
+### 5.5 Fixing a payment applied to the wrong invoice
+
+Yes, fully reversible. Three steps:
+
+**Step 1 — Un-apply the wrong allocation.** Open the wrong invoice (the one that got over-credited). Scroll down to the **Allocations** panel listing every payment applied. Click the **trash icon** next to the wrong allocation. A confirm dialog shows you what the invoice's status will revert to (e.g. *"Removing this $450.00 will move INV-1234 from PAID back to SENT"*) — confirm.
+
+What happens behind the scenes: the allocation row is deleted, the invoice's `amountPaid` and `amountOutstanding` are recomputed from the remaining allocations, and the status auto-reverts. An audit row is written so the trail is permanent — an auditor can always see that INV-1234 was briefly PAID and then un-applied.
+
+**Step 2 — The transaction is now free again.** The underlying bank transaction is untouched (the money is still recorded as having come in, on the right date, against the right account). Only the link between transaction and invoice is gone. The transaction reappears in the Payments queue (Banking → Payments).
+
+**Step 3 — Apply it to the correct invoice.** Click Apply on the transaction in the queue, pick the right invoice from the candidate list, confirm.
+
+A few properties worth knowing about this flow:
+
+- **Bank balance never changes.** The deposit happened in the real world; SimpleBooks doesn't pretend otherwise. Only the *attribution* moves.
+- **Both events are auditable.** The wrong-apply and the un-apply each write an `AllocationEvent` row. If anyone asks "why did INV-1234 briefly show PAID on 06/06?", the answer is in there.
+- **Two clicks per allocation.** If you split one deposit across five wrong invoices, each one needs its own trash-then-re-apply. There's no bulk un-apply today.
+- **No drag-move.** You can't directly move an allocation from one invoice to another — it's always un-apply, then re-apply.
+
+### 5.6 Customer credit (overpayments and prepayments)
+
+Sometimes a customer pays more than they owe, or pays before the invoice exists. The leftover amount becomes **customer credit** — money you've banked from this customer that isn't yet applied to any invoice.
+
+The Apply modal surfaces credit two ways:
+
+- **Green banner at the top of the modal** when there's existing credit on the customer's account. The banner shows the amount and how many earlier transactions it came from, plus a **"Use existing credit instead →"** button that reopens the modal pointed at the oldest credit-bearing transaction. Useful when an invoice arrives later and the customer's already paid for it.
+
+- **From the invoice page.** Click **Receive payment** on a SENT / VIEWED / PARTIAL_PAID invoice. The modal lists every transaction for that customer with remaining unallocated balance — tick the source(s), set amounts, apply. This is the natural flow when "I know this customer has credit; apply it against this invoice."
+
+Credit accumulates passively — every deposit that isn't fully allocated leaves a remainder on the customer. There's no explicit "credit account" entity; it's derived from `transaction.unallocated > 0`.
+
+### 5.7 Dismissing — "Not a customer payment"
+
+Not every positive deposit in the queue is a customer payment. Some are bank interest, refunds, transfers from another account, etc. Click **Not a customer payment** on the row to dismiss it from the queue. It disappears immediately.
+
+Dismissing doesn't delete the transaction — it just hides it from the Payments queue. The transaction still lives in `/transactions` with its category and balance, exactly as before. If you change your mind, you can un-dismiss from the transaction's edit modal.
+
+Dismissals are sticky — once dismissed, a transaction never reappears in the queue automatically. So use it for genuinely-not-a-customer-payment cases, not "I'll deal with this later."
+
+### 5.8 Manual status overrides — when to use Mark as Sent vs Receive payment
+
+Two related actions on the invoice page that look similar but mean different things:
+
+- **Mark as Sent** (in the invoice's Menu, only on `DRAFT` or `FAILED_TO_SEND`) — flips the invoice's status to `SENT` without going through the email pipeline. Use when you delivered the invoice out-of-band (printed and posted, hand-delivered, sent from your personal email). It does NOT record a payment.
+
+- **Receive payment** (button in the invoice header, on `SENT` / `VIEWED` / `PARTIAL_PAID`) — opens the Apply modal in invoice context. Use to record that the customer actually paid. Requires picking the source transaction.
+
+So the order for the typical out-of-band paid invoice is: **Mark as Sent** first (so the invoice is no longer DRAFT), then **Receive payment** when the bank deposit lands. Don't try to skip Mark as Sent — there's no "directly mark as paid" shortcut, because every payment must come from a real bank transaction so the books balance.
+
+---
+
+## 6. Categories
 
 Categories are the targets of all categorisation. Each category has:
 
@@ -191,7 +298,7 @@ Categories are the targets of all categorisation. Each category has:
 - **Kind** — one of: Income, Expense, Transfer, Other. The kind determines the pill colour on transactions.
 - **Sort order** — controls the ordering of categories in dropdowns and pickers.
 
-### 5.1 Default categories
+### 6.1 Default categories
 
 Fifteen categories are seeded on first run:
 
@@ -204,17 +311,17 @@ Fifteen categories are seeded on first run:
 
 Edit any of these or add your own at `/categories`.
 
-### 5.2 Deleting categories
+### 6.2 Deleting categories
 
 A category cannot be deleted while anything references it. This includes transactions that use the category directly, transaction splits, and rules whose outcome targets that category. The error message shows the count of each referencing type. To delete: re-assign the references first, then delete.
 
 ---
 
-## 6. Vendors
+## 7. Vendors
 
 A Vendor represents a merchant, person, customer, bank, or counterparty that appears in your transaction descriptions. The central concept is **aliases**.
 
-### 6.1 How aliases work
+### 7.1 How aliases work
 
 Each vendor has a list of lowercase substrings. When the auto-vendor-matching pass runs, it checks each transaction description for any of these substrings, case-insensitively. If a substring is found, that vendor is assigned to the transaction.
 
@@ -222,7 +329,7 @@ Example: the seeded Vendor "PayPal" has aliases `["paypal", "617704"]`. A descri
 
 **Trailing spaces matter.** The alias `rac ` (with a trailing space) matches the string "rac " inside "Direct Debit rac insurance" but does not match "racing" or "racking". Use a trailing space when a short alias would otherwise match unrelated words. For example, `rac ` correctly targets RAC insurance without accidentally matching "tracking" or "racing club".
 
-### 6.2 Default vendors
+### 7.2 Default vendors
 
 39 vendors are seeded covering common Australian payees:
 
@@ -236,7 +343,7 @@ Example: the seeded Vendor "PayPal" has aliases `["paypal", "617704"]`. A descri
 
 Edit vendors at `/vendors`. Add new aliases to existing vendors, or create new vendors for payees not covered by the seed.
 
-### 6.3 When vendor matching runs
+### 7.3 When vendor matching runs
 
 Vendor matching runs:
 
@@ -248,18 +355,18 @@ Vendor matching does not automatically set a category. It sets the `vendorId` on
 
 ---
 
-## 7. Vendor extraction wizard
+## 8. Vendor extraction wizard
 
 At `/vendors/extract`. Use this when you have a batch of imported transactions and want the system to suggest vendors from the description text, rather than creating them by hand.
 
-### 7.1 Source
+### 8.1 Source
 
 Choose either:
 
 - **Use all imported transactions** — optionally filtered by date range and account.
 - **Upload a CSV** — parsed in-memory, never saved. Use this to preview vendor candidates from a new file before importing it.
 
-### 7.2 Review candidates
+### 8.2 Review candidates
 
 The server scans the descriptions, strips common noise prefixes (Direct Debit, Direct Credit, Fast Transfer From, BPAY, etc.), removes trailing reference numbers, tokenises the remaining text, and identifies frequent n-grams (word sequences) as candidate vendor names.
 
@@ -274,25 +381,25 @@ For each candidate you see:
 | Matches | How many descriptions in your source data hit this candidate. |
 | Exists badge | Shown if this candidate overlaps an existing vendor's aliases. Proceeding will merge the new aliases into the existing vendor. |
 
-### 7.3 Create
+### 8.3 Create
 
 Click "Create selected". The server creates new vendors for uncolliding candidates and merges new aliases into existing vendors for colliding ones. A summary card shows created / updated / skipped counts, plus a shortcut to run Re-categorise immediately.
 
 ---
 
-## 8. Rules
+## 9. Rules
 
 A Rule says: "when these conditions all match a transaction, set its category to X."
 
 Phase B supports AND-only logic per rule — all conditions in a rule must be true. To get OR behaviour, create two separate rules with the same outcome category.
 
-### 8.1 What a rule contains
+### 9.1 What a rule contains
 
 - **Name** — human-readable label, e.g. "Woolworths groceries".
 - **Conditions** — one or more `(field, operator, value)` rows, joined with AND.
 - **Outcome** — a target category (required), an optional vendor override, and an optional note that gets appended to the transaction's notes field when the rule fires.
 
-### 8.2 Condition fields and operators
+### 9.2 Condition fields and operators
 
 | Field | Available operators | Value type |
 |---|---|---|
@@ -301,7 +408,7 @@ Phase B supports AND-only logic per rule — all conditions in a rule must be tr
 | Vendor | is, is one of | Single vendor or list of vendors. Set by the vendor-matching pass before rules run. |
 | Account | is, is one of | Single account or list of accounts. |
 
-### 8.3 Rule editor
+### 9.3 Rule editor
 
 At `/rules/new` or `/rules/[id]/edit`. Three sections:
 
@@ -315,7 +422,7 @@ A "Sample matches" counter at the bottom of the editor shows approximately how m
 
 ![Rule editor](docs/images/user-guide-banking/rule-editor.png)
 
-### 8.4 Rules list
+### 9.4 Rules list
 
 At `/rules`. Rules are ordered by priority number; lower numbers win. Each row shows:
 
@@ -326,15 +433,15 @@ At `/rules`. Rules are ordered by priority number; lower numbers win. Each row s
 - Hit count and "Last fired" date
 - Action buttons: Activate/Deactivate, move up (↑), move down (↓), Edit, Delete
 
-The tabs at the top filter by: **USER** (rules you wrote) / **AI Drafts** / **Approved** / **Denied**. AI Drafts are populated by the "Find candidates from history" action (see §15.4).
+The tabs at the top filter by: **USER** (rules you wrote) / **AI Drafts** / **Approved** / **Denied**. AI Drafts are populated by the "Find candidates from history" action (see §16.4).
 
-### 8.5 Priority and ordering
+### 9.5 Priority and ordering
 
 When the rule engine evaluates a transaction, it tests rules in priority order (lowest number first) and stops at the first rule that matches. The winning rule's category is applied.
 
 To change priority: use the ↑ and ↓ buttons on the list page. The display rank updates immediately.
 
-### 8.6 Worked example: categorise PayPal expenses
+### 9.6 Worked example: categorise PayPal expenses
 
 Goal: every PayPal debit should be categorised as Expense — Subscriptions & Online.
 
@@ -349,7 +456,7 @@ Now click Re-categorise on the transactions table. PayPal debit rows get categor
 
 If you also receive PayPal credits (refunds), they will not match this rule because of the Amount < 0 condition. Create a separate rule for those with a different category if needed.
 
-### 8.7 Worked example: priority conflict
+### 9.7 Worked example: priority conflict
 
 You have transactions labelled "Transfer to Danny" (money sent to a friend) and "Office Rent Danny" (your landlord's name is Danny). Two rules both match on "Danny".
 
@@ -362,11 +469,11 @@ Use the Test Rules sandbox (Section 9) to verify conflicts like this before runn
 
 ---
 
-## 9. Test Rules sandbox
+## 10. Test Rules sandbox
 
 At `/rules/test`. A yellow banner at the top reads: "Rules Test Ground — nothing on this page changes any transaction." You can experiment freely.
 
-### 9.1 Configure
+### 10.1 Configure
 
 **Source** — choose which transactions to test against:
 
@@ -377,7 +484,7 @@ At `/rules/test`. A yellow banner at the top reads: "Rules Test Ground — nothi
 
 **Include vendor matching pass** — toggle this to run vendor identification before rule matching, the same way the live engine works. Turn it off if you want to test pure rule logic without vendor assignment.
 
-### 9.2 Run
+### 10.2 Run
 
 Click "Test rules". A results table appears with one row per transaction tested:
 
@@ -395,7 +502,7 @@ Transactions that no rule matches are shown with "No match" in the Winning rule 
 
 ![Test rules results](docs/images/user-guide-banking/test-rules-results.png)
 
-### 9.3 Iteration loop
+### 10.3 Iteration loop
 
 The sandbox has no side effects. The intended workflow is:
 
@@ -408,13 +515,13 @@ The sandbox has no side effects. The intended workflow is:
 
 ---
 
-## 10. Re-categorise
+## 11. Re-categorise
 
 Re-categorise is a bulk action that applies the vendor-matching pass and rule engine to a set of transactions.
 
 **Where to find it**: "Re-categorise" button at the top of the `/transactions` table, or the "Re-categorise uncategorised" shortcut on the account header card on `/accounts/[id]`.
 
-### 10.1 The dialog
+### 11.1 The dialog
 
 The dialog has two options:
 
@@ -426,7 +533,7 @@ The dialog has two options:
 
 The current filter on the transactions table (account, date range) is automatically passed into the engine. To re-categorise just one account's April transactions: set the account filter and date range first, then open the dialog.
 
-### 10.2 Result card
+### 11.2 Result card
 
 After the run, a result card shows:
 
@@ -440,15 +547,15 @@ Ambiguous vendor matches are a signal to refine your aliases — tighten whichev
 
 ---
 
-## 11. Splits
+## 12. Splits
 
 When one transaction covers multiple categories — for example, a supermarket receipt that includes both groceries and household goods — split it so each portion lands in the right category.
 
-### 11.1 Opening the split modal
+### 12.1 Opening the split modal
 
 From the Actions menu on any transaction row, click "Split".
 
-### 11.2 Adding split rows
+### 12.2 Adding split rows
 
 The modal opens with one row pre-populated: the transaction's full amount in its current category (or uncategorised if none). Each split row has:
 
@@ -460,7 +567,7 @@ The "Allocated / Remaining" badge at the bottom of the modal updates as you type
 
 Add rows with "+ Add split". Remove rows with the trash icon on each row.
 
-### 11.3 What happens on save
+### 12.3 What happens on save
 
 - The transaction's single `categoryId` is cleared. From now on, category information lives in the split rows, not on the transaction itself.
 - The split rows are written as `TransactionSplit` records.
@@ -468,17 +575,17 @@ Add rows with "+ Add split". Remove rows with the trash icon on each row.
 
 The transactions table shows "(split: N)" in the category column for split transactions, where N is the number of splits.
 
-### 11.4 Undoing a split
+### 12.4 Undoing a split
 
 Open the split modal, delete rows until only one remains, and save. The system converts the single remaining split back to a `categoryId` on the transaction and removes the split records.
 
-### 11.5 Rules and splits
+### 12.5 Rules and splits
 
 By default, the Re-categorise engine leaves split transactions alone (the "Preserve manual splits" checkbox is on by default). A split is treated as a deliberate manual decision. If you want the engine to recategorise split transactions, untick the checkbox — but note this will remove the splits.
 
 ---
 
-## 12. Categorisation history
+## 13. Categorisation history
 
 Every category or vendor change — whether made manually, by a rule, by vendor matching, or by AI — writes a `CategorisationEvent` record. The record stores:
 
@@ -488,11 +595,11 @@ Every category or vendor change — whether made manually, by a rule, by vendor 
 - The AI's reasoning text (for AI events)
 - The timestamp
 
-Per-transaction history is accessible via the **History drawer** in the transaction edit modal (see §15). The full audit log is also queryable via `/categorisation-events` for debugging or audit purposes.
+Per-transaction history is accessible via the **History drawer** in the transaction edit modal (see §16). The full audit log is also queryable via `/categorisation-events` for debugging or audit purposes.
 
 ---
 
-## 13. Rule effectiveness metrics
+## 14. Rule effectiveness metrics
 
 Each rule on the `/rules` list page shows two metrics:
 
@@ -507,11 +614,11 @@ Use these to maintain your rule set over time:
 | Very high hit count across unrelated transactions | The rule is too broad | Split into two or more specific rules |
 | Hits several months ago, quiet since | Pattern may have stopped appearing in your data | Worth a review, but not necessarily a problem |
 
-The AI uses these metrics — combined with the CategorisationEvent log — to find candidate patterns for draft rules. Use the "Find candidates from history" button on `/rules` to trigger this (see §15.4).
+The AI uses these metrics — combined with the CategorisationEvent log — to find candidate patterns for draft rules. Use the "Find candidates from history" button on `/rules` to trigger this (see §16.4).
 
 ---
 
-## 14. AI Setup
+## 15. AI Setup
 
 Configure the AI providers that power categorisation suggestions and rule drafting. The page is at `/settings/ai-setup` (sidebar: AI Setup, under Settings).
 
@@ -536,13 +643,13 @@ At the bottom of the page, the "Rule drafting" section lets you set the minimum 
 
 ---
 
-## 15. AI categorisation
+## 16. AI categorisation
 
 The AI reads your manual categorisations and accepted suggestions as examples, then proposes categories for uncategorised transactions and writes draft rules based on patterns it finds. No model training or fine-tuning — it learns from your history within each call.
 
 To get started, configure at least one provider at `/settings/ai-setup`. Without a provider the AI banner shows a setup prompt instead of a suggestion.
 
-### 15.1 Inline suggestion in the transaction edit modal
+### 16.1 Inline suggestion in the transaction edit modal
 
 Open any transaction by clicking its row. In the edit modal:
 
@@ -561,7 +668,7 @@ If you change the Category select while the suggestion banner is visible (withou
 
 Cancelling the modal without acting on the banner leaves the suggestion unresolved — the same suggestion is reused if you reopen the modal within 24 hours.
 
-### 15.2 Bulk categorisation
+### 16.2 Bulk categorisation
 
 On the `/transactions` page, the bulk-actions menu includes **"Categorise with AI"**. Click it to open a dialog where you select accounts, a date range, and scope (uncategorised transactions only, or all). The dialog shows how many transactions match before you start.
 
@@ -569,7 +676,7 @@ On Start, the backend dispatches AI calls at up to 5 concurrent requests. The di
 
 To stop a run in progress, close the dialog — this cancels the remaining calls.
 
-### 15.3 AI review queue — `/transactions/ai-review`
+### 16.3 AI review queue — `/transactions/ai-review`
 
 Lists all transactions that have a pending AI suggestion (suggested but not yet accepted, edited, or rejected). Each row shows the suggestion banner inline with the same Accept / Edit / Reject buttons as the modal.
 
@@ -580,7 +687,7 @@ The toolbar includes **"Approve all high-confidence"** — a confirmation dialog
 
 Use filters (account, confidence, date range) to work through the queue in batches.
 
-### 15.4 AI Drafts tab on `/rules`
+### 16.4 AI Drafts tab on `/rules`
 
 The rules page has an "AI Drafts" tab. Drafts are rules the AI has proposed based on patterns it found in your categorisation history. They are inactive and do not fire until you promote them.
 
@@ -598,7 +705,7 @@ When ≥ 2 drafts are present, an **"Approve all"** button appears in the toolba
 
 **Saving a rule in the editor** auto-promotes an AI Draft to Approved, regardless of whether you changed the conditions.
 
-### 15.5 History drawer — transaction edit modal
+### 16.5 History drawer — transaction edit modal
 
 The transaction edit modal header includes a `[⏱ History (N)]` button (where N is the event count). Click it to open a read-only drawer on the right listing every categorisation event for this transaction.
 
