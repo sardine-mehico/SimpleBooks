@@ -301,6 +301,13 @@ There is currently no host-side `npm` workflow, no test suite, and no host linte
 - Invoice line-item rows reshape on mobile: description spans full width row 1, amount + tax select + delete share row 2 in a 3-col grid.
 - `LabeledRow` in `invoice-body-editor.tsx` stacks label above input on mobile, reverts to right-aligned label + 160px input on `md:`.
 
+### API documentation (Swagger / OpenAPI)
+- `@nestjs/swagger` is mounted at `/docs` on the backend (`main.ts`). Local dev: `http://localhost:4000/docs`. Production: `https://<domain>/api/docs` (the reverse proxy strips `/api` before forwarding to the backend at `/docs`).
+- Raw OpenAPI JSON spec at `/docs-json` — feed it to Postman, Bruno, or any OpenAPI 3.0 codegen.
+- Schema introspection is automatic via the `@nestjs/swagger` CLI plugin configured in `nest-cli.json`. DTOs decorated with `class-validator` (`@IsString()`, `@MinLength()`, `@IsOptional()`, etc.) are picked up at build time — no `@ApiProperty()` needed on every field. Enums and union types currently render as `object` unless explicitly decorated; that's a known polish gap.
+- Every controller is decorated with `@ApiTags('<route-prefix>')` so endpoints group by domain in the UI (`/customers` → "customers", `/ai` → "ai", etc.).
+- **Exposure caveat:** `/docs` is unauthenticated and publicly reachable on every deploy. The boilerplate is single-tenant operator-only, so this is acceptable today. If multi-tenant or stricter, gate it behind an auth guard or env-toggle in `main.ts`.
+
 ### Background jobs
 - **Recurring invoice sweep** — `recurring.processor.ts`, BullMQ `recurring-invoices` queue with repeat pattern `* * * * *`. Timezone read from `Preferences.timezone` once at boot. Generates at most one invoice per rule per sweep; `SEND_DIRECTLY` rules route the generated invoice straight into `InvoiceMailService.send`.
 - **Invoice mail retry queue** — BullMQ `invoice-mail` queue. Triggered by `POST /invoices/:id/send` (manual send) when the synchronous first attempt fails, and by the recurring sweep's `SEND_DIRECTLY` path on the same failure. **3 retry attempts** (so 4 total tries including the synchronous first attempt), **fixed 10-minute backoff** between attempts. On final failure: flips the invoice's `status` to `FAILED_TO_SEND` and fires Telegram + Resend notifications.

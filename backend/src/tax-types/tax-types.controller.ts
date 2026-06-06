@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { TaxTypesService } from './tax-types.service';
 import { CreateTaxTypeDto, UpdateTaxTypeDto } from './dto';
 
+@ApiTags('tax-types')
 @Controller('tax-types')
 export class TaxTypesController {
   constructor(private taxTypes: TaxTypesService) {}

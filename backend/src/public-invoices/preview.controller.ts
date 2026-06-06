@@ -1,4 +1,5 @@
 import { Controller, Get, Header, NotFoundException, Param, Res } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { applyDynamicFields } from '../common/dynamic-fields';
@@ -8,6 +9,7 @@ import { applyDynamicFields } from '../common/dynamic-fields';
 // the real send pipeline does against a static "sample invoice" so the
 // output looks like what the customer would see — without seeding fake data
 // or hitting the SMTP path.
+@ApiTags('preview')
 @Controller('preview')
 export class PreviewController {
   constructor(private readonly prisma: PrismaService) {}

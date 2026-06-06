@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { TelegramService } from './telegram.service';
 
+@ApiTags('telegram')
 @Controller('telegram')
 export class TelegramController {
   constructor(private telegram: TelegramService) {}

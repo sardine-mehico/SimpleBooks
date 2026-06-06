@@ -1,6 +1,8 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CategorisationEventsService } from './categorisation-events.service';
 
+@ApiTags('categorisation-events')
 @Controller('categorisation-events')
 export class CategorisationEventsController {
   constructor(private service: CategorisationEventsService) {}

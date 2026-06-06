@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Put } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { MailConfigurationService } from './mail-configuration.service';
 import { UpsertMailConfigurationDto } from './dto';
 
+@ApiTags('mail-configuration')
 @Controller('mail-configuration')
 export class MailConfigurationController {
   constructor(private mail: MailConfigurationService) {}

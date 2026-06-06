@@ -1,9 +1,11 @@
 import { Body, Controller, Get, Header, Post, Query, Res } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { StatementsService } from './statements.service';
 import { PdfService } from '../pdf/pdf.service';
 import { SendStatementDto, StatementQueryDto } from './dto';
 
+@ApiTags('statements')
 @Controller('statements')
 export class StatementsController {
   constructor(

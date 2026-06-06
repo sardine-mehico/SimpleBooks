@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { AiProvidersService } from './ai-providers.service';
 import { CreateAiProviderDto, MoveAiProviderDto, UpdateAiProviderDto } from './dto';
 
+@ApiTags('ai-providers')
 @Controller('ai-providers')
 export class AiProvidersController {
   constructor(private service: AiProvidersService) {}

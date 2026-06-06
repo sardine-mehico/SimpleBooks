@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, Headers, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RecurringService } from './recurring.service';
 import { CreateRecurringRuleDto, UpdateRecurringRuleDto } from './dto';
 
+@ApiTags('recurring')
 @Controller('recurring')
 export class RecurringController {
   constructor(private recurring: RecurringService) {}

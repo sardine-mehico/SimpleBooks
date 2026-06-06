@@ -1,7 +1,9 @@
 import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { MailService } from './mail.service';
 import { TestEmailDto } from './dto';
 
+@ApiTags('mail')
 @Controller('mail')
 export class MailController {
   constructor(private mail: MailService) {}

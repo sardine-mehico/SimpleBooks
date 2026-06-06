@@ -1,4 +1,5 @@
 import { Controller, Get, Header, Param, Res } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PublicInvoicesService } from './public-invoices.service';
 import { PdfService } from '../pdf/pdf.service';
@@ -7,6 +8,7 @@ import { PdfService } from '../pdf/pdf.service';
 // authentication — anyone with the URL sees the invoice, by design. Matches
 // the rest of the backend's no-guards posture; status guards in the service
 // keep DRAFT / VOID / FAILED_TO_SEND invoices from leaking through.
+@ApiTags('public/invoices')
 @Controller('public/invoices')
 export class PublicInvoicesController {
   constructor(

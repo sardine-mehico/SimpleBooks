@@ -1,8 +1,10 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { AiCategoriserService } from './ai-categoriser.service';
 import { AiRuleDrafterService } from './ai-rule-drafter.service';
 import { ApplyDto, BulkSuggestDto, SuggestCategoryDto } from './ai.dto';
 
+@ApiTags('ai')
 @Controller('ai')
 export class AiController {
   constructor(

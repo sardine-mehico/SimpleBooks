@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { ApplyPaymentDto } from './payments.dto';
 
+@ApiTags('payments')
 @Controller('payments')
 export class PaymentsController {
   constructor(private payments: PaymentsService) {}

@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Put } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PreferencesService } from './preferences.service';
 import { UpsertPreferencesDto } from './dto';
 
+@ApiTags('preferences')
 @Controller('preferences')
 export class PreferencesController {
   constructor(private prefs: PreferencesService) {}

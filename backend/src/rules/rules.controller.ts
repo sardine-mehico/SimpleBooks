@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RulesService } from './rules.service';
 import { CreateRuleDto, MoveRuleDto, RuleStateDto, SetRuleStateDto, ToggleRuleActiveDto, UpdateRuleDto } from './dto';
 
+@ApiTags('rules')
 @Controller('rules')
 export class RulesController {
   constructor(private service: RulesService) {}

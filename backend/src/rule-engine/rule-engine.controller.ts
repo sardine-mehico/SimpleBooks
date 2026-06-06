@@ -1,8 +1,10 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RuleEngineService } from './rule-engine.service';
 import { TagsService } from '../tags/tags.service';
 import { RecategoriseDto, TestRulesDto } from './dto';
 
+@ApiTags('rule-engine')
 @Controller('rule-engine')
 export class RuleEngineController {
   constructor(private engine: RuleEngineService, private tags: TagsService) {}

@@ -1,7 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RecurringSchedulesService } from './recurring-schedules.service';
 import { CreateRecurringScheduleDto, UpdateRecurringScheduleDto } from './dto';
 
+@ApiTags('recurring-schedules')
 @Controller('recurring-schedules')
 export class RecurringSchedulesController {
   constructor(private svc: RecurringSchedulesService) {}

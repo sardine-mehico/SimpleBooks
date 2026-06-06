@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PDFDocument } from 'pdf-lib';
 import { InvoicesService } from './invoices.service';
@@ -15,6 +16,7 @@ import { PdfService } from '../pdf/pdf.service';
 import { pLimit } from '../ai/utils/p-limit';
 import { PrismaService } from '../prisma/prisma.service';
 
+@ApiTags('invoices')
 @Controller('invoices')
 export class InvoicesController {
   constructor(

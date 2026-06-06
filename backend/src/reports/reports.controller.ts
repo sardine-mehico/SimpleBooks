@@ -1,8 +1,10 @@
 // backend/src/reports/reports.controller.ts
 import { Controller, Get, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { ReportQueryDto, TagsReportQueryDto } from './dto';
 
+@ApiTags('reports')
 @Controller('reports')
 export class ReportsController {
   constructor(private service: ReportsService) {}

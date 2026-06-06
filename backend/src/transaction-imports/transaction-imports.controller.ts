@@ -8,6 +8,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags } from '@nestjs/swagger';
 import { TransactionImportsService } from './transaction-imports.service';
 import { CommitImportDto } from './dto';
 import { ColumnMapping } from './types';
@@ -21,6 +22,7 @@ interface MulterFile {
   buffer: Buffer;
 }
 
+@ApiTags('transaction-imports')
 @Controller('transaction-imports')
 export class TransactionImportsController {
   constructor(private service: TransactionImportsService) {}

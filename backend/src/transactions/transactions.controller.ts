@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
 import { CustomerLinkerService } from './customer-linker.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,6 +7,7 @@ import { TagsService } from '../tags/tags.service';
 import { ApplyTagsToTransactionDto } from '../tags/dto';
 import { BulkDeleteDto, CreateTransactionDto, LinkCustomersDto, ListTransactionsDto, SetCategoryDto, SetSplitsDto, UpdateTransactionDto } from './dto';
 
+@ApiTags('transactions')
 @Controller('transactions')
 export class TransactionsController {
   constructor(
