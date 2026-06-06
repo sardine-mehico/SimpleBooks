@@ -236,14 +236,31 @@ export const EMAIL_TEMPLATE_SPECS: EmailTemplateSpec[] = [
 ];
 
 async function main() {
-  if ((await prisma.user.count()) > 0) {
+  // Phase 1 contract: the env admin is the single source of identity. We
+  // bootstrap it here so the rest of the seed has a stable admin to reason
+  // about, then the running app's AuthService reconciles the same row at
+  // boot. If the env vars are missing we skip silently — the backend's
+  // refuse-to-start guard will surface a clear FATAL on the next process.
+  const adminUsername = process.env.ADMIN_USERNAME;
+  if (adminUsername) {
+    await prisma.user.upsert({
+      where: { username: adminUsername },
+      update: { role: 'ADMIN', isActive: true },
+      create: {
+        username: adminUsername,
+        displayName: 'Administrator',
+        role: 'ADMIN',
+        passwordHash: null,
+        isActive: true,
+      },
+    });
+  }
+
+  // Demo-data gate: any seeded billing company means we've already run; skip.
+  if ((await prisma.billingCompany.count()) > 0) {
     console.log('seed: already populated, skipping');
     return;
   }
-
-  await prisma.user.create({
-    data: { email: 'owner@simplebooks.dev', name: 'Owner' },
-  });
 
   // Templates first so the BillingCompany can be assigned at creation.
   // Names + templateKeys are deliberately generic placeholders — they

@@ -7,15 +7,126 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum UserRole {
+  ADMIN
+  ACCOUNTANT
+  BOOKKEEPER
+  API_USER
+}
 
+// SimpleBooks user — bootstraps from env (ADMIN_USERNAME + ADMIN_PASSWORD)
+// on first boot and every subsequent boot reconciles that row. Non-env users
+// are created by admin via /settings/users. passwordHash is NULL for the
+// env-admin (validated against env vars at login) and for API_USER rows
+// (which authenticate via ApiKey rather than password).
+model User {
+  id                   String    @id @default(uuid())
+  username             String    @unique
+  displayName          String
+  email                String?   @unique
+  role                 UserRole
+  passwordHash         String?
+  isActive             Boolean   @default(true)
+  failedLoginAttempts  Int       @default(0)
+  lockedUntil          DateTime?
+  lastLoginAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  sessions      Session[]
+  apiKeys       ApiKey[]
+  auditLogs     AuditLog[]
   tasks         Task[]
   telegramChats TelegramChat[]
+}
+
+// Active login session — one row per cookie. `token` is a high-entropy
+// random string stored verbatim (it never leaves the server except as the
+// httpOnly cookie value, and is only compared via timingSafeEqual).
+// Expired rows are purged daily by AuthService.
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// API key — issued by admin to an API_USER row. `keyHash` is the argon2id
+// digest of the secret; `prefix` is the visible "sb_live_xxxxxxxx"
+// (first 8 chars after the brand prefix) shown in the list UI so admins
+// can identify a key after its full value is gone. Last 4 chars of the
+// secret also stored as `suffix` to aid scanning leaked-key reports.
+model ApiKey {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label       String
+  keyHash     String    @unique
+  prefix      String
+  suffix      String
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Per-role per-capability override. When present, the row overrides the
+// hard-coded default. Absent rows fall through to the default capability
+// matrix for the role. The Settings/Roles UI writes here.
+model RoleOverride {
+  id         String   @id @default(uuid())
+  role       UserRole
+  capability String
+  allowed    Boolean
+  updatedAt  DateTime @updatedAt
+
+  @@unique([role, capability])
+}
+
+enum AuditAction {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  ROLE_CHANGED
+  ROLE_OVERRIDE_CHANGED
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  RESOURCE_DELETED
+  DATA_RETENTION_PURGE
+}
+
+// Append-only audit trail. Recorded by the AuditInterceptor for every
+// DELETE-method route + explicitly by services for the action enum above.
+// `actor` is the authenticated user (null only for the failed-login case
+// where we couldn't match a username). Purged on demand from /settings/
+// data-retention.
+model AuditLog {
+  id         String      @id @default(uuid())
+  action     AuditAction
+  actorId    String?
+  actor      User?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  targetType String?
+  targetId   String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  @@index([action])
+  @@index([actorId])
+  @@index([createdAt])
 }
 
 enum PaymentTerms {

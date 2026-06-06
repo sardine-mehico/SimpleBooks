@@ -27,27 +27,29 @@ import {
 import { useState, useEffect } from "react";
 import { reviewQueueCount } from "@/lib/ai";
 import { paymentsQueueCount } from "@/lib/payments";
+import { useCapabilities } from "@/lib/use-current-user";
+import type { Capability } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
 
-type Item = { label: string; href: string; icon?: any; badgeKey?: string };
+type Item = { label: string; href: string; icon?: any; badgeKey?: string; cap?: Capability };
 type Group =
   | (Item & { kind: "link" })
   | { kind: "group"; label: string; icon: any; items: Item[]; defaultOpen?: boolean };
 
 const nav: Group[] = [
-  { kind: "link", label: "Dashboard", href: "/", icon: SquaresFour },
-  { kind: "link", label: "Billing Companies", href: "/companies", icon: Buildings },
-  { kind: "link", label: "Customers", href: "/customers", icon: Users },
-  { kind: "link", label: "Tasks", href: "/tasks", icon: ClipboardText },
+  { kind: "link", label: "Dashboard", href: "/", icon: SquaresFour, cap: "nav.dashboard" },
+  { kind: "link", label: "Billing Companies", href: "/companies", icon: Buildings, cap: "nav.companies" },
+  { kind: "link", label: "Customers", href: "/customers", icon: Users, cap: "nav.customers" },
+  { kind: "link", label: "Tasks", href: "/tasks", icon: ClipboardText, cap: "nav.tasks" },
   {
     kind: "group",
     label: "Sales",
     icon: Receipt,
     defaultOpen: true,
     items: [
-      { label: "Invoices", href: "/invoices" },
-      { label: "Recurring Invoices", href: "/recurring" },
-      { label: "Items", href: "/items" },
+      { label: "Invoices", href: "/invoices", cap: "nav.invoices" },
+      { label: "Recurring Invoices", href: "/recurring", cap: "nav.recurring" },
+      { label: "Items", href: "/items", cap: "nav.items" },
     ],
   },
   {
@@ -56,13 +58,13 @@ const nav: Group[] = [
     icon: Bank,
     defaultOpen: true,
     items: [
-      { label: "Accounts", href: "/accounts" },
-      { label: "Transactions", href: "/transactions" },
-      { label: "Payments", href: "/banking/payments", badgeKey: "paymentsCount" },
-      { label: "AI Review", href: "/transactions/ai-review", badgeKey: "aiReviewCount" },
-      { label: "Categories", href: "/categories" },
-      { label: "Tags", href: "/tags" },
-      { label: "Rules", href: "/rules" },
+      { label: "Accounts", href: "/accounts", cap: "nav.accounts" },
+      { label: "Transactions", href: "/transactions", cap: "nav.transactions" },
+      { label: "Payments", href: "/banking/payments", badgeKey: "paymentsCount", cap: "nav.payments" },
+      { label: "AI Review", href: "/transactions/ai-review", badgeKey: "aiReviewCount", cap: "nav.ai_review" },
+      { label: "Categories", href: "/categories", cap: "nav.categories" },
+      { label: "Tags", href: "/tags", cap: "nav.tags" },
+      { label: "Rules", href: "/rules", cap: "nav.rules" },
     ],
   },
   {
@@ -71,11 +73,11 @@ const nav: Group[] = [
     icon: ChartBar,
     defaultOpen: true,
     items: [
-      { label: "Cashflow", href: "/reports/cashflow" },
-      { label: "Expense Report", href: "/reports/expense" },
-      { label: "Income Report", href: "/reports/income" },
-      { label: "Tags Report", href: "/reports/tags" },
-      { label: "Statements", href: "/statements" },
+      { label: "Cashflow", href: "/reports/cashflow", cap: "nav.cashflow" },
+      { label: "Expense Report", href: "/reports/expense", cap: "nav.expense_report" },
+      { label: "Income Report", href: "/reports/income", cap: "nav.income_report" },
+      { label: "Tags Report", href: "/reports/tags", cap: "nav.tags_report" },
+      { label: "Statements", href: "/statements", cap: "nav.statements" },
     ],
   },
   { kind: "link", label: "Settings", href: "/settings", icon: GearSix },
@@ -109,6 +111,7 @@ export function Sidebar() {
 
 export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname();
+  const capabilities = useCapabilities();
   const [aiReviewCount, setAiReviewCount] = useState<number>(0);
   const [paymentsCount, setPaymentsCount] = useState<number>(0);
 
@@ -123,6 +126,18 @@ export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
     return () => { cancelled = true; clearInterval(t); };
   }, []);
 
+  // Filter the nav by capability. Items without a `cap` (Settings) stay
+  // visible because their own page filters its inner sections. Groups with
+  // all items hidden are dropped entirely.
+  const canSee = (cap?: Capability) => !cap || capabilities === null || capabilities[cap] === true;
+  const visibleNav = nav
+    .map((entry) => {
+      if (entry.kind === "link") return canSee((entry as any).cap) ? entry : null;
+      const items = entry.items.filter((i) => canSee(i.cap));
+      return items.length > 0 ? { ...entry, items } : null;
+    })
+    .filter(Boolean) as Group[];
+
   return (
     <>
       <div className="flex h-16 items-center border-b border-white/10 px-5">
@@ -135,7 +150,7 @@ export function SidebarBody({ onNavigate }: { onNavigate?: () => void } = {}) {
         />
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4 text-sm">
-        {nav.map((entry, i) =>
+        {visibleNav.map((entry, i) =>
           entry.kind === "link" ? (
             <NavLink key={i} item={entry} active={pathname === entry.href} onNavigate={onNavigate} />
           ) : (

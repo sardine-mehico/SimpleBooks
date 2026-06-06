@@ -2,8 +2,10 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@ne
 import { ApiTags } from '@nestjs/swagger';
 import { AiProvidersService } from './ai-providers.service';
 import { CreateAiProviderDto, MoveAiProviderDto, UpdateAiProviderDto } from './dto';
+import { AdminOnly } from '../auth/roles.decorator';
 
 @ApiTags('ai-providers')
+@AdminOnly()
 @Controller('ai-providers')
 export class AiProvidersController {
   constructor(private service: AiProvidersService) {}

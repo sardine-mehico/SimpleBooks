@@ -118,6 +118,10 @@ Quick design-system highlights (full detail in the file):
 
 ## Known gotchas
 
+- **Auth bootstrap (v0.9).** Backend refuses to start without `ADMIN_USERNAME` + `ADMIN_PASSWORD` env vars. The env admin's password is canonical for the lifetime of the deploy — there's no UI to rotate it; edit `.env` + restart. Admin User row has `passwordHash=NULL`; auth compares against env directly via `timingSafeStringEqual`. Non-env users have argon2id hashes.
+- **Role override cache TTL is 60s.** `RolesService` caches the merged capability matrix in-process. Flipping a switch in `/settings/roles` propagates within 60 seconds. Calling `RolesService.invalidate()` after a write flushes immediately (already wired on `setOverride` / `clearOverride`).
+- **Env service bootstrap is idempotent and one-shot.** SMTP / Telegram allowlist / AI providers seed from env only when the corresponding row(s) are absent. UI edits always win after first run — the env never overwrites. Partial env (e.g. SMTP_HOST set but SMTP_PORT empty) logs a warning and skips.
+- **`SessionGuard` accepts both cookie + Bearer.** Cookie `sb_session` is path A (browser); `Authorization: Bearer sb_live_<key>` is path B (API users). ApiKey verification is argon2id over all non-revoked rows — fine at the single-tenant scale, would need indexing if it ever grows past low thousands.
 - **Schema changes that aren't additive** require `docker compose down -v`. The entrypoint will not auto-recover from `db push` failures.
 - **Volume name `simplebooks_postgres_data`** is project-scoped via `name: simplebooks` in `docker-compose.yml`. Don't remove that line — historical work used the default project name `accounting` and the volume names will collide with other projects on this machine.
 - **Prisma `Decimal` columns** come back as strings over JSON. Always wrap reads in `Number(...)` on the frontend before maths.

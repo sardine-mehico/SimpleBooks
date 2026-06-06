@@ -1,5 +1,7 @@
-import { SectionPlaceholder } from "@/components/settings/section-placeholder";
+import { UsersAdminPage } from "@/components/settings/users-admin-page";
+
+export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <SectionPlaceholder title="Users" description="Manage user accounts and access." />;
+  return <UsersAdminPage />;
 }

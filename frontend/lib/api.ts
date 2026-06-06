@@ -69,6 +69,10 @@ export class ApiError extends Error {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${apiBase()}${path}`, {
     ...init,
+    // credentials: 'include' is required so the browser sends the
+    // sb_session cookie alongside cross-origin fetches (frontend and
+    // backend live on different ports in dev / same domain in prod).
+    credentials: "include",
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
   });

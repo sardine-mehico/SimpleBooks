@@ -62,10 +62,28 @@ Edit at minimum:
 
 - `POSTGRES_PASSWORD` — pick a long random string. Update it in two places
   (POSTGRES_PASSWORD **and** the password inside DATABASE_URL).
+- `ADMIN_USERNAME` + `ADMIN_PASSWORD` — **required**. Backend refuses to start
+  without both. This is the canonical admin login; the password remains valid
+  for the lifetime of the deploy (no rotation through the UI). Pick something
+  long and unique; edit here + restart to change.
 - `API_URL` — `https://<your-domain>/api`  (keep the `/api`; injected into HTML at runtime)
 - `PUBLIC_APP_URL` — `https://<your-domain>` (no `/api`; used by backend for invoice links)
 - `TELEGRAM_WEBHOOK_DOMAIN` — your domain (or leave empty to disable bot)
 - `TELEGRAM_WEBHOOK_SECRET` — long random string
+
+**Optional (functional-out-of-the-box):** populate these once and the app
+seeds them into the DB on first boot. Edits in the UI afterwards always win.
+
+- `SMTP_HOST` / `SMTP_PORT` / `SMTP_ENCRYPTION` / `SMTP_USER` / `SMTP_PASSWORD`
+  — all five required; seeds Mail Configuration.
+- `TELEGRAM_ALLOWLIST_USERNAMES` — comma-separated Telegram usernames
+  (no `@`). Each becomes a TelegramAllowlist row linked to the env admin.
+  **Recommendation:** link your own Telegram handle to admin for full bot
+  capability (the bot acts as the linked SimpleBooks user, so admin gives it
+  full access to add/list/edit/delete tasks and receive notifications).
+- `AI_PROVIDER_1_*` and `AI_PROVIDER_2_*` — two optional slots for AI
+  providers. Slot 1 is primary, slot 2 is fallback. Per-slot fields:
+  `NAME`, `MODEL`, `API_BASE_URL`, `API_KEY` (and optional `RPM`, default 15).
 
 Leave `TAG=0.3` for the first deploy.
 

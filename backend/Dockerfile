@@ -1,6 +1,8 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
-RUN apk add --no-cache openssl
+# python3/make/g++ are needed to build argon2's native bindings; the toolchain
+# is dropped on the runner stage since we only COPY node_modules over.
+RUN apk add --no-cache openssl python3 make g++
 COPY package.json ./
 RUN npm install --no-audit --no-fund
 

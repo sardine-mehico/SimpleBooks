@@ -1,5 +1,7 @@
-import { SectionPlaceholder } from "@/components/settings/section-placeholder";
+import { RolesAdminPage } from "@/components/settings/roles-admin-page";
+
+export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <SectionPlaceholder title="Roles" description="Define role-based access for staff and admins." />;
+  return <RolesAdminPage />;
 }

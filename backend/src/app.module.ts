@@ -35,6 +35,13 @@ import { AiModule } from './ai/ai.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ReportsModule } from './reports/reports.module';
 import { StatementsModule } from './statements/statements.module';
+import { AuthModule } from './auth/auth.module';
+import { RolesModule } from './roles/roles.module';
+import { UsersModule } from './users/users.module';
+import { ApiKeysModule } from './api-keys/api-keys.module';
+import { AuditModule } from './audit/audit.module';
+import { RetentionModule } from './retention/retention.module';
+import { BootstrapModule } from './bootstrap/bootstrap.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
 
@@ -48,6 +55,13 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://redis:6379');
       },
     }),
     PrismaModule,
+    AuditModule,
+    RolesModule,
+    AuthModule,
+    UsersModule,
+    ApiKeysModule,
+    RetentionModule,
+    BootstrapModule,
     TasksModule,
     InvoicesModule,
     RecurringModule,

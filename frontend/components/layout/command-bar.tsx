@@ -1,9 +1,19 @@
 "use client";
 
-import { Bell, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bell, LogOut, Search } from "lucide-react";
 import { MobileSidebar } from "./mobile-sidebar";
+import { useCurrentUser } from "@/lib/use-current-user";
+import { logout } from "@/lib/auth";
 
 export function CommandBar() {
+  const router = useRouter();
+  const user = useCurrentUser();
+  const onLogout = async () => {
+    await logout();
+    router.replace("/login");
+    router.refresh();
+  };
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 backdrop-blur-md md:gap-4 md:px-6">
       <div className="flex items-center gap-2 md:hidden">
@@ -18,10 +28,25 @@ export function CommandBar() {
           className="h-9 w-full rounded-[0.3rem] border border-slate-200 bg-slate-50/60 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
         />
       </div>
-      <button className="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Notifications">
-        <Bell className="h-5 w-5 md:h-4 md:w-4" />
-        <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-rose-500" />
-      </button>
+      <div className="flex items-center gap-2">
+        {user ? (
+          <span className="hidden text-sm text-slate-600 sm:inline-block" title={user.username}>
+            {user.displayName}
+          </span>
+        ) : null}
+        <button className="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Notifications">
+          <Bell className="h-5 w-5 md:h-4 md:w-4" />
+          <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-rose-500" />
+        </button>
+        <button
+          onClick={onLogout}
+          className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          aria-label="Sign out"
+          title="Sign out"
+        >
+          <LogOut className="h-5 w-5 md:h-4 md:w-4" />
+        </button>
+      </div>
     </header>
   );
 }

@@ -3,12 +3,14 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PublicInvoicesService } from './public-invoices.service';
 import { PdfService } from '../pdf/pdf.service';
+import { Public } from '../auth/public.decorator';
 
 // Unauthenticated customer-facing endpoints. The token is the only
 // authentication — anyone with the URL sees the invoice, by design. Matches
 // the rest of the backend's no-guards posture; status guards in the service
 // keep DRAFT / VOID / FAILED_TO_SEND invoices from leaking through.
 @ApiTags('public/invoices')
+@Public()
 @Controller('public/invoices')
 export class PublicInvoicesController {
   constructor(

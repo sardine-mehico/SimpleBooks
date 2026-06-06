@@ -9,6 +9,7 @@ import { parseApiError } from "@/lib/api-errors";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { EditPageChrome } from "@/components/layout/edit-page-chrome";
+import { useCapability } from "@/lib/use-current-user";
 import {
   type Allocation,
   type Invoice,
@@ -290,6 +291,7 @@ export function InvoiceForm({
   // hides it — voided invoices are no longer collectable.
   const canSend = status !== "VOID";
   const canVoid = status !== "VOID";
+  const canDelete = useCapability("action.delete");
   // Mark as Sent is a manual fallback for invoices delivered outside the app
   // (printed, hand-delivered, sent from another email account). Only meaningful
   // when the invoice hasn't been recognised as Sent — DRAFT or FAILED_TO_SEND.
@@ -327,6 +329,7 @@ export function InvoiceForm({
               canSend={canSend}
               canMarkAsSent={canMarkAsSent}
               canVoid={canVoid}
+              canDelete={canDelete}
             />
           </>
         ) : null
@@ -458,6 +461,7 @@ function ActionMenu({
   canSend,
   canMarkAsSent,
   canVoid,
+  canDelete,
 }: {
   onClone: () => void;
   onPdf: () => void;
@@ -468,6 +472,7 @@ function ActionMenu({
   canSend: boolean;
   canMarkAsSent: boolean;
   canVoid: boolean;
+  canDelete: boolean;
 }) {
   return (
     <DropdownMenuPrimitive.Root>
@@ -505,8 +510,12 @@ function ActionMenu({
           {canVoid ? (
             <ActionMenuItem icon={<Ban className="h-3.5 w-3.5" />} label="Void" onSelect={onVoid} danger />
           ) : null}
-          <DropdownMenuPrimitive.Separator className="my-1 h-px bg-slate-100" />
-          <ActionMenuItem icon={<Trash2 className="h-3.5 w-3.5" />} label="Delete" onSelect={onDelete} danger />
+          {canDelete ? (
+            <>
+              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-slate-100" />
+              <ActionMenuItem icon={<Trash2 className="h-3.5 w-3.5" />} label="Delete" onSelect={onDelete} danger />
+            </>
+          ) : null}
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>
     </DropdownMenuPrimitive.Root>

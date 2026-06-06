@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { deleteAllocation } from "@/lib/payments";
 import type { Allocation, Invoice } from "@/lib/types";
 import { UnapplyConfirmDialog } from "./unapply-confirm-dialog";
+import { useCapability } from "@/lib/use-current-user";
 
 function previewStatus(
   invoice: Pick<Invoice, "status" | "amountOutstanding" | "totalAmount">,
@@ -31,6 +32,7 @@ export function AllocationsPanel({
   onReceivePayment: () => void;
 }) {
   const [pending, setPending] = useState<{ id: string; amount: string } | null>(null);
+  const canDelete = useCapability("action.delete");
 
   if (allocations.length === 0) {
     // Receive payment is meaningful only once the invoice has actually
@@ -61,13 +63,15 @@ export function AllocationsPanel({
               {a.transactionDescription ?? a.transactionId}
             </Link>
             <span className="font-mono">${Number(a.amount).toLocaleString("en-AU", { minimumFractionDigits: 2 })}</span>
-            <button
-              className="text-slate-400 hover:text-rose-700"
-              onClick={() => setPending({ id: a.id, amount: a.amount })}
-              aria-label="Un-apply"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            {canDelete ? (
+              <button
+                className="text-slate-400 hover:text-rose-700"
+                onClick={() => setPending({ id: a.id, amount: a.amount })}
+                aria-label="Un-apply"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            ) : null}
           </li>
         ))}
       </ul>

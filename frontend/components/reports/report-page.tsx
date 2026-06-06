@@ -13,6 +13,7 @@ import { TotalsTable } from "./totals-table";
 import { AccountMultiSelect } from "./account-multi-select";
 import { TagMultiSelect } from "@/components/tags/tag-multi-select";
 import { exportReportToExcel } from "@/lib/export-excel";
+import { Can } from "@/components/auth/can";
 
 function fyStartDate(financialYearStart: number): string {
   const now = new Date();
@@ -124,9 +125,11 @@ export function ReportPage({
     >
       <div className="mb-4 flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
-        <Button variant="outline" size="sm" onClick={onExport} disabled={!report || loading || exporting}>
-          <Download className="h-4 w-4" /> {exporting ? "Exporting…" : "Export to Excel"}
-        </Button>
+        <Can c="action.export">
+          <Button variant="outline" size="sm" onClick={onExport} disabled={!report || loading || exporting}>
+            <Download className="h-4 w-4" /> {exporting ? "Exporting…" : "Export to Excel"}
+          </Button>
+        </Can>
       </div>
 
       <Card className="space-y-5 p-6">
