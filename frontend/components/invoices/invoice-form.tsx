@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, Copy, FileText, Menu, Send, Trash2 } from "lucide-react";
+import { Ban, CheckCircle, Copy, FileText, Menu, Send, Trash2 } from "lucide-react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ApiError, apiBase, apiClient, etagFor } from "@/lib/api";
 import { parseApiError } from "@/lib/api-errors";
@@ -257,6 +257,20 @@ export function InvoiceForm({
     router.refresh();
   }
 
+  // Manually flip the invoice into SENT — bypassing the email pipeline — so
+  // an operator can record an out-of-band delivery (printed, hand-delivered,
+  // sent from another mail account). Backend rejects if status isn't DRAFT
+  // or FAILED_TO_SEND.
+  async function markAsSent() {
+    if (!initial) return;
+    try {
+      await apiClient.post(`/invoices/${initial.id}/mark-as-sent`, {});
+      router.refresh();
+    } catch (e: any) {
+      toast.error(parseApiError(e?.message) || "Could not mark as Sent.");
+    }
+  }
+
   // Open the rendered PDF in a new tab.
   function openPdf() {
     if (!initial) return;
@@ -276,11 +290,16 @@ export function InvoiceForm({
   // hides it — voided invoices are no longer collectable.
   const canSend = status !== "VOID";
   const canVoid = status !== "VOID";
-  // Receive payment is meaningful only while the invoice is still collectable.
-  // PAID has nothing outstanding; VOID isn't collectable. DRAFT could in theory
-  // accept payments but the standard flow is to Send first, so we follow the
-  // spec and gate on PAID/VOID only.
-  const canReceivePayment = !!initial && status !== "PAID" && status !== "VOID";
+  // Mark as Sent is a manual fallback for invoices delivered outside the app
+  // (printed, hand-delivered, sent from another email account). Only meaningful
+  // when the invoice hasn't been recognised as Sent — DRAFT or FAILED_TO_SEND.
+  const canMarkAsSent = status === "DRAFT" || status === "FAILED_TO_SEND";
+  // Receive payment is meaningful only once the invoice has actually reached
+  // the customer. Hidden on DRAFT and FAILED_TO_SEND (customer never received
+  // it), and on PAID/VOID (nothing further to collect).
+  const canReceivePayment =
+    !!initial &&
+    (status === "SENT" || status === "VIEWED" || status === "PARTIAL_PAID");
 
   return (
     <EditPageChrome
@@ -302,9 +321,11 @@ export function InvoiceForm({
               onClone={clone}
               onPdf={openPdf}
               onSend={() => setSendOpen(true)}
+              onMarkAsSent={markAsSent}
               onVoid={() => setVoidOpen(true)}
               onDelete={() => setDeleteOpen(true)}
               canSend={canSend}
+              canMarkAsSent={canMarkAsSent}
               canVoid={canVoid}
             />
           </>
@@ -431,17 +452,21 @@ function ActionMenu({
   onClone,
   onPdf,
   onSend,
+  onMarkAsSent,
   onVoid,
   onDelete,
   canSend,
+  canMarkAsSent,
   canVoid,
 }: {
   onClone: () => void;
   onPdf: () => void;
   onSend: () => void;
+  onMarkAsSent: () => void;
   onVoid: () => void;
   onDelete: () => void;
   canSend: boolean;
+  canMarkAsSent: boolean;
   canVoid: boolean;
 }) {
   return (
@@ -469,6 +494,13 @@ function ActionMenu({
           <ActionMenuItem icon={<FileText className="h-3.5 w-3.5" />} label="PDF" onSelect={onPdf} />
           {canSend ? (
             <ActionMenuItem icon={<Send className="h-3.5 w-3.5" />} label="Send" onSelect={onSend} />
+          ) : null}
+          {canMarkAsSent ? (
+            <ActionMenuItem
+              icon={<CheckCircle className="h-3.5 w-3.5" />}
+              label="Mark as Sent"
+              onSelect={onMarkAsSent}
+            />
           ) : null}
           {canVoid ? (
             <ActionMenuItem icon={<Ban className="h-3.5 w-3.5" />} label="Void" onSelect={onVoid} danger />

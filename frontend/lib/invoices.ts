@@ -24,3 +24,12 @@ export function bulkSendInvoices(ids: string[]): Promise<BulkSendResult> {
     body: JSON.stringify({ ids }),
   });
 }
+
+// POST /invoices/:id/mark-as-sent — manual status flip from DRAFT or
+// FAILED_TO_SEND to SENT, for when delivery happened outside the app.
+export function markInvoiceAsSent(id: string) {
+  return api<{ id: string; status: string; updatedAt: string }>(
+    `/invoices/${id}/mark-as-sent`,
+    { method: "POST" },
+  );
+}

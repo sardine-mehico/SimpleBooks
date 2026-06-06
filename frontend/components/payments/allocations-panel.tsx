@@ -33,9 +33,12 @@ export function AllocationsPanel({
   const [pending, setPending] = useState<{ id: string; amount: string } | null>(null);
 
   if (allocations.length === 0) {
-    // Voided invoices are no longer collectable — hide the Receive-payment
-    // CTA so it can't be triggered against a retired invoice.
-    if (invoice.status === "VOID") return null;
+    // Receive payment is meaningful only once the invoice has actually
+    // reached the customer. Hide the CTA on DRAFT and FAILED_TO_SEND
+    // (customer never received it) and on VOID (no longer collectable).
+    if (invoice.status === "DRAFT" || invoice.status === "FAILED_TO_SEND" || invoice.status === "VOID") {
+      return null;
+    }
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
         No payments allocated yet.

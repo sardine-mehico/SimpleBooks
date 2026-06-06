@@ -149,6 +149,13 @@ export class InvoicesController {
     return this.invoices.void(id, dto.reason);
   }
 
+  // Manually mark a DRAFT or FAILED_TO_SEND invoice as Sent without going
+  // through the email pipeline. Use when delivery happened outside the app.
+  @Post(':id/mark-as-sent')
+  markAsSent(@Param('id') id: string) {
+    return this.invoices.markAsSent(id);
+  }
+
   // Render and stream the invoice PDF. `inline` content-disposition lets the
   // browser display it directly when the user clicks the PDF button.
   @Get(':id/pdf')

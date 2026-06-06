@@ -54,7 +54,7 @@ const columns: Column<Account>[] = [
     key: "type",
     label: "Type",
     render: (r) => (
-      <div className="flex flex-col leading-tight">
+      <div className="flex flex-col leading-tight" title={r.accountType?.description ?? undefined}>
         <span className="text-slate-600">{r.accountType?.name ?? "—"}</span>
         {r.accountType?.description ? (
           <span className="text-[11px] text-slate-400">{r.accountType.description}</span>

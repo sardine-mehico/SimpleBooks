@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus, PaymentTerms } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -386,6 +386,27 @@ export class InvoicesService {
     return this.prisma.invoice.update({
       where: { id },
       data: { status: 'VOID', voidReason: reason, voidedAt: new Date() },
+      include: { lineItems: true },
+    });
+  }
+
+  // Manually flip an invoice into SENT without going through the email send
+  // pipeline. Useful when the operator delivered the invoice via another
+  // channel (printed, hand-delivered, sent from a different email account).
+  // Allowed transitions: DRAFT → SENT, FAILED_TO_SEND → SENT.
+  // Any other status returns 409 — once SENT/VIEWED/PARTIAL_PAID/PAID/VOID,
+  // the manual override is rejected so it can't accidentally roll history
+  // back. Use Void to retire instead.
+  async markAsSent(id: string) {
+    const existing = await this.get(id);
+    if (existing.status !== 'DRAFT' && existing.status !== 'FAILED_TO_SEND') {
+      throw new ConflictException(
+        `Only DRAFT or FAILED_TO_SEND invoices can be marked as Sent; this one is ${existing.status}.`,
+      );
+    }
+    return this.prisma.invoice.update({
+      where: { id },
+      data: { status: 'SENT', lastSendAt: new Date() },
       include: { lineItems: true },
     });
   }
