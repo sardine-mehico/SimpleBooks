@@ -65,11 +65,11 @@ export class BootstrapService implements OnModuleInit {
     for (const u of usernames) {
       const existing = await this.prisma.telegramAllowlist.findFirst({ where: { username: u } });
       if (existing) continue;
-      // TelegramAllowlist.user is a free-text label today (note about who
-      // this Telegram handle belongs to). Set it to admin.username so the
-      // bot-as-user wiring (future phase) has a stable hint to resolve.
+      // Linked to admin so the bot acts with full capability for envelope
+      // bootstrap. Admin can re-link to a different user later via the
+      // Settings → Telegram page.
       await this.prisma.telegramAllowlist.create({
-        data: { username: u, user: admin.username },
+        data: { username: u, userId: admin.id },
       });
       added += 1;
     }

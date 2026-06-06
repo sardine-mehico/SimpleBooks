@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class CreateAllowlistDto {
   @IsString()
@@ -7,10 +7,9 @@ export class CreateAllowlistDto {
   @Matches(/^@?[A-Za-z0-9_]{3,32}$/, { message: 'username must be 3-32 chars, letters/digits/underscore only' })
   username!: string;
 
-  @IsString()
-  @IsOptional()
-  @MaxLength(120)
-  user?: string;
+  // FK to the SimpleBooks user the bot will act as for this Telegram
+  // handle. Bot rejects commands from rows with no linked user.
+  @IsUUID() userId!: string;
 
   @IsString()
   @IsOptional()

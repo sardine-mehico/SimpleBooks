@@ -33,11 +33,12 @@ model User {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  sessions      Session[]
-  apiKeys       ApiKey[]
-  auditLogs     AuditLog[]
-  tasks         Task[]
-  telegramChats TelegramChat[]
+  sessions           Session[]
+  apiKeys            ApiKey[]
+  auditLogs          AuditLog[]
+  tasks              Task[]
+  telegramChats      TelegramChat[]
+  telegramAllowlists TelegramAllowlist[]
 }
 
 // Active login session — one row per cookie. `token` is a high-entropy
@@ -481,14 +482,22 @@ model MailConfiguration {
   updatedAt  DateTime        @updatedAt
 }
 
+// Allowlisted Telegram handle. `userId` is the FK to the SimpleBooks user
+// the bot acts as for this handle — every bot command runs through the
+// linked user's role and capabilities. Nullable for backwards-compat with
+// rows seeded before the link existed; bot rejects commands from rows with
+// a null userId.
 model TelegramAllowlist {
   id        String   @id @default(uuid())
   username  String   @unique
-  user      String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   botName   String?
   botToken  String?
   note      String?
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // ── Banking ─────────────────────────────────────────────────────────────────

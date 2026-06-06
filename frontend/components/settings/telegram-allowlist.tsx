@@ -1,26 +1,23 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiClient } from "@/lib/api";
+import { listUsers, type UserRow } from "@/lib/users";
 
 export type AllowlistEntry = {
   id: string;
   username: string;
-  user?: string | null;
+  userId?: string | null;
+  user?: { id: string; username: string; displayName: string; role: string; isActive: boolean } | null;
   botName?: string | null;
   botToken?: string | null;
   note?: string | null;
@@ -29,18 +26,22 @@ export type AllowlistEntry = {
 
 export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
   const [rows, setRows] = useState(initial);
+  const [users, setUsers] = useState<UserRow[]>([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ username: "", user: "", botName: "", botToken: "", note: "" });
+  const [form, setForm] = useState({ username: "", userId: "", botName: "", botToken: "", note: "" });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [, startTransition] = useTransition();
 
+  useEffect(() => {
+    listUsers().then((u) => setUsers(u.filter((x) => x.isActive))).catch(() => {});
+  }, []);
+
   function update<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
   }
-
   function resetForm() {
-    setForm({ username: "", user: "", botName: "", botToken: "", note: "" });
+    setForm({ username: "", userId: "", botName: "", botToken: "", note: "" });
     setError(null);
   }
 
@@ -56,7 +57,7 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
     try {
       await apiClient.post("/telegram/allowlist", {
         username: form.username.trim().replace(/^@/, ""),
-        user: form.user.trim() || undefined,
+        userId: form.userId,
         botName: form.botName.trim() || undefined,
         botToken: form.botToken.trim() || undefined,
         note: form.note.trim() || undefined,
@@ -83,7 +84,10 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
         <div>
           <div className="text-sm font-semibold text-slate-900">Allowlisted users</div>
           <p className="mt-1 text-xs text-slate-500">
-            Only Telegram users on this list can issue commands to the bot. The leading <code className="rounded bg-slate-100 px-1">@</code> is optional.
+            Only Telegram users on this list can issue commands to the bot. Each entry links a Telegram handle to a SimpleBooks user — the bot then runs every command subject to that user's role. The leading <code className="rounded bg-slate-100 px-1">@</code> is optional.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            <strong>Tip:</strong> link your own Telegram handle to the admin user for full bot capability.
           </p>
         </div>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
@@ -94,7 +98,7 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
             <DialogHeader>
               <DialogTitle>Add allowlisted user</DialogTitle>
               <DialogDescription>
-                Only the Telegram username is required. Bot Token is stored for reference — the bot actually runs against{" "}
+                Bot Token is stored for reference only — the bot actually runs against{" "}
                 <code className="rounded bg-slate-100 px-1">TELEGRAM_BOT_TOKEN</code> in <code>.env</code>.
               </DialogDescription>
             </DialogHeader>
@@ -108,12 +112,15 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
                   required
                 />
               </Field>
-              <Field label="User" hint="Display name of the person">
-                <Input
-                  value={form.user}
-                  onChange={(e) => update("user", e.target.value)}
-                  placeholder="John Doe"
-                />
+              <Field label="Linked SimpleBooks user" required hint="The bot will act as this user's role for every command from this Telegram handle.">
+                <Select value={form.userId} onValueChange={(v) => update("userId", v)}>
+                  <SelectTrigger><SelectValue placeholder="Pick a user…" /></SelectTrigger>
+                  <SelectContent>
+                    {users.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.displayName} ({u.username}) — {u.role}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
               <Field label="Bot Name">
                 <Input
@@ -140,7 +147,7 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
               {error ? <p className="text-xs text-rose-600">{error}</p> : null}
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={() => { setOpen(false); resetForm(); }}>Cancel</Button>
-                <Button type="submit" disabled={saving}>{saving ? "Adding…" : "Add user"}</Button>
+                <Button type="submit" disabled={saving || !form.userId}>{saving ? "Adding…" : "Add user"}</Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -152,9 +159,9 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
         <code className="rounded bg-white px-1">TELEGRAM_BOT_TOKEN</code>; whatever you store here is never used at runtime.
       </div>
 
-      <div className="grid grid-cols-[160px_140px_140px_1fr_1fr_40px] items-center gap-x-4 border-b border-slate-100 px-5 py-2 text-[11px] font-medium uppercase tracking-wider text-slate-400">
+      <div className="grid grid-cols-[160px_180px_140px_1fr_1fr_40px] items-center gap-x-4 border-b border-slate-100 px-5 py-2 text-[11px] font-medium uppercase tracking-wider text-slate-400">
         <div>Username</div>
-        <div>User</div>
+        <div>Linked user</div>
         <div>Bot Name</div>
         <div>Bot Token</div>
         <div>Note</div>
@@ -169,10 +176,18 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
         {rows.map((r) => (
           <li
             key={r.id}
-            className="grid grid-cols-[160px_140px_140px_1fr_1fr_40px] items-center gap-x-4 px-5 py-3 text-sm"
+            className="grid grid-cols-[160px_180px_140px_1fr_1fr_40px] items-center gap-x-4 px-5 py-3 text-sm"
           >
             <span className="truncate font-mono text-slate-900">@{r.username}</span>
-            <span className="truncate text-slate-700">{r.user ?? "—"}</span>
+            <span className="truncate text-slate-700">
+              {r.user ? (
+                <>
+                  {r.user.displayName} <span className="font-mono text-xs text-slate-400">· {r.user.role}</span>
+                </>
+              ) : (
+                <span className="text-rose-600">unlinked — bot will reject</span>
+              )}
+            </span>
             <span className="truncate text-slate-700">{r.botName ?? "—"}</span>
             <span className="truncate font-mono text-xs text-slate-500" title={r.botToken ?? ""}>
               {r.botToken ?? "—"}
@@ -195,6 +210,6 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
 function parseError(msg?: string): string {
   if (!msg) return "Something went wrong";
   if (/409/.test(msg) || /Unique constraint/i.test(msg) || msg.includes("P2002")) return "That username is already on the list.";
-  if (/400/.test(msg)) return "Username must be 3–32 letters, digits, or underscores.";
+  if (/400/.test(msg)) return "Pick a SimpleBooks user and use a valid username (3–32 letters / digits / underscore).";
   return msg;
 }
