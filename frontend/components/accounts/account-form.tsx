@@ -107,7 +107,11 @@ export function AccountForm({
           <Field label="Account number (optional)">
             <Input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} maxLength={120} />
           </Field>
-          <Field label="Account type" required>
+          <Field
+            label="Account type"
+            required
+            hint={accountTypes.find((t) => t.id === accountTypeId)?.description ?? undefined}
+          >
             <Select value={accountTypeId} onValueChange={setAccountTypeId}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>

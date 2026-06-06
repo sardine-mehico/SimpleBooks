@@ -387,11 +387,12 @@ model TelegramAllowlist {
 // Account.accountTypeId means a type can't be deleted while in use (mirrors
 // BillingCompany → InvoiceTemplate).
 model AccountType {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   accounts Account[]
 }

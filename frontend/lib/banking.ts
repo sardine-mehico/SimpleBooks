@@ -15,9 +15,9 @@ export const restoreAccount = (id: string) => apiClient.patch<Account>(`/account
 
 // AccountTypes
 export const listAccountTypes = () => apiClient.get<AccountType[]>('/account-types');
-export const createAccountType = (data: { name: string; isActive?: boolean }) =>
+export const createAccountType = (data: { name: string; description?: string; isActive?: boolean }) =>
   apiClient.post<AccountType>('/account-types', data);
-export const updateAccountType = (id: string, data: { name?: string; isActive?: boolean }) =>
+export const updateAccountType = (id: string, data: { name?: string; description?: string; isActive?: boolean }) =>
   apiClient.patch<AccountType>(`/account-types/${id}`, data);
 export const deleteAccountType = (id: string) => apiClient.delete<{ ok: true }>(`/account-types/${id}`);
 

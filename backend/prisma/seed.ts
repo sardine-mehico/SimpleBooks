@@ -1,4 +1,4 @@
-import { PrismaClient, TaskStatus, InvoiceStatus, PaymentTerms } from '@prisma/client';
+import { PrismaClient, InvoiceStatus, PaymentTerms } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -277,119 +277,96 @@ async function main() {
   // First BillingCompany — creationOrder 1, gets displayOrder-1 templates.
   const company = await prisma.billingCompany.create({
     data: {
-      name: 'SimpleBooks Pty Ltd',
-      abn: '12 345 678 901',
+      name: 'AAA Test billing Company',
+      abn: '00 000 000 000',
       address: '1 Example Street\nLevel 2, Suite 5\nSydney NSW 2000',
       paymentDetails:
         '<strong>BSB:</strong> 062-000<br><strong>Account:</strong> 1234 5678<br><em>Reference:</em> invoice number',
-      accountsEmail: 'accounts@simplebooks.dev',
-      invoiceBcc: 'bcc@simplebooks.dev',
-      notes: 'Primary trading entity. Use this for all AU customers.',
+      accountsEmail: 'reallybasic@gmail.com',
+      invoiceBcc: 'email.sam.dabhi+invoicebackup@gmail.com',
       creationOrder: 1,
+      sendVia: 'GENERAL_SMTP',
       invoiceTemplateId: invoiceTemplates[0].id,
       emailTemplateId: emailTemplates[0].id,
     },
   });
 
-  const customerDefs = [
-    { name: 'Alex Kurm', email: 'alex@northwind.dev' },
-    { name: 'Saram Stelte', email: 'hello@stelte.co' },
-    { name: 'Mana Danan', email: 'mana@dananlabs.io' },
-    { name: 'Pam Smith', email: 'pam@smithdesign.com' },
-    { name: 'Cayen Goods', email: 'billing@cayen.com' },
-    { name: 'Row Etmm', email: 'finance@etmm.io' },
-  ];
-  const customers = await Promise.all(
-    customerDefs.map((c, i) =>
-      prisma.customer.create({
-        data: {
-          name: c.name,
-          customerNumber: 1001 + i,
-          billingEmail1: c.email,
-          billingCompanyId: company.id,
-          paymentTerms: PaymentTerms.IN_28_DAYS,
-          address: '123 Customer Lane',
-        },
-      }),
-    ),
-  );
+  // Single demo customer. paymentTerms IN_28_DAYS matches the form default.
+  const customer = await prisma.customer.create({
+    data: {
+      name: 'AAA Test Customer',
+      customerNumber: 1001,
+      billingEmail1: 'email.sam.dabhi@gmail.com',
+      billingEmail2: 'reallybasic@gmail.com',
+      billingCompanyId: company.id,
+      paymentTerms: PaymentTerms.IN_28_DAYS,
+      address: 'Level 3, Suite 32\n168 Havelock Street\nOsborne Park, WA-6545',
+    },
+  });
 
+  // Three cleaning-business items, all $0 — placeholders that expect the
+  // operator to set the real amount on the invoice each time. Descriptions
+  // carry dynamic-field tokens that the invoice form substitutes on item-pick.
   const items = await Promise.all(
     [
-      { name: 'Consulting (hour)', unitPrice: 150 },
-      { name: 'Implementation (day)', unitPrice: 1200 },
-      { name: 'Monthly retainer', unitPrice: 2200 },
-      { name: 'Premium support', unitPrice: 500 },
+      {
+        name: 'Cleaning Service - 4 weeks',
+        unitPrice: 0,
+        description: 'Cleaning service for 4 weeks ({{invoice date}} to {{due date}})',
+      },
+      {
+        name: 'Cleaning Service - Monthly',
+        unitPrice: 0,
+        description: 'Cleaning service for {{month-year}}',
+      },
+      {
+        name: 'Supplies',
+        unitPrice: 0,
+        description: 'Supplies - ',
+      },
     ].map((it) => prisma.item.create({ data: it })),
   );
 
-  const monthOffset = (m: number) => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - m);
-    return d;
-  };
+  // INV-1000 — single DRAFT invoice using the 4-weeks cleaning item.
+  // dueDate computed from customer.paymentTerms (IN_28_DAYS → +27 days),
+  // matching the invoice form's `paymentTermsToOffsetDays()` behaviour.
+  // The line description is the substituted form of the item template — what
+  // the invoice form writes on item-pick (vs. the raw `{{…}}` placeholder).
+  const today = new Date();
+  const dueDate = new Date(today);
+  dueDate.setDate(dueDate.getDate() + 27);
+  const formatDate = (d: Date) =>
+    `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 
-  const invoiceDefs: Array<{
-    n: number; amount: number; status: InvoiceStatus; customer: typeof customers[number]; off: number;
-  }> = [
-    { n: 1000, amount: 1300, status: InvoiceStatus.SENT, customer: customers[4], off: 0 },
-    { n: 1001, amount: 530, status: InvoiceStatus.SENT, customer: customers[5], off: 0 },
-    { n: 1002, amount: 250, status: InvoiceStatus.SENT, customer: customers[2], off: 0 },
-    { n: 1003, amount: 250, status: InvoiceStatus.SENT, customer: customers[3], off: 0 },
-    { n: 1004, amount: 2200, status: InvoiceStatus.PAID, customer: customers[0], off: 1 },
-    { n: 1005, amount: 1000, status: InvoiceStatus.PAID, customer: customers[1], off: 1 },
-    { n: 1006, amount: 1800, status: InvoiceStatus.PAID, customer: customers[0], off: 2 },
-    { n: 1007, amount: 900, status: InvoiceStatus.PAID, customer: customers[2], off: 3 },
-    { n: 1008, amount: 1400, status: InvoiceStatus.PAID, customer: customers[1], off: 4 },
-    { n: 1009, amount: 600, status: InvoiceStatus.PAID, customer: customers[3], off: 5 },
-  ];
-
-  for (const inv of invoiceDefs) {
-    const lineAmount = inv.amount;
-    const taxRate = 10;
-    const taxAmount = +(lineAmount * (taxRate / 100)).toFixed(2);
-    await prisma.invoice.create({
-      data: {
-        invoiceNumber: inv.n,
-        invoiceDate: monthOffset(inv.off),
-        dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-        status: inv.status,
-        customerId: inv.customer.id,
-        billingCompanyId: company.id,
-        // Snapshot the company's template assignment onto each seeded invoice
-        // so historical renders stay reproducible.
-        invoiceTemplateId: company.invoiceTemplateId,
-        emailTemplateId: company.emailTemplateId,
-        subtotal: lineAmount,
-        taxAmount,
-        totalAmount: lineAmount + taxAmount,
-        terms: 'Net 14',
-        lineItems: {
-          create: [
-            {
-              itemId: items[0].id,
-              description: 'Consulting',
-              quantity: 1,
-              unitPrice: lineAmount,
-              lineAmount,
-              taxName: 'GST',
-              taxRate,
-              taxAmount,
-              position: 0,
-            },
-          ],
-        },
+  await prisma.invoice.create({
+    data: {
+      invoiceNumber: 1000,
+      invoiceDate: today,
+      dueDate,
+      status: InvoiceStatus.DRAFT,
+      customerId: customer.id,
+      billingCompanyId: company.id,
+      invoiceTemplateId: company.invoiceTemplateId,
+      emailTemplateId: company.emailTemplateId,
+      subtotal: 0,
+      taxAmount: 0,
+      totalAmount: 0,
+      lineItems: {
+        create: [
+          {
+            itemId: items[0].id,
+            description: `Cleaning service for 4 weeks (${formatDate(today)} to ${formatDate(dueDate)})`,
+            quantity: 1,
+            unitPrice: 0,
+            lineAmount: 0,
+            taxName: 'GST',
+            taxRate: 10,
+            taxAmount: 0,
+            position: 0,
+          },
+        ],
       },
-    });
-  }
-
-  await prisma.task.createMany({
-    data: [
-      { title: 'Reconcile bank account for April', status: TaskStatus.PENDING },
-      { title: 'Send Q1 statements to top customers', status: TaskStatus.PENDING },
-      { title: 'Review pending invoices for late fees', status: TaskStatus.IN_PROGRESS },
-      { title: 'Onboard Northwind Studio billing', status: TaskStatus.COMPLETED },
-    ],
+    },
   });
 
   // Tax types catalog — AU-default GST and a passthrough "No tax" so invoice
@@ -403,18 +380,9 @@ async function main() {
     });
   }
 
-  // Recurring schedules catalog
-  const schedules = await Promise.all([
-    prisma.recurringSchedule.upsert({
-      where: { name: "Every week" },
-      update: {},
-      create: { name: "Every week", intervalUnit: "WEEKS", intervalCount: 1 },
-    }),
-    prisma.recurringSchedule.upsert({
-      where: { name: "Every 2 weeks" },
-      update: {},
-      create: { name: "Every 2 weeks", intervalUnit: "WEEKS", intervalCount: 2 },
-    }),
+  // Recurring schedules catalog — only the two used by the seeded cleaning items.
+  // Additional schedules can be added by the operator from /settings/recurring-schedules.
+  await Promise.all([
     prisma.recurringSchedule.upsert({
       where: { name: "Every 4 weeks" },
       update: {},
@@ -425,49 +393,7 @@ async function main() {
       update: {},
       create: { name: "Every month", intervalUnit: "MONTHS", intervalCount: 1 },
     }),
-    prisma.recurringSchedule.upsert({
-      where: { name: "Every quarter" },
-      update: {},
-      create: { name: "Every quarter", intervalUnit: "MONTHS", intervalCount: 3 },
-    }),
-    prisma.recurringSchedule.upsert({
-      where: { name: "Every year" },
-      update: {},
-      create: { name: "Every year", intervalUnit: "YEARS", intervalCount: 1 },
-    }),
   ]);
-  const monthly = schedules.find((s) => s.name === "Every month")!;
-
-  // Sample recurring rule — Monthly retainer for the first seeded customer with one dynamic-field line.
-  const firstCustomer = await prisma.customer.findFirst({ orderBy: { customerNumber: "asc" } });
-  if (firstCustomer && firstCustomer.billingCompanyId) {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    await prisma.recurringRule.create({
-      data: {
-        scheduleName: `${firstCustomer.name} - ${monthly.name}`,
-        startDate: tomorrow,
-        recurringScheduleId: monthly.id,
-        sendingOption: "REVIEW_BEFORE_SENDING",
-        active: true,
-        nextRunAt: tomorrow,
-        customerId: firstCustomer.id,
-        billingCompanyId: firstCustomer.billingCompanyId,
-        lineItems: {
-          create: [
-            {
-              description: "Monthly retainer for {{month-year}}",
-              unitPrice: 1000,
-              taxName: "GST",
-              taxRate: 10,
-              position: 0,
-            },
-          ],
-        },
-      },
-    });
-  }
 
   // Singleton — lazy-create with sensible defaults.
   await prisma.preferences.create({
@@ -478,45 +404,41 @@ async function main() {
   });
 
   // ── AccountType lookup (Banking Phase A) ─────────────────────────────────
-  const accountTypes = [
-    'Everyday',
-    'Savings',
-    'Credit Card',
-    'Loan',
-    'Cash',
-    'Offset',
+  // Each type carries a short description shown on /accounts, /accounts/new,
+  // and /settings/account-types so new operators understand which to pick.
+  const accountTypes: Array<{ name: string; description: string }> = [
+    {
+      name: 'Transactions',
+      description: 'Day-to-day account for income and expenses — business or personal.',
+    },
+    {
+      name: 'Savings',
+      description: 'Interest-bearing account for cash reserves; not used for day-to-day spending.',
+    },
+    {
+      name: 'Credit Card',
+      description: 'Revolving credit account. Balance is what you owe back to the issuer.',
+    },
+    {
+      name: 'Loan',
+      description: 'Debt account (mortgage, vehicle, personal loan). Balance is principal remaining.',
+    },
+    {
+      name: 'Cash',
+      description: 'Physical cash on hand or in a register.',
+    },
+    {
+      name: 'Offset',
+      description: 'Offset facility linked to a loan; balance reduces interest accrued on that loan.',
+    },
   ];
-  for (const name of accountTypes) {
+  for (const t of accountTypes) {
     await prisma.accountType.upsert({
-      where: { name },
-      update: {},
-      create: { name },
+      where: { name: t.name },
+      update: { description: t.description },
+      create: { name: t.name, description: t.description },
     });
   }
-
-  // Two sample accounts so empty-state isn't the first impression.
-  const everyday = await prisma.accountType.findUniqueOrThrow({ where: { name: 'Everyday' } });
-  const savings = await prisma.accountType.findUniqueOrThrow({ where: { name: 'Savings' } });
-  const now = new Date();
-  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  await prisma.account.create({
-    data: {
-      name: 'CBA Smart Access',
-      bank: 'Commonwealth Bank',
-      accountTypeId: everyday.id,
-      openingBalance: 0,
-      openingDate: today,
-    },
-  });
-  await prisma.account.create({
-    data: {
-      name: 'CBA Goal Saver',
-      bank: 'Commonwealth Bank',
-      accountTypeId: savings.id,
-      openingBalance: 0,
-      openingDate: today,
-    },
-  });
 
   // ── Categories (taxonomy seeded from accounting-team CSV) ────────────────
   // Two-level taxonomy: each parent is a top-level group; children become

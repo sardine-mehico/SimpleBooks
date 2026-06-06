@@ -53,7 +53,14 @@ const columns: Column<Account>[] = [
   {
     key: "type",
     label: "Type",
-    render: (r) => <span className="text-slate-600">{r.accountType?.name ?? "—"}</span>,
+    render: (r) => (
+      <span
+        className="text-slate-600"
+        title={r.accountType?.description ?? undefined}
+      >
+        {r.accountType?.name ?? "—"}
+      </span>
+    ),
     width: "0.8fr",
     sortValue: (r) => r.accountType?.name ?? "",
   },
