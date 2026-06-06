@@ -1,11 +1,11 @@
-# Caddy config for SimpleBooks. Replace simplebooks.officepc.online with your
+# Caddy config for SimpleBooks. Replace simplebooks.mysite.com with your
 # real domain — Caddy will auto-provision Let's Encrypt certs on first boot.
 #
 # Routing:
 #   /api/*   → backend container :4000  (Caddy strips /api/ before forwarding)
 #   /*       → frontend container :3000
 
-simplebooks.officepc.online {
+simplebooks.mysite.com {
     encode gzip
     handle_path /api/* {
         reverse_proxy backend:4000

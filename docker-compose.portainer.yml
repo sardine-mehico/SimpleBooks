@@ -10,7 +10,7 @@
 #   - External network: npm_proxy  (the network NPM uses; must already exist)
 #
 #   - Reverse proxy: not in this compose. Configure NPM with two locations:
-#       1. Proxy host simplebooks.officepc.online
+#       1. Proxy host simplebooks.mysite.com
 #          Scheme http, Forward Hostname/IP: simplebooks-frontend, Port: 3000
 #          ✓ Block Common Exploits, ✓ Websockets Support
 #          (Frontend serves everything except /api/*)

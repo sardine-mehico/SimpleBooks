@@ -239,11 +239,11 @@ Both paths matter — App Router pages fetch on the server *and* the client.
 ```
                                       ┌─────────────────────────┐
                                       │ frontend (Next.js)      │
-https://billing.officepc.online ─────►│  internal :3000         │
+https://billing.mysite.com ─────►│  internal :3000         │
                                       └─────────────────────────┘
                                       ┌─────────────────────────┐
                                       │ backend  (NestJS)       │
-https://billing.officepc.online/api ─►│  internal :4000         │
+https://billing.mysite.com/api ─►│  internal :4000         │
                                       └─────────────────────────┘
 ```
 
@@ -255,7 +255,7 @@ Why `/api`:
 Example Caddy block:
 
 ```caddy
-billing.officepc.online {
+billing.mysite.com {
     handle_path /api/* {
         reverse_proxy backend:4000
     }
@@ -279,7 +279,7 @@ billing.officepc.online {
 | `TELEGRAM_WEBHOOK_DOMAIN` | If set, bot uses webhook mode. If unset, long-polling. |
 | `TELEGRAM_WEBHOOK_SECRET` | Path component for webhook URL (defaults to `telegram`). |
 | `NEXT_PUBLIC_API_URL` | Browser-side backend URL — **baked into the JS bundle at build time**. Local dev: `http://localhost:4000`. Production with the `/api` convention above: `https://<your-domain>/api` (the `/api` suffix is required). Used by `lib/api.ts` for every browser-side fetch, the "View PDF" button, and any other `apiBase()`-anchored URL. Changing it needs a frontend rebuild. |
-| `PUBLIC_APP_URL` | Customer-facing absolute URL where the public invoice page is reachable (e.g. `http://localhost:3000` locally, `https://billing.officepc.online` in prod — **no `/api` suffix**; this is the frontend root). Used by the backend to build the `/i/<token>` link injected via `{{invoice link}}` / `{{invoice link button}}` into outgoing invoice emails. **Required for sending** — `MailService.sendInvoice` throws if unset. `InvoicesService.sendContext` falls back to `http://localhost:3000` if unset, so set it explicitly in production to avoid the preview showing a localhost link. |
+| `PUBLIC_APP_URL` | Customer-facing absolute URL where the public invoice page is reachable (e.g. `http://localhost:3000` locally, `https://billing.mysite.com` in prod — **no `/api` suffix**; this is the frontend root). Used by the backend to build the `/i/<token>` link injected via `{{invoice link}}` / `{{invoice link button}}` into outgoing invoice emails. **Required for sending** — `MailService.sendInvoice` throws if unset. `InvoicesService.sendContext` falls back to `http://localhost:3000` if unset, so set it explicitly in production to avoid the preview showing a localhost link. |
 | `RESEND_API_KEY` | Resend API key for the direct-email channel used by invoice-send failure notifications. Used so a broken customer-facing SMTP can't suppress its own failure alert. If unset, the notification email path becomes a no-op and Telegram remains the primary channel. Free tier 100/day. |
 | `RESEND_FROM` | "From" address for Resend-sent failure notifications (e.g. `alerts@yourdomain.com`). |
 | `AI_TIMEOUT_INLINE_MS` | Timeout in ms for inline (modal) AI calls. Default `20000`. |

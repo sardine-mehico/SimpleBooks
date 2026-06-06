@@ -8,7 +8,7 @@ This guide assumes:
 - A VPS reachable on a public IP, with ports **80** and **443** open in the
   firewall.
 - A DNS A-record pointing your chosen domain (e.g.
-  `simplebooks.officepc.online`) at the VPS IP.
+  `simplebooks.mysite.com`) at the VPS IP.
 - You can SSH in as a user with `sudo`.
 
 The production stack pulls pre-built images from **GitHub Container Registry
@@ -90,7 +90,7 @@ Leave `TAG=0.3` for the first deploy.
 ## 4. Update the domain in `Caddyfile`
 
 ```bash
-sed -i 's/simplebooks.officepc.online/your-domain.example/g' Caddyfile
+sed -i 's/simplebooks.mysite.com/your-domain.example/g' Caddyfile
 ```
 
 Caddy auto-provisions Let's Encrypt certificates on first boot — no extra

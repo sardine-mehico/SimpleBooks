@@ -14,7 +14,7 @@ The compose file you want is [`docker-compose.portainer.yml`](./docker-compose.p
 - Nginx Proxy Manager already deployed; the network it uses is named **`npm_proxy`**
   - Verify: in Portainer → **Networks** → confirm `npm_proxy` exists and that the
     NPM container is attached to it
-- DNS A-record for `simplebooks.officepc.online` pointing at the public IP NPM listens on
+- DNS A-record for `simplebooks.mysite.com` pointing at the public IP NPM listens on
 - Persistent data path on the host: **`/srv/docker/simplebooks`**
 
 ---
@@ -57,10 +57,10 @@ sudo chown -R 999:1000 /srv/docker/simplebooks/redis
    | `POSTGRES_DB` | `simplebooks` |
    | `DATABASE_URL` | `postgresql://simplebooks:<PASSWORD>@postgres:5432/simplebooks?schema=public` |
    | `REDIS_URL` | `redis://redis:6379` |
-   | `PUBLIC_APP_URL` | `https://simplebooks.officepc.online` |
-   | `API_URL` | `https://simplebooks.officepc.online/api` *(runtime-injected; change anytime)* |
+   | `PUBLIC_APP_URL` | `https://simplebooks.mysite.com` |
+   | `API_URL` | `https://simplebooks.mysite.com/api` *(runtime-injected; change anytime)* |
    | `TELEGRAM_BOT_TOKEN` | *(optional — leave empty to disable the bot)* |
-   | `TELEGRAM_WEBHOOK_DOMAIN` | `simplebooks.officepc.online` *(if bot enabled)* |
+   | `TELEGRAM_WEBHOOK_DOMAIN` | `simplebooks.mysite.com` *(if bot enabled)* |
    | `TELEGRAM_WEBHOOK_SECRET` | *(long random string if bot enabled)* |
    | `RESEND_API_KEY` | *(optional)* |
    | `RESEND_FROM` | *(optional)* |
@@ -90,7 +90,7 @@ In NPM → **Hosts → Proxy Hosts → Add Proxy Host**:
 
 | Field | Value |
 |---|---|
-| **Domain Names** | `simplebooks.officepc.online` |
+| **Domain Names** | `simplebooks.mysite.com` |
 | **Scheme** | `http` |
 | **Forward Hostname / IP** | `simplebooks-frontend` |
 | **Forward Port** | `3000` |
@@ -142,7 +142,7 @@ Save. NPM provisions a cert in ~30 seconds.
 
 ## 4. First-load checks
 
-Open `https://simplebooks.officepc.online` in your browser:
+Open `https://simplebooks.mysite.com` in your browser:
 
 - Dashboard should load.
 - Open **Settings → Tax Types** → should show GST 10% and No tax (seeded automatically).
@@ -152,7 +152,7 @@ Open `https://simplebooks.officepc.online` in your browser:
 Direct API ping:
 
 ```bash
-curl -s https://simplebooks.officepc.online/api/dashboard/summary | head -c 200
+curl -s https://simplebooks.mysite.com/api/dashboard/summary | head -c 200
 # should return JSON like: {"totals":{...},"monthly":[...]}
 ```
 
