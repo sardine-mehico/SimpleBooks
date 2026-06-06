@@ -10,10 +10,13 @@ import {
 import type { Column } from "@/components/data/list-table";
 import {
   SENDING_OPTIONS,
+  type BillingCompany,
+  type Customer,
   type RecurringRule,
   type RecurringSchedule,
 } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 
 const SENDING_LABEL = Object.fromEntries(SENDING_OPTIONS.map((s) => [s.value, s.label]));
 
@@ -75,13 +78,28 @@ const columns: Column<RecurringRule>[] = [
 export function RecurringList({
   initial,
   schedules,
+  customers,
+  companies,
 }: {
   initial: RecurringRule[];
   schedules: RecurringSchedule[];
+  customers: Customer[];
+  companies: BillingCompany[];
 }) {
   const filterFields: FilterFieldDef[] = [
     { key: "name", label: "Schedule Name", type: "text", placeholder: "Search by schedule name…" },
-    { key: "customer", label: "Customer", type: "text", placeholder: "Search by customer…" },
+    {
+      key: "customer",
+      label: "Customer",
+      type: "select",
+      options: sortActiveFirst(customers).map((c) => ({ value: c.id, label: labelForOption(c) })),
+    },
+    {
+      key: "company",
+      label: "Billing Company",
+      type: "select",
+      options: sortActiveFirst(companies).map((c) => ({ value: c.id, label: labelForOption(c) })),
+    },
     {
       key: "schedule",
       label: "Recurring Schedule",
@@ -112,7 +130,8 @@ export function RecurringList({
       filterFields={filterFields}
       filterFn={(r, v) =>
         textIncludes(r.scheduleName, v.name ?? "") &&
-        textIncludes(r.customer?.name, v.customer ?? "") &&
+        selectMatches(r.customerId ?? null, v.customer ?? "") &&
+        selectMatches(r.billingCompanyId ?? null, v.company ?? "") &&
         selectMatches(r.recurringScheduleId ?? null, v.schedule ?? "") &&
         selectMatches(r.sendingOption, v.sending ?? "") &&
         selectMatches(r.active ? "true" : "false", v.active ?? "")

@@ -16,10 +16,11 @@ import {
 } from "@/components/data/filter-panel";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { STATUS_TONE, INVOICE_STATUSES, type Invoice, type BillingCompany } from "@/lib/types";
+import { STATUS_TONE, INVOICE_STATUSES, type Invoice, type BillingCompany, type Customer } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { bulkPdfDownload } from "@/lib/invoices";
 import { BulkSendInvoicesDialog } from "@/components/invoices/bulk-send-invoices-dialog";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 
 const STATUS_LABEL = Object.fromEntries(INVOICE_STATUSES.map((s) => [s.value, s.label]));
 
@@ -42,9 +43,11 @@ function dateInRange(iso: string | null | undefined, from: string, to: string): 
 export function InvoicesList({
   initial,
   companies,
+  customers,
 }: {
   initial: Invoice[];
   companies: BillingCompany[];
+  customers: Customer[];
 }) {
   const router = useRouter();
 
@@ -59,31 +62,48 @@ export function InvoicesList({
   const [pdfBusy, setPdfBusy] = useState(false);
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
 
+  // Status filter options include a synthetic "Deleted" entry; selecting it
+  // surfaces soft-deleted (trash) rows that are otherwise hidden from the list.
+  const statusFilterOptions = useMemo(
+    () => [...INVOICE_STATUSES, { value: "DELETED", label: "Deleted" }],
+    [],
+  );
+
   const filterFields: FilterFieldDef[] = [
     { key: "number", label: "Invoice No", type: "text", placeholder: "e.g. 1004" },
-    { key: "customer", label: "Customer", type: "text", placeholder: "Search by customer…" },
+    {
+      key: "customer",
+      label: "Customer",
+      type: "select",
+      options: sortActiveFirst(customers).map((c) => ({ value: c.id, label: labelForOption(c) })),
+    },
     {
       key: "company",
       label: "Billing Company",
       type: "select",
-      options: companies.map((c) => ({ value: c.id, label: c.name })),
+      options: sortActiveFirst(companies).map((c) => ({ value: c.id, label: labelForOption(c) })),
     },
     { key: "dateFrom", label: "Date from", type: "date" },
     { key: "dateTo", label: "Date to", type: "date" },
-    { key: "status", label: "Status", type: "select", options: INVOICE_STATUSES },
+    { key: "status", label: "Status", type: "select", options: statusFilterOptions },
   ];
 
   const activeCount = useMemo(() => countActive(filterValues), [filterValues]);
 
   const filtered = useMemo(() => {
-    if (activeCount === 0) return initial;
-    return initial.filter(
+    const wantsDeleted = filterValues.status === "DELETED";
+    // Default behaviour: hide trash rows unless the user explicitly asks for
+    // them via the "Deleted" filter. Picking any other status (or no status)
+    // shows only live rows.
+    const scoped = initial.filter((r) => (wantsDeleted ? !!r.deletedAt : !r.deletedAt));
+    if (activeCount === 0) return scoped;
+    return scoped.filter(
       (r) =>
         textIncludes(`INV-${r.invoiceNumber} ${r.invoiceNumber}`, filterValues.number ?? "") &&
-        textIncludes(r.customer?.name, filterValues.customer ?? "") &&
+        selectMatches(r.customerId ?? null, filterValues.customer ?? "") &&
         selectMatches(r.billingCompanyId ?? null, filterValues.company ?? "") &&
         dateInRange(r.invoiceDate, filterValues.dateFrom ?? "", filterValues.dateTo ?? "") &&
-        selectMatches(r.status, filterValues.status ?? ""),
+        (wantsDeleted ? true : selectMatches(r.status, filterValues.status ?? "")),
     );
   }, [initial, filterValues, activeCount]);
 
@@ -210,9 +230,14 @@ export function InvoicesList({
     {
       key: "status",
       label: "Status",
-      render: (r) => <Badge tone={STATUS_TONE[r.status]}>{STATUS_LABEL[r.status]}</Badge>,
+      render: (r) =>
+        r.deletedAt ? (
+          <Badge tone="cancelled">Deleted</Badge>
+        ) : (
+          <Badge tone={STATUS_TONE[r.status]}>{STATUS_LABEL[r.status]}</Badge>
+        ),
       width: "130px",
-      sortValue: (r) => STATUS_LABEL[r.status],
+      sortValue: (r) => (r.deletedAt ? "Deleted" : STATUS_LABEL[r.status]),
     },
   ];
 

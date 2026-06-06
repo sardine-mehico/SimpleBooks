@@ -13,6 +13,7 @@ import { EditPageChrome } from "@/components/layout/edit-page-chrome";
 import { ApiError, apiClient, etagFor } from "@/lib/api";
 import { parseApiError } from "@/lib/api-errors";
 import { toast } from "@/lib/toast";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 import {
   SENDING_OPTIONS,
   type BillingCompany,
@@ -60,9 +61,13 @@ export function RecurringForm({
   schedules: RecurringSchedule[];
 }) {
   const router = useRouter();
+  // `activeTaxTypes` here is only used to pick the default tax for new line
+  // items — keep it filtered. The visible dropdown source for picking
+  // schedules is `sortedSchedules` (active first, alphabetical; inactive at
+  // the bottom) per the project-wide dropdown convention.
   const activeTaxTypes = useMemo(() => taxTypes.filter((t) => t.isActive), [taxTypes]);
   const defaultTax = activeTaxTypes[0] ?? null;
-  const activeSchedules = useMemo(() => schedules.filter((s) => s.isActive), [schedules]);
+  const sortedSchedules = useMemo(() => sortActiveFirst(schedules), [schedules]);
 
   const [customerId, setCustomerId] = useState(initial?.customerId ?? "");
   const [startDate, setStartDate] = useState(toIsoDate(initial?.startDate) || todayIso());
@@ -225,8 +230,8 @@ export function RecurringForm({
               <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">—</SelectItem>
-                {activeSchedules.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                {sortedSchedules.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{labelForOption(s)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

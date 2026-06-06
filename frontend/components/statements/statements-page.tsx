@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { getStatement, statementPdfUrl } from "@/lib/statements";
 import type { BillingCompany, Customer, StatementResponse } from "@/lib/types";
 import { SendStatementDialog } from "./send-statement-dialog";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 
 function fmtMoney(s: string | number) {
   return Number(s).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -35,14 +36,11 @@ export function StatementsPage({
   const [error, setError] = useState<string | null>(null);
   const [sendOpen, setSendOpen] = useState(false);
 
-  const sortedCustomers = useMemo(
-    () => customers.filter((c) => c.isActive).slice().sort((a, b) => a.customerNumber - b.customerNumber),
-    [customers],
-  );
-  const sortedCompanies = useMemo(
-    () => companies.filter((c) => c.isActive).slice().sort((a, b) => a.name.localeCompare(b.name)),
-    [companies],
-  );
+  // Active first (alphabetical), inactive after (alphabetical). Inactive rows
+  // stay selectable so an operator can still produce a statement for a
+  // recently-deactivated customer.
+  const sortedCustomers = useMemo(() => sortActiveFirst(customers), [customers]);
+  const sortedCompanies = useMemo(() => sortActiveFirst(companies), [companies]);
 
   useEffect(() => {
     if (!customerId) return;
@@ -113,7 +111,7 @@ export function StatementsPage({
               <option value="">— Select —</option>
               {sortedCustomers.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.customerNumber} — {c.name}
+                  {c.customerNumber} — {labelForOption(c)}
                 </option>
               ))}
             </select>
@@ -127,7 +125,7 @@ export function StatementsPage({
             >
               <option value="">— Select —</option>
               {sortedCompanies.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>{labelForOption(c)}</option>
               ))}
             </select>
           </div>

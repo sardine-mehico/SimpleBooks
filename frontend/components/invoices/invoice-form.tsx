@@ -312,6 +312,20 @@ export function InvoiceForm({
       }
     >
       <form id="invoice-form" onSubmit={submit} className="flex flex-col gap-4">
+        {/* Void banner — surfaces the reason captured at void time so the
+            operator (and any auditor) can see why the invoice was retired.
+            Shown only when status is VOID. */}
+        {status === "VOID" && initial?.voidReason ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div className="font-semibold">
+              Voided{initial.voidedAt ? ` on ${new Date(initial.voidedAt).toLocaleDateString("en-AU")}` : ""}
+            </div>
+            <div className="mt-0.5 whitespace-pre-wrap text-rose-700/90">
+              Reason: {initial.voidReason}
+            </div>
+          </div>
+        ) : null}
+
         {/* `fieldset disabled` locks every native form control + Radix select
             inside it when in view mode. The rich-text editor honours the
             same flag via its own `disabled` prop further down the tree. */}

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { archiveAccount, createAccount, restoreAccount, updateAccount } from "@/lib/banking";
 import type { Account, AccountType } from "@/lib/types";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 
 // Build YYYY-MM-DD from local calendar parts (per CLAUDE.md gotcha — never use toISOString().slice(0,10)).
 function localIsoDate(d: Date): string {
@@ -115,8 +116,8 @@ export function AccountForm({
             <Select value={accountTypeId} onValueChange={setAccountTypeId}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {accountTypes.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                {sortActiveFirst(accountTypes).map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{labelForOption(t)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

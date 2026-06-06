@@ -294,8 +294,8 @@ export function InvoiceBodyEditor({
                 <SelectTrigger className="h-9"><SelectValue placeholder="Select tax" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">No tax</SelectItem>
-                  {activeTaxTypes.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.name} {Number(t.rate)}%</SelectItem>
+                  {sortActiveFirst(taxTypes).map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{labelForOption(t)} {Number(t.rate)}%</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -396,13 +396,13 @@ function BodyItemDescriptionField({
                 "data-[side=bottom]:animate-in data-[side=bottom]:fade-in-0 data-[side=bottom]:slide-in-from-top-1",
               )}
             >
-              {items.map((it) => (
+              {sortActiveFirst(items).map((it) => (
                 <DropdownMenuPrimitive.Item
                   key={it.id}
                   onSelect={() => onPickItem(it.id)}
                   className="flex cursor-pointer items-center justify-between gap-3 rounded px-2 py-1.5 text-sm text-slate-700 outline-none focus:bg-indigo-50 focus:text-indigo-700"
                 >
-                  <span className="truncate">{it.name}</span>
+                  <span className="truncate">{labelForOption(it)}</span>
                   <span className="shrink-0 text-xs tabular-nums text-slate-400">{formatCurrency(Number(it.unitPrice))}</span>
                 </DropdownMenuPrimitive.Item>
               ))}

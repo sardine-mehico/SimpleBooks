@@ -10,6 +10,7 @@ import {
 } from "@/components/data/filtered-list";
 import type { Column } from "@/components/data/list-table";
 import type { BillingCompany, Customer } from "@/lib/types";
+import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 
 // Show only the first line of a multi-line address in the table.
 function firstLine(s?: string | null) {
@@ -37,7 +38,7 @@ export function CustomersList({ initial, companies }: { initial: Customer[]; com
         key: "company",
         label: "Billing Company",
         type: "select",
-        options: companies.map((c) => ({ value: c.id, label: c.name })),
+        options: sortActiveFirst(companies).map((c) => ({ value: c.id, label: labelForOption(c) })),
       },
       {
         key: "status",

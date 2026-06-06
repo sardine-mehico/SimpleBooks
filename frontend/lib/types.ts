@@ -262,6 +262,9 @@ export type Invoice = {
   sendAttempts?: number;
   sendError?: string | null;
   lastSendAt?: string | null;
+  voidReason?: string | null;
+  voidedAt?: string | null;
+  deletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
