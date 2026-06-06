@@ -1036,5 +1036,6 @@ The admin-only settings sub-pages are documented in detail in `docs/user-guide-a
 - **Settings → Roles** (`/settings/roles`) — capability override matrix. Per-role per-capability boolean toggle. ADMIN column locked-true server-side. Cache TTL 60 s — flips propagate within ~1 minute.
 - **Settings → Audit Log** (`/settings/audit`) — append-only log of logins, role changes, user CRUD, deletes (auto-captured), retention purges. Filter by action / date range / actor.
 - **Settings → Data Retention** (`/settings/data-retention`) — per-table count + oldest entry; purge by cutoff (7d/30d/90d/1y/all) over `AuditLog`, `TransactionImport`, `AllocationEvent`, `CategorisationEvent` (with AI-training warning), `AiCall`, `Session`.
+- **Settings → Telegram** (`/settings/telegram`) — **(v0.10)** allowlist UI. Add a Telegram handle, pick the SimpleBooks user it should act as, save. Every bot command from that handle runs through the linked user's role/capabilities. The Delete button on `/tasks` inline keyboards only renders when `action.delete` is granted to the linked role; commands from rows whose `userId` is NULL are rejected.
 
 The capability list, default per-role grants, and admin-only sections are defined in `backend/src/auth/capabilities.ts` (mirrored in `frontend/lib/capabilities.ts`).

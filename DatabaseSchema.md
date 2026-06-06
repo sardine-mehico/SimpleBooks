@@ -371,17 +371,30 @@ Composite child of `RecurringRule`. Cascade-deleted with parent. Mirrors `Invoic
 ---
 
 ### TelegramAllowlist
-Gate for bot commands. The bot rejects any incoming message whose sender's username doesn't appear here.
+Gate + identity mapping for bot commands. The bot rejects any incoming
+message whose sender's Telegram username doesn't appear here, AND
+rejects rows without a linked SimpleBooks user.
+
+**(v0.10 — column rename, destructive)** `user String?` (free-text label)
+was replaced by `userId String?` (FK → `User.id`). The bot resolves the
+incoming Telegram handle to this row's `user`, attaches it to the
+update's `ctx.state.user`, and every command runs through the linked
+user's role via `RolesService.hasCapability`. A bot tied to a bookkeeper
+cannot trigger `/tasks` delete; a bot tied to admin can do everything.
+`BootstrapService.seedTelegramAllowlist` now writes `userId: admin.id`
+when seeding from `TELEGRAM_ALLOWLIST_USERNAMES`.
 
 | Column | Type | Constraints |
 |---|---|---|
 | `id` | UUID | PK |
 | `username` | string | UNIQUE — lowercased, leading `@` stripped |
-| `user` | string? | display-name reference for admins |
+| `userId` | UUID? | FK → `User.id` (ON DELETE SET NULL). Bot rejects when NULL. |
 | `botName` | string? | reference only |
 | `botToken` | string? | reference only — **the actual token lives in `.env` as `TELEGRAM_BOT_TOKEN`**, never read from this column at runtime |
 | `note` | string? | |
 | `createdAt` | datetime | |
+
+Relations: `user User?` (the SimpleBooks identity the bot acts as for this handle).
 
 ---
 

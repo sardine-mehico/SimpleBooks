@@ -76,7 +76,7 @@ Routing pattern (per module):
 
 NestJS module layout (one per backend domain):
 - `tasks`, `customers`, `companies`, `items`, `invoices`, `recurring`, `dashboard` — CRUD/aggregate.
-- `telegram` — bot service, controller, allowlist sub-module.
+- `telegram` — Telegraf-based bot + allowlist sub-module. **(v0.10)** Every incoming update is resolved Telegram handle → `TelegramAllowlist` → linked `User` (via the new `userId` FK); the resolved user is attached to `ctx.state.user` and every command runs through `RolesService.hasCapability` before any side effect. Surfaces: `/start`, `/help`, `/cancel`, `/newtask <title>` (or `/newtask` alone → force-reply prompt), `/tasks` (lists open tasks with inline keyboards `[ ✓ Done ] [ ✏️ Edit ] [ 🗑 Delete ]` per row — Delete only rendered when `action.delete` is granted). Callback handlers: `task:done:<id>`, `task:edit:<id>`, `task:delete:<id>` (followed by a Yes/Cancel confirm step → `task:delete:confirm:<id>`). The edit + new-task flows use an in-memory `Map<chatId, pendingFlow>` to capture the next free-text message. DTO validation reuses the same `CreateTaskDto` as the HTTP API — the bot never re-implements validation. Webhook mode when `TELEGRAM_WEBHOOK_DOMAIN` is set; long-poll otherwise. `notify(text)` broadcasts to every chat that has ever run `/start`.
 - `tax-types`, `mail-configuration`, `invoice-templates`, `email-templates`, `preferences` — settings.
 - `pdf` — React-PDF render service, used by `invoices` (for `GET /invoices/:id/pdf`), by `mail` (when the Send dialog's "Attach PDF invoice" checkbox is ticked), and by `public-invoices` (for the customer-facing PDF download).
 - `public-invoices` — unauthenticated customer-facing endpoints `GET /public/invoices/:token` (JSON for the HTML view) and `GET /public/invoices/:token/pdf` (force-download). Handles the SENT → VIEWED status transition on first open.
@@ -360,3 +360,4 @@ There is currently no host-side `npm` workflow, no test suite, and no host linte
 - The Telegram bot and the web frontend are two windows into the same engine.
 - All core business logic (e.g., `createTask`, `toggleInvoiceStatus`) must live as services in the NestJS backend. 
 - The Telegram bot must invoke these services via internal API/module injections, never by querying the database directly.
+- **(v0.10)** The Telegram bot is subject to the same role/capability checks as the HTTP API. Every command runs through `RolesService.hasCapability(linkedUser.role, capability)` before reaching a service — the bot never bypasses authorization just because the user is on the allowlist. A bot tied to a bookkeeper can `/tasks` and `/newtask` but cannot delete; a bot tied to admin can do everything.

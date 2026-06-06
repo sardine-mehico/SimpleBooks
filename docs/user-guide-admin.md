@@ -1,6 +1,6 @@
 # SimpleBooks — Admin User Guide
 
-> v0.9. Covers Users, Roles, API Keys, Audit Log, and Data Retention. Banking is documented separately in `user-guide-banking.md`.
+> v0.10. Covers Users, Roles, API Keys, Audit Log, Data Retention, and the Telegram bot. Banking is documented separately in `user-guide-banking.md`.
 
 ## 1. Roles at a glance
 
@@ -114,18 +114,41 @@ Populate the env once and SimpleBooks comes up fully functional. Every block is 
 
 Partial blocks are logged as warnings and skipped.
 
-## 9. Telegram bot — current and planned
+## 9. Telegram bot
 
-**Today (v0.9):** the bot supports allowlisted users only; commands are limited to creating + listing tasks and receiving notifications.
+**(v0.10)** The bot runs as the SimpleBooks user linked to each allowlisted Telegram handle. Every command goes through that user's role + capabilities — the bot is never a privileged backdoor.
 
-**Planned (v0.10):** the bot will run as the linked SimpleBooks user, so all actions are subject to that user's role. Commands will cover:
+**Setup**
+1. Settings → Telegram → **Add user**. Enter the Telegram handle (with or without `@`), pick the SimpleBooks user it should act as, and save. **For a personal-use bot, link to admin** — that gives the bot full task capability including delete. For a team bot, link each handle to the user whose role you want the bot to inherit.
+2. (Optional) populate `TELEGRAM_ALLOWLIST_USERNAMES` in `.env` — comma-separated handles. Each is created on first boot linked to the env admin. UI edits afterwards always win.
 
-- `/tasks` — list with **inline keyboard buttons** under each task: `[ ✓ Done ] [ ✏️ Edit ] [ 🗑 Delete ]`. Tapping a button sends a callback to the backend; the same role/capability gates apply (e.g. a bot tied to a bookkeeper can't trigger delete).
-- `/newtask` (or just typing a task title) — bot prompts for any missing fields via force-reply.
-- Edit flow — tap edit → bot asks for the new title via force-reply → next message captured.
-- Notifications — invoice send failures, payment matches, and recurring-rule generation pushed to the linked user's chat.
+**Commands**
 
-Because the bot maps a Telegram username → SimpleBooks user → role, link the Telegram handle to the right SimpleBooks role. For a personal-use bot, link to admin; for a team bot, link each handle to the user whose role you want the bot to inherit.
+```
+/start       Connect this chat and show which SimpleBooks user the bot is linked to.
+/help        Command reference.
+/tasks       List open tasks with inline buttons.
+/newtask <t> Create a task with title <t>.
+/newtask     Create a task — bot will ask for the title.
+/cancel      Abandon any pending edit/new-task prompt.
+```
+
+**Inline buttons (`/tasks`)** — each open task renders as:
+
+```
+⏳ Reconcile bank statement
+   [ ✓ Done ]  [ ✏️ Edit ]  [ 🗑 Delete ]
+```
+
+- ✓ **Done** — marks the task COMPLETED. Message updates to `✅ <title>`.
+- ✏️ **Edit** — bot replies "Send the new title for this task." The next free-text message becomes the new title.
+- 🗑 **Delete** — confirm dialog `[Yes, delete] [Cancel]`. Yes = permanent delete.
+
+The Delete button is only rendered when the linked user has `action.delete`. A bookkeeper-linked bot sees `[ ✓ Done ] [ ✏️ Edit ]` only. A user with `nav.tasks` denied entirely sees `Your linked SimpleBooks role does not permit you to view tasks.`
+
+**Notifications.** Invoice send failures already publish here. Future channels (payment matches, recurring-rule generation) will reuse `TelegramService.notify(text)` and arrive at every chat that has ever run `/start`.
+
+**Allowlist-row hygiene.** If you delete the linked SimpleBooks user, the FK is set to NULL and the bot rejects further commands from that handle with `Sorry, @… is not authorized.` Admin must re-link via Settings → Telegram. This is by design — bot capability without a linked user would silently default to allowing everything.
 
 ## 10. Public surfaces (no auth)
 
