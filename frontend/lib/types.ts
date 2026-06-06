@@ -710,6 +710,28 @@ export type ApplyPaymentResponse = {
   }>;
 };
 
+export type CashflowChildRow = { id: string; name: string; amount: string };
+export type CashflowIncomeSource = {
+  id: string;
+  name: string;
+  kind: "billing_company" | "other";
+  amount: string;
+  children: CashflowChildRow[];
+};
+export type CashflowExpenseCategory = {
+  id: string;
+  name: string;
+  amount: string;
+  children: CashflowChildRow[];
+};
+export type CashflowResponse = {
+  range: { from: string; to: string };
+  currency: string;
+  accountIds: string[] | null;
+  income: { sources: CashflowIncomeSource[] };
+  expenses: { categories: CashflowExpenseCategory[] };
+};
+
 export type ReportChildRow = { id: string; name: string; total: string };
 export type ReportParentRow = { id: string; name: string; total: string; children: ReportChildRow[] };
 export type ReportResponse = {

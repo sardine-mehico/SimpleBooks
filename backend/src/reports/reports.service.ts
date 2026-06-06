@@ -2,7 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ReportQueryDto, TagsReportQueryDto } from './dto';
+import { ReportQueryDto, TagsReportQueryDto, CashflowQueryDto } from './dto';
 import { localStartOfDay, localEndOfDay } from '../util/dates';
 
 export type ReportKind = 'EXPENSE' | 'INCOME';
@@ -37,6 +37,35 @@ export interface TagsReportRow {
   color: string | null;
   total: string;
   count: number;
+}
+
+export interface CashflowChildRow {
+  id: string;
+  name: string;
+  amount: string;
+}
+
+export interface CashflowIncomeSource {
+  id: string;
+  name: string;
+  kind: 'billing_company' | 'other';
+  amount: string;
+  children: CashflowChildRow[];
+}
+
+export interface CashflowExpenseCategory {
+  id: string;
+  name: string;
+  amount: string;
+  children: CashflowChildRow[];
+}
+
+export interface CashflowResponse {
+  range: { from: string; to: string };
+  currency: string;
+  accountIds: string[] | null;
+  income: { sources: CashflowIncomeSource[] };
+  expenses: { categories: CashflowExpenseCategory[] };
 }
 
 export interface TagsReportResponse {
@@ -260,6 +289,236 @@ export class ReportsService {
       tags,
       sumOfTagTotals: sumOfTagTotalsNum.toFixed(2),
       overlapTotal: overlapTotalNum.toFixed(2),
+    };
+  }
+
+  async getCashflow(q: CashflowQueryDto): Promise<CashflowResponse> {
+    const accountIds = parseAccountIds(q.accountIds);
+
+    if (accountIds !== null && accountIds.length === 0) {
+      return {
+        range: { from: q.from, to: q.to },
+        currency: 'AUD',
+        accountIds: [],
+        income: { sources: [] },
+        expenses: { categories: [] },
+      };
+    }
+
+    const prefs = await this.prisma.preferences.findFirst();
+    const timezone = prefs?.timezone ?? 'Australia/Perth';
+    const fromDate = localStartOfDay(q.from, timezone);
+    const toDate = localEndOfDay(q.to, timezone);
+
+    const accountFilter = accountIds && accountIds.length > 0
+      ? Prisma.sql`AND t."accountId" = ANY(${accountIds}::text[])`
+      : Prisma.empty;
+
+    // ── Income: allocation-backed, grouped by billing company + customer.
+    // VOID invoices are excluded — those allocations would not represent
+    // real income realised in the period.
+    type AllocRow = {
+      billingCompanyId: string | null;
+      billingCompanyName: string | null;
+      customerId: string | null;
+      customerName: string | null;
+      amount: Prisma.Decimal | string;
+    };
+    const allocRows: AllocRow[] = await this.prisma.$queryRaw<AllocRow[]>(Prisma.sql`
+      SELECT
+        bc."id"   AS "billingCompanyId",
+        bc."name" AS "billingCompanyName",
+        c."id"    AS "customerId",
+        c."name"  AS "customerName",
+        SUM(a."amount") AS "amount"
+      FROM "Allocation" a
+      JOIN "Transaction" t ON t."id" = a."transactionId"
+      JOIN "Invoice" i ON i."id" = a."invoiceId"
+      LEFT JOIN "BillingCompany" bc ON bc."id" = i."billingCompanyId"
+      LEFT JOIN "Customer" c ON c."id" = i."customerId"
+      WHERE t."date" BETWEEN ${fromDate} AND ${toDate}
+        AND i."status" <> 'VOID'
+        ${accountFilter}
+      GROUP BY bc."id", bc."name", c."id", c."name"
+    `);
+
+    const bcMap = new Map<
+      string,
+      { id: string; name: string; total: number; children: Map<string, { id: string; name: string; total: number }> }
+    >();
+    for (const r of allocRows) {
+      const bcId = r.billingCompanyId ?? '__no_billing_company__';
+      const bcName = r.billingCompanyName ?? 'Other invoices';
+      let slot = bcMap.get(bcId);
+      if (!slot) {
+        slot = { id: `bc_${bcId}`, name: bcName, total: 0, children: new Map() };
+        bcMap.set(bcId, slot);
+      }
+      const amt = Number(r.amount);
+      slot.total += amt;
+      const custId = r.customerId ?? '__no_customer__';
+      const custName = r.customerName ?? 'Unknown customer';
+      const child = slot.children.get(custId);
+      if (child) {
+        child.total += amt;
+      } else {
+        slot.children.set(custId, { id: `cust_${custId}`, name: custName, total: amt });
+      }
+    }
+
+    // ── Other income: INCOME-kind categorised transactions NOT linked to any
+    // allocation. One node per rollup (parent if any, else the leaf itself).
+    type OtherIncomeRow = {
+      rollupId: string;
+      rollupName: string;
+      amount: Prisma.Decimal | string;
+    };
+    const otherIncomeRows: OtherIncomeRow[] = await this.prisma.$queryRaw<OtherIncomeRow[]>(Prisma.sql`
+      SELECT
+        COALESCE(c."parentId", c."id") AS "rollupId",
+        COALESCE(p."name", c."name")   AS "rollupName",
+        SUM(t."amount") AS "amount"
+      FROM "Transaction" t
+      JOIN "Category" c ON c."id" = t."categoryId"
+      LEFT JOIN "Category" p ON p."id" = c."parentId"
+      WHERE c."kind" = 'INCOME'::"CategoryKind"
+        AND t."date" BETWEEN ${fromDate} AND ${toDate}
+        AND NOT EXISTS (SELECT 1 FROM "Allocation" a WHERE a."transactionId" = t."id")
+        ${accountFilter}
+      GROUP BY COALESCE(c."parentId", c."id"), COALESCE(p."name", c."name")
+      HAVING SUM(t."amount") > 0
+    `);
+
+    // Uncategorised income (positive, no category, no allocation).
+    const uncatIncomeRows: Array<{ amount: Prisma.Decimal | string | null }> = await this.prisma.$queryRaw(Prisma.sql`
+      SELECT COALESCE(SUM(t."amount"), 0) AS "amount"
+      FROM "Transaction" t
+      WHERE t."categoryId" IS NULL
+        AND t."amount" > 0
+        AND t."date" BETWEEN ${fromDate} AND ${toDate}
+        AND NOT EXISTS (SELECT 1 FROM "Allocation" a WHERE a."transactionId" = t."id")
+        ${accountFilter}
+    `);
+
+    const incomeSources: CashflowIncomeSource[] = [];
+    for (const slot of bcMap.values()) {
+      const children = Array.from(slot.children.values())
+        .filter((c) => c.total > 0)
+        .sort((a, b) => b.total - a.total)
+        .map((c) => ({ id: c.id, name: c.name, amount: c.total.toFixed(2) }));
+      if (slot.total <= 0) continue;
+      incomeSources.push({
+        id: slot.id,
+        name: slot.name,
+        kind: 'billing_company',
+        amount: slot.total.toFixed(2),
+        children,
+      });
+    }
+    for (const r of otherIncomeRows) {
+      const amt = Number(r.amount);
+      if (amt <= 0) continue;
+      incomeSources.push({
+        id: `oi_${r.rollupId}`,
+        name: r.rollupName,
+        kind: 'other',
+        amount: amt.toFixed(2),
+        children: [],
+      });
+    }
+    const uncatIncomeAmt = Number(uncatIncomeRows[0]?.amount ?? 0);
+    if (uncatIncomeAmt > 0) {
+      incomeSources.push({
+        id: 'oi_uncategorised',
+        name: 'Uncategorised income',
+        kind: 'other',
+        amount: uncatIncomeAmt.toFixed(2),
+        children: [],
+      });
+    }
+    incomeSources.sort((a, b) => Number(b.amount) - Number(a.amount));
+
+    // ── Expenses: EXPENSE-kind categorised transactions, rolled up to top-level
+    // with subcategory breakdown.
+    type ExpRow = {
+      rollupId: string;
+      leafId: string;
+      leafName: string;
+      parentName: string | null;
+      amount: Prisma.Decimal | string;
+    };
+    const expRows: ExpRow[] = await this.prisma.$queryRaw<ExpRow[]>(Prisma.sql`
+      SELECT
+        COALESCE(c."parentId", c."id") AS "rollupId",
+        c."id"   AS "leafId",
+        c."name" AS "leafName",
+        p."name" AS "parentName",
+        SUM(ABS(t."amount")) AS "amount"
+      FROM "Transaction" t
+      JOIN "Category" c ON c."id" = t."categoryId"
+      LEFT JOIN "Category" p ON p."id" = c."parentId"
+      WHERE c."kind" = 'EXPENSE'::"CategoryKind"
+        AND t."date" BETWEEN ${fromDate} AND ${toDate}
+        ${accountFilter}
+      GROUP BY COALESCE(c."parentId", c."id"), c."id", c."name", p."name"
+      HAVING SUM(ABS(t."amount")) > 0
+    `);
+
+    const expRollup = new Map<
+      string,
+      { id: string; name: string; total: number; children: CashflowChildRow[] }
+    >();
+    for (const r of expRows) {
+      const isStandaloneLeaf = r.rollupId === r.leafId;
+      let slot = expRollup.get(r.rollupId);
+      if (!slot) {
+        const groupName = isStandaloneLeaf ? r.leafName : (r.parentName ?? r.leafName);
+        slot = { id: `cat_${r.rollupId}`, name: groupName, total: 0, children: [] };
+        expRollup.set(r.rollupId, slot);
+      }
+      const amt = Number(r.amount);
+      slot.total += amt;
+      if (!isStandaloneLeaf) {
+        slot.children.push({ id: `sub_${r.leafId}`, name: r.leafName, amount: amt.toFixed(2) });
+      }
+    }
+
+    // Uncategorised expenses.
+    const uncatExpRows: Array<{ amount: Prisma.Decimal | string | null }> = await this.prisma.$queryRaw(Prisma.sql`
+      SELECT COALESCE(SUM(ABS(t."amount")), 0) AS "amount"
+      FROM "Transaction" t
+      WHERE t."categoryId" IS NULL
+        AND t."amount" < 0
+        AND t."date" BETWEEN ${fromDate} AND ${toDate}
+        ${accountFilter}
+    `);
+
+    const expenseCategories: CashflowExpenseCategory[] = Array.from(expRollup.values())
+      .filter((s) => s.total > 0)
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        amount: s.total.toFixed(2),
+        children: s.children.slice().sort((a, b) => Number(b.amount) - Number(a.amount)),
+      }))
+      .sort((a, b) => Number(b.amount) - Number(a.amount));
+
+    const uncatExpAmt = Number(uncatExpRows[0]?.amount ?? 0);
+    if (uncatExpAmt > 0) {
+      expenseCategories.push({
+        id: 'cat_uncategorised',
+        name: 'Uncategorised expenses',
+        amount: uncatExpAmt.toFixed(2),
+        children: [],
+      });
+    }
+
+    return {
+      range: { from: q.from, to: q.to },
+      currency: 'AUD',
+      accountIds,
+      income: { sources: incomeSources },
+      expenses: { categories: expenseCategories },
     };
   }
 }

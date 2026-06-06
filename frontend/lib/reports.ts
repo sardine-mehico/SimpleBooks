@@ -1,5 +1,5 @@
 import { apiClient } from './api';
-import type { ReportResponse } from './types';
+import type { ReportResponse, CashflowResponse } from './types';
 
 export type TagsReportRow = {
   id: string;
@@ -46,4 +46,10 @@ export const getTagsReport = (params: { kind: 'EXPENSE' | 'INCOME'; from: string
   const q = new URLSearchParams({ kind: params.kind, from: params.from, to: params.to });
   if (params.accountIds !== undefined) q.set('accountIds', params.accountIds.join(','));
   return apiClient.get<TagsReportResponse>(`/reports/tags?${q.toString()}`);
+};
+
+export const getCashflow = (params: { from: string; to: string; accountIds?: string[] }) => {
+  const q = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.accountIds !== undefined) q.set('accountIds', params.accountIds.join(','));
+  return apiClient.get<CashflowResponse>(`/reports/cashflow?${q.toString()}`);
 };

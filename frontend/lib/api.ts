@@ -26,10 +26,21 @@ function serverUrl(): string {
 }
 
 function browserUrl(): string {
-  if (typeof window !== "undefined" && window.__SB_CONFIG__?.apiUrl) {
-    return window.__SB_CONFIG__.apiUrl;
+  const configured =
+    (typeof window !== "undefined" && window.__SB_CONFIG__?.apiUrl) || "http://localhost:4000";
+  // If config points at localhost but the page itself was loaded from a
+  // different host (LAN IP, phone over Wi-Fi, etc.), swap the hostname so
+  // fetches still hit the same machine the page came from.
+  if (typeof location !== "undefined" && location.hostname && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    try {
+      const u = new URL(configured);
+      if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+        u.hostname = location.hostname;
+        return u.toString().replace(/\/$/, "");
+      }
+    } catch {}
   }
-  return "http://localhost:4000";
+  return configured;
 }
 
 export const apiBase = () => (isServer ? serverUrl() : browserUrl());

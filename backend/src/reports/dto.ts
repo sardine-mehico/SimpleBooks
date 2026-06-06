@@ -14,3 +14,9 @@ export class TagsReportQueryDto {
   @IsString() kind!: 'EXPENSE' | 'INCOME';
   @IsOptional() @IsString() accountIds?: string;
 }
+
+export class CashflowQueryDto {
+  @IsDateString() from!: string;
+  @IsDateString() to!: string;
+  @IsOptional() @IsString() accountIds?: string;
+}

@@ -71,6 +71,7 @@ const nav: Group[] = [
     icon: ChartBar,
     defaultOpen: true,
     items: [
+      { label: "Cashflow", href: "/reports/cashflow" },
       { label: "Expense Report", href: "/reports/expense" },
       { label: "Income Report", href: "/reports/income" },
       { label: "Tags Report", href: "/reports/tags" },
@@ -92,6 +93,7 @@ const subIcons: Record<string, any> = {
   "/tags": Hash,
   "/rules": Scales,
   "/statements": FileText,
+  "/reports/cashflow": ChartBar,
   "/reports/expense": ChartBar,
   "/reports/income": ChartBar,
   "/reports/tags": Hash,
