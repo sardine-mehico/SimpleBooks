@@ -1026,3 +1026,15 @@ Page at `/statements` (sidebar: Reports → Statements). Renders a Customer Stat
 - **Filter panel**: pops open from a Filter button next to the page's "New" button. Supports `text`, `select`, and `date` field types. Page resets to 1 on filter or sort change. Background `rgb(212 215 225 / 79%)`.
 - **Frontend**: server component page loads data via `lib/api.ts`, hands off to a client `*-list.tsx` (lists) or `*-form.tsx` (edit) for interactivity.
 - **Forms**: required fields show a red asterisk via the `<Field required>` prop. Audit timestamps render at the bottom of the card in `dd/mm/yyyy HH:MM AM/PM`, left-aligned.
+
+## Admin Settings (v0.9)
+
+The admin-only settings sub-pages are documented in detail in `docs/user-guide-admin.md`. Summary:
+
+- **Settings → Users** (`/settings/users`) — admin CRUD for accounts. Self-protections enforced server-side: can't change own role, can't deactivate/delete self, can't remove the last active admin, env-admin row not deletable.
+- **Settings → API Keys** (`/settings/api-keys`) — admin issues bearer keys for `API_USER` accounts. Plaintext shown once on create; storage is argon2id-hashed. Format `sb_live_<…>`, sent as `Authorization: Bearer`.
+- **Settings → Roles** (`/settings/roles`) — capability override matrix. Per-role per-capability boolean toggle. ADMIN column locked-true server-side. Cache TTL 60 s — flips propagate within ~1 minute.
+- **Settings → Audit Log** (`/settings/audit`) — append-only log of logins, role changes, user CRUD, deletes (auto-captured), retention purges. Filter by action / date range / actor.
+- **Settings → Data Retention** (`/settings/data-retention`) — per-table count + oldest entry; purge by cutoff (7d/30d/90d/1y/all) over `AuditLog`, `TransactionImport`, `AllocationEvent`, `CategorisationEvent` (with AI-training warning), `AiCall`, `Session`.
+
+The capability list, default per-role grants, and admin-only sections are defined in `backend/src/auth/capabilities.ts` (mirrored in `frontend/lib/capabilities.ts`).

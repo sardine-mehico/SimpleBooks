@@ -1,0 +1,139 @@
+# SimpleBooks — Admin User Guide
+
+> v0.9. Covers Users, Roles, API Keys, Audit Log, and Data Retention. Banking is documented separately in `user-guide-banking.md`.
+
+## 1. Roles at a glance
+
+| Role | Sees | Cannot |
+|---|---|---|
+| **Admin** | Everything. | Nothing (locked-true on every capability). |
+| **Accountant** | Full nav including Dashboard, Cashflow, Income/Expense/Tags reports, Statements, Banking. Export buttons. API docs. | Delete anything. See Users / Roles / API Keys / Audit Log / Data Retention / AI Setup / Mail Configuration / Telegram (under Settings). |
+| **Bookkeeper** | Banking, Sales, Companies, Customers, Tasks, Tags Report, Statements, Expense Report. | Dashboard, Cashflow, Income Report. Any delete action. Any export. Preferences / AI Setup / Mail Configuration / Telegram / Roles / Users (under Settings). |
+| **API User** | Same as Accountant if they ever log in. Primarily authenticates programmatically via `Authorization: Bearer sb_live_<key>`. | Delete actions. |
+
+Default landing after login: admin → Dashboard, everyone else → Invoices.
+
+## 2. Bootstrap admin
+
+The first admin is created from env vars on every boot. The backend refuses to start without both:
+
+```
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=<long-random-string>
+```
+
+The env credentials remain valid for the lifetime of the deploy — there is no UI to rotate them. Edit `.env` and restart to change. The env admin has `passwordHash=NULL` in the database; logins are verified against the env directly. Failed logins from the same IP are rate-limited (5 failures in 10 minutes → blocked for the rest of the window). Per-user, 5 failed attempts triggers a 30-minute account lock.
+
+## 3. Settings → Users
+
+Admin-only.
+
+**Create a user.**  Username + display name + role + initial password. Email is optional contact info (not used for login). Share the initial password through a secure channel — there is no self-service password change, so users use whatever you set.
+
+**Reset a password.**  Key icon next to each row. Sets a new password on the user's behalf.
+
+**Delete a user.**  Trash icon. Blocked when the user is yourself; when they are the last active admin; and when they are the env-admin row.
+
+**Self-protection rules** (enforced server-side, not just UI):
+- You cannot change your own role.
+- You cannot deactivate or delete yourself.
+- The last active admin cannot be demoted, deactivated, or deleted.
+- The env-admin row cannot be deleted.
+
+## 4. Settings → API Keys
+
+Admin-only. Used to issue bearer tokens for programmatic access (Zapier, custom dashboards, scripts).
+
+**Issue a key.**
+1. Create an `API_USER` row in Settings → Users.
+2. Settings → API Keys → New API key → pick the user, label it ("Zapier integration"), optional expiry → Create.
+3. The plaintext key is shown **once**. Copy it now; it cannot be recovered.
+
+Keys begin with `sb_live_`. Use them as:
+
+```
+Authorization: Bearer sb_live_<rest-of-the-key>
+```
+
+**Revoke.**  Trash icon. The next request with that token returns 401.
+
+API users are subject to the same role/capability rules as their UI counterparts — DELETE requests with an API key whose user lacks `action.delete` return 403.
+
+## 5. Settings → Roles (override matrix)
+
+Admin-only. The default capability set per role is hard-coded; this page lets you flip individual cells. ADMIN's column is locked-true and cannot be weakened — this prevents a single click from locking every admin out of admin functions.
+
+Changes propagate within ~60 seconds (in-process cache TTL) for every signed-in user. Capabilities are grouped:
+
+- **Navigation** — top-level page access (Dashboard, Cashflow, etc.).
+- **Settings sections** — sub-pages under `/settings`.
+- **Actions** — cross-cutting (`action.delete`, `action.export`, `action.docs_access`).
+
+Backend enforces every capability — frontend hiding is a UX improvement, not the security boundary.
+
+## 6. Settings → Audit Log
+
+Admin-only. Append-only record of:
+
+- Logins (success + failure with reason).
+- Logouts.
+- User CRUD.
+- Role changes + override matrix edits.
+- API key creation + revocation.
+- Every successful DELETE request (captured automatically).
+- Retention purges.
+
+Filter by action, date range, or actor. Failed logins record an unauthenticated row (no actor) with the attempted username and reason in `metadata`.
+
+To control growth, purge from Settings → Data Retention.
+
+## 7. Settings → Data Retention
+
+Admin-only. Shows per-table current row count and oldest-entry date. Pick a cutoff (`7d`, `30d`, `90d`, `1y`, or `all`) and click **Purge** to delete entries older than that.
+
+Tables managed here:
+
+| Table | Notes |
+|---|---|
+| Audit Log | Login events, role changes, deletes |
+| Import Logs | CSV import receipts |
+| Allocation Events | Payment apply / un-apply audit |
+| Categorisation Events | **AI training signal — purge cautiously.** The AI Categoriser uses recent events as few-shot examples; deleting them degrades suggestion quality for a while. |
+| AI Calls | One row per LLM request/response |
+| Sessions | Expired sessions are auto-purged hourly. This row is here for diagnostic clarity. |
+
+Purges write their own `DATA_RETENTION_PURGE` audit entry so the action itself is recoverable in case you need to trace what was removed.
+
+## 8. Env-driven first-run setup
+
+Populate the env once and SimpleBooks comes up fully functional. Every block is idempotent: written only when the corresponding row(s) are absent, so subsequent edits in the UI always win.
+
+- **SMTP** — `SMTP_HOST`, `SMTP_PORT`, `SMTP_ENCRYPTION` (`NONE`/`SSL`/`TLS`/`STARTTLS`), `SMTP_USER`, `SMTP_PASSWORD`. All five required.
+- **Telegram allowlist** — `TELEGRAM_ALLOWLIST_USERNAMES` — comma-separated handles (no `@`). Each becomes a `TelegramAllowlist` row labelled with the env admin's username. **Recommendation:** link your own Telegram username to admin for full bot capability — the bot acts as the linked SimpleBooks user, so admin gives it full access to add / list / edit / delete tasks and receive notifications.
+- **AI providers** — two optional slots. Per slot: `AI_PROVIDER_{1,2}_NAME`, `_MODEL`, `_API_BASE_URL`, `_API_KEY`, optional `_RPM` (default 15). Slot 1 is marked primary, slot 2 fallback.
+
+Partial blocks are logged as warnings and skipped.
+
+## 9. Telegram bot — current and planned
+
+**Today (v0.9):** the bot supports allowlisted users only; commands are limited to creating + listing tasks and receiving notifications.
+
+**Planned (v0.10):** the bot will run as the linked SimpleBooks user, so all actions are subject to that user's role. Commands will cover:
+
+- `/tasks` — list with **inline keyboard buttons** under each task: `[ ✓ Done ] [ ✏️ Edit ] [ 🗑 Delete ]`. Tapping a button sends a callback to the backend; the same role/capability gates apply (e.g. a bot tied to a bookkeeper can't trigger delete).
+- `/newtask` (or just typing a task title) — bot prompts for any missing fields via force-reply.
+- Edit flow — tap edit → bot asks for the new title via force-reply → next message captured.
+- Notifications — invoice send failures, payment matches, and recurring-rule generation pushed to the linked user's chat.
+
+Because the bot maps a Telegram username → SimpleBooks user → role, link the Telegram handle to the right SimpleBooks role. For a personal-use bot, link to admin; for a team bot, link each handle to the user whose role you want the bot to inherit.
+
+## 10. Public surfaces (no auth)
+
+These remain reachable without a SimpleBooks login by design:
+
+- `/i/<token>` — customer-facing invoice link.
+- `POST /telegram/webhook/:secret` — Telegram delivers updates here; authenticated by the URL-embedded shared secret.
+- `/login` — the login page itself.
+- PWA static (`/manifest.webmanifest`, `/sw.js`, app icons).
+
+Everything else (`/`, `/invoices`, `/transactions`, every `/settings/*`, every `/reports/*`, every `/api/*` non-public route) requires authentication.

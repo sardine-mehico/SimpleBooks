@@ -96,6 +96,13 @@ NestJS module layout (one per backend domain):
 - `statements` — **(Phase E)** Customer Statements. Route prefix `/statements`. `StatementsService.getStatement` computes opening balance, body rows, and summary from `Invoice` + `Allocation` + `Transaction` data (no schema changes). `PdfService.renderStatement` produces the PDF via the new `customer-statement.tsx` React-PDF template. `MailService.sendStatement` dispatches the statement email with the rendered PDF attached. Endpoints: `GET /statements`, `GET /statements/pdf`, `GET /statements/send-context`, `POST /statements/send`.
 - `reports` — **(2026-05-26)** Expense + income totals grouped by parent category. Route prefix `/reports`. Two endpoints — `GET /reports/expense`, `GET /reports/income`. Both return `{ parents: [{ id, name, total, children: [...] }], uncategorised, grandTotal }` from a single raw-SQL `COALESCE(parentId, id)` GROUP BY (Prisma's typed `groupBy` doesn't compose with `COALESCE` over a joined column). Date boundaries respect the user's timezone via `localStartOfDay` / `localEndOfDay` (in `backend/src/util/dates.ts`). Sign convention: expense sums `ABS(amount)` for negative-sided rows on EXPENSE-kind categories; income sums positive-sided rows on INCOME-kind. Uncategorised transactions of the matching sign are bucketed into a separate row.
 - `prisma` — shared global module exposing `PrismaService`.
+- `auth` — **(v0.9)** Identity + session core. Route prefix `/auth`. Endpoints: `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /auth/capabilities`. `AuthService.onModuleInit` reconciles the env admin row from `ADMIN_USERNAME` + `ADMIN_PASSWORD` and calls `process.exit(1)` with a `[FATAL]` log line when either is missing. Passwords are argon2id; the env admin's `passwordHash` is NULL and validated against env directly. `SessionGuard` is registered globally — it accepts the `sb_session` cookie OR `Authorization: Bearer sb_live_<key>` and short-circuits routes annotated `@Public()` (public-invoice link, Telegram webhook, login). `RolesGuard` runs after — applies `@Roles`/`@Capability`/`@AdminOnly` and auto-blocks DELETE for roles without `action.delete`. Login attempts have an IP rate limit (5 fails / 10min) plus a per-user lockout (5 fails / 30min) tracked on `User.failedLoginAttempts` + `lockedUntil`.
+- `users` — **(v0.9)** Admin-only CRUD for `User` rows. Route prefix `/users`. Self-protection: actor can't change own role, deactivate self, or delete self; the last active ADMIN can't be demoted/deactivated/deleted; the env-admin row is never deletable. Password changes happen here (admin sets new password for any user); there's no self-service password change endpoint.
+- `api-keys` — **(v0.9)** Admin-only bearer-key management. Route prefix `/api-keys`. `POST /api-keys` returns the plaintext secret exactly once (the "show once" UI) and stores only its argon2id hash. Keys can only be issued to `API_USER` accounts. `SessionGuard` resolves Bearer tokens by argon2-verifying against every non-revoked, non-expired key — fine at single-tenant scale.
+- `roles` — **(v0.9)** Per-role capability override matrix. Route prefix `/roles`. `RolesService` merges hard-coded defaults (`backend/src/auth/capabilities.ts`) with `RoleOverride` rows and caches the result in-process for 60 s (invalidated on every write). The `ADMIN` row is locked at all-true server-side. Frontend mirrors the capability list in `frontend/lib/capabilities.ts`; both must stay in sync.
+- `audit` — **(v0.9)** Append-only audit log. Route prefix `/audit` (admin-only). `AuditInterceptor` is registered as a global Nest interceptor and records `RESOURCE_DELETED` for every successful DELETE; `AuthService` emits `LOGIN_SUCCESS`/`LOGIN_FAILURE`/`LOGOUT` inline. Writes are fire-and-forget — an audit failure never breaks the primary request.
+- `retention` — **(v0.9)** Admin-only data retention. Route prefix `/data-retention`. `GET /data-retention/stats` returns count + oldest-entry date per managed table; `POST /data-retention/purge` deletes entries older than a chosen bucket (`7d`/`30d`/`90d`/`1y`/`all`). Six tables exposed: `AuditLog`, `TransactionImport`, `AllocationEvent`, `CategorisationEvent` (with a UI warning re: AI training impact), `AiCall`, `Session`. Expired sessions are also auto-pruned hourly by `AuthService`.
+- `bootstrap` — **(v0.9)** Env-driven first-run service seeder. No HTTP surface; runs from `BootstrapService.onModuleInit`. Three idempotent steps: (1) `MailConfiguration` from `SMTP_*` (all five fields required), (2) `TelegramAllowlist` rows from `TELEGRAM_ALLOWLIST_USERNAMES` linked to the env admin (sets `TelegramAllowlist.user` to `admin.username`), (3) `AiProvider` rows from `AI_PROVIDER_1/2_*` (slot 1 primary). Each step creates rows only when absent; UI edits made after first run always win.
 
 #### Banking Phase B — endpoint summary
 
@@ -152,6 +159,29 @@ All wired in [backend/src/app.module.ts](backend/src/app.module.ts).
 | `GET` | `/statements/pdf` | Same query params — streams the rendered statement PDF as `Content-Disposition: inline`. Uses `PdfService.renderStatement` → `customer-statement.tsx` React-PDF template. Filename pattern `Statement-<customerNumber>-<from>-<to>.pdf` (with `all` when a bound is null). |
 | `GET` | `/statements/send-context` | Same query params — pre-fill envelope for the Send dialog: `{ from, to, cc, bcc, subject, html }`. From = `billingCompany.accountsEmail`, To = `customer.billingEmail1`, CC = `customer.billingEmail2`, BCC = `billingCompany.invoiceBcc`. Subject `Statement for <customer> · <range>`. HTML body hardcoded, embeds `billingCompany.paymentDetails` raw (it's already HTML). |
 | `POST` | `/statements/send` | Body: `SendStatementDto` (`customerId`, `billingCompanyId`, optional date range, `fromEmail`, `toEmail`, `ccEmail?`, `bccEmail?`, `subject`, `html`). Renders the PDF then dispatches via `MailService.sendStatement` — PDF is ALWAYS attached. Uses the billing company's SMTP route (CUSTOM_SMTP if configured, else the system `MailConfiguration`). No retry queue. |
+
+#### Auth + Admin — endpoint summary (v0.9)
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/auth/login` | Body: `{ username, password }`. On success sets `sb_session` cookie (httpOnly / SameSite=Lax / Secure in prod / 7d), returns `{ user }`. `@Public()` |
+| `POST` | `/auth/logout` | Clears the cookie; deletes the `Session` row. |
+| `GET` | `/auth/me` | Returns `{ user, capabilities }` for the current user. |
+| `GET` | `/auth/capabilities` | Returns just the capability map for the current user. |
+| `GET/POST` | `/users` | List / create. Admin-only. |
+| `GET/PATCH/DELETE` | `/users/:id` | Read / update (role, displayName, password, isActive) / delete. Admin self-protection enforced server-side. |
+| `GET/POST` | `/api-keys` | List / create. Admin-only. POST returns the plaintext secret exactly once. |
+| `DELETE` | `/api-keys/:id` | Revoke (sets `revokedAt`). |
+| `GET` | `/roles/capabilities` | Returns `{ capabilities: [string] }` — the full capability key list. |
+| `GET` | `/roles/matrix` | Returns `{ matrix: { [role]: { [capability]: boolean } } }` — defaults merged with overrides. |
+| `PUT` | `/roles/override` | Body: `{ role, capability, allowed }`. Upserts a `RoleOverride` and invalidates the cache. ADMIN cannot be denied any capability. |
+| `DELETE` | `/roles/override/:role/:capability` | Removes the override (falls back to default). |
+| `GET` | `/audit` | `?action&actorId&from&to&take` — returns the most recent matching events with the actor inlined. Admin-only. |
+| `GET` | `/audit/stats` | `{ count, oldestAt }`. |
+| `GET` | `/data-retention/stats` | Per-table `{ count, oldestAt }` for the six managed log tables. Admin-only. |
+| `POST` | `/data-retention/purge` | Body: `{ table, age }` where `age ∈ {7d,30d,90d,1y,all}`. Returns `{ deleted }`. |
+
+Public routes (no auth required): `/auth/login`, `GET /public/invoices/:token`, `GET /public/invoices/:token/pdf`, `POST /telegram/webhook/:secret`, the Next.js `/login` page, and the PWA static assets.
 
 #### Banking — shared types
 `backend/src/transaction-imports/types.ts` defines the `ImportReport`, `ImportReportRow`, and column-mapping interfaces shared across the sniff/commit/log pipeline. The frontend counterpart lives at `frontend/lib/types.ts` (Banking section). Both files must stay in sync — the shape is serialised into `TransactionImport.reportJson` and read back by `<ImportReportPopup>`.

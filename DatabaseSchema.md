@@ -33,21 +33,136 @@ For per-module *field semantics, required flags, UI surface, and business logic*
 | `AiCallStatus` | `OK`, `FAILED` — **(Phase C)** outcome of an `AiCall` row |
 | `AllocationEventType` | `CREATED`, `DELETED` — **(Phase D)** audit-log event type |
 | `AllocationEventSource` | `USER` — **(Phase D)** origin of the allocation change. Single value today; reserved for future automated sources. |
+| `UserRole` | `ADMIN`, `ACCOUNTANT`, `BOOKKEEPER`, `API_USER` — **(v0.9)** fixed set; no custom roles. ADMIN is locked-true for every capability; non-admin defaults live in `backend/src/auth/capabilities.ts` and can be overridden per `RoleOverride`. |
+| `AuditAction` | `LOGIN_SUCCESS`, `LOGIN_FAILURE`, `LOGOUT`, `USER_CREATED`, `USER_UPDATED`, `USER_DELETED`, `ROLE_CHANGED`, `ROLE_OVERRIDE_CHANGED`, `API_KEY_CREATED`, `API_KEY_REVOKED`, `RESOURCE_DELETED`, `DATA_RETENTION_PURGE` — **(v0.9)** values recorded in `AuditLog.action`. `RESOURCE_DELETED` is captured automatically by `AuditInterceptor` for every DELETE request; the rest are emitted explicitly by their services. |
 
 ## Models
 
 ### User
+**(v0.9 — rewritten)** The single source of identity for both UI and API
+authentication. The env admin is reconciled from `ADMIN_USERNAME` +
+`ADMIN_PASSWORD` on every boot; non-env users are created by admin via
+`/settings/users`.
+
 | Column | Type | Constraints |
 |---|---|---|
-| `id` | cuid | PK |
-| `email` | string | UNIQUE |
-| `name` | string? | |
-| `createdAt` | datetime | default `now()` |
-| `updatedAt` | datetime | auto-touched |
+| `id` | UUID | PK |
+| `username` | string | UNIQUE — the login handle |
+| `displayName` | string | required; shown in the chrome / audit log |
+| `email` | string? | UNIQUE when set; contact only, not used for login |
+| `role` | enum `UserRole` | required |
+| `passwordHash` | string? | argon2id digest. `NULL` for the env-admin (compared against `ADMIN_PASSWORD` via `timingSafeStringEqual`) and for `API_USER` rows (authenticate via `ApiKey` instead) |
+| `isActive` | bool | default `true` — inactive users can't log in |
+| `failedLoginAttempts` | int | default `0` — incremented on bad password; cleared on success |
+| `lockedUntil` | datetime? | populated when `failedLoginAttempts >= 5`; 30 min lockout |
+| `lastLoginAt` | datetime? | stamped on every successful login |
+| `createdAt` / `updatedAt` | datetime | |
 
-Relations: `tasks Task[]`, `telegramChats TelegramChat[]`.
+Relations: `sessions Session[]`, `apiKeys ApiKey[]`, `auditLogs AuditLog[]`,
+`tasks Task[]`, `telegramChats TelegramChat[]`.
 
-Notes: There is no auth flow yet; the User table is used to associate tasks and Telegram chats. Seed creates a single owner.
+Notes: The env admin's password lives in `ADMIN_PASSWORD` and is never
+persisted; editing `.env` + restarting rotates it. Admin self-protection
+(enforced in `UsersService`): the actor cannot change their own role,
+deactivate themselves, or be deleted; the last active `ADMIN` cannot be
+demoted/deactivated/deleted; the env-admin row is never deletable.
+
+---
+
+### Session
+**(v0.9)** Active login cookie. One row per browser session; expired rows
+are purged hourly by `AuthService`.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `userId` | UUID | FK → `User.id` (ON DELETE CASCADE) |
+| `token` | string | UNIQUE — high-entropy random; stored verbatim, only ever leaves as the `sb_session` httpOnly cookie |
+| `ipAddress` | string? | captured at login |
+| `userAgent` | string? | captured at login |
+| `expiresAt` | datetime | 7d from last activity (sliding refresh fires when remaining < 1d) |
+| `createdAt` | datetime | |
+
+Relations: `user User`.
+
+Notes: Cookie attrs are `httpOnly`, `sameSite=lax`, `secure` in
+production. Logout deletes the row; tampered tokens fail the
+`Session.findUnique` lookup.
+
+---
+
+### ApiKey
+**(v0.9)** Bearer credential issued by admin to an `API_USER` account.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `userId` | UUID | FK → `User.id` (ON DELETE CASCADE); `User.role` must be `API_USER` |
+| `label` | string | required |
+| `keyHash` | string | UNIQUE — argon2id digest of the secret |
+| `prefix` | string | `sb_live_xxxxxxxx` (first 8 chars after the brand prefix) — shown in the list UI for identification |
+| `suffix` | string | last 4 chars of the plaintext secret — aids leaked-key reports |
+| `lastUsedAt` | datetime? | bumped on every successful request |
+| `revokedAt` | datetime? | NULL until admin revokes; auth rejects revoked keys |
+| `expiresAt` | datetime? | NULL = never expires |
+| `createdAt` | datetime | |
+
+Relations: `user User`.
+
+Notes: Secret format is `sb_live_<base64url(32 random bytes)>`. The
+plaintext is returned only on `POST /api-keys` (the "show once" screen);
+admin must copy it then. `SessionGuard` validates Bearer tokens by
+loading every non-revoked, non-expired key and calling
+`argon2.verify` until a match — fine at the single-tenant scale.
+
+---
+
+### RoleOverride
+**(v0.9)** Per-(role, capability) override row. Defaults live in
+`backend/src/auth/capabilities.ts`; rows here flip individual cells.
+ADMIN cannot be denied any capability (enforced in
+`RolesService.setOverride`).
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `role` | enum `UserRole` | |
+| `capability` | string | one of the keys in `ALL_CAPABILITIES` |
+| `allowed` | bool | |
+| `updatedAt` | datetime | |
+
+Unique: `(role, capability)`.
+
+Notes: `RolesService` caches the merged matrix in-process for 60s and
+invalidates on every `setOverride` / `clearOverride` write. Frontend
+mirrors the capability list in `frontend/lib/capabilities.ts`; the
+list MUST stay in sync.
+
+---
+
+### AuditLog
+**(v0.9)** Append-only audit trail. `AuditInterceptor` auto-records every
+DELETE; auth/users/roles services emit explicit events for the rest.
+Visible at `/settings/audit` (admin-only); purged on demand from
+`/settings/data-retention`.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK |
+| `action` | enum `AuditAction` | required |
+| `actorId` | UUID? | FK → `User.id` (ON DELETE SET NULL); NULL for `LOGIN_FAILURE` when the username didn't resolve |
+| `targetType` | string? | model name or route prefix |
+| `targetId` | string? | UUID or other identifier of the target |
+| `ipAddress` | string? | |
+| `userAgent` | string? | |
+| `metadata` | json? | free-form per-action context (e.g. `{ username, reason }` for failed login, `{ from, to }` for role change) |
+| `createdAt` | datetime | indexed |
+
+Relations: `actor User?`.
+
+Notes: Writes are fire-and-forget — an audit failure never breaks the
+primary request. Rows are oldest-first deletable from the Data Retention
+page.
 
 ---
 
