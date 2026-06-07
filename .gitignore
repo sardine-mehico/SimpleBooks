@@ -29,3 +29,6 @@ backups/
 # User-private working files (per project owner: do not commit)
 Bank Data/
 designsystem2.md
+
+# Stress-test scratch (large, regenerable; not committed)
+tmp/

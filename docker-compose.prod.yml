@@ -71,25 +71,14 @@ services:
       # same image works on any domain. Change in .env + restart; no rebuild.
       API_URL: ${API_URL}
 
-  # Reverse proxy. Front the whole stack on :80/:443 and route /api/* to backend.
-  # Comment this out if you're terminating TLS elsewhere (e.g. Cloudflare Tunnel,
-  # a host-level Caddy/Nginx, etc).
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - backend
-      - frontend
+  # The frontend and backend are reachable on the host at :3000 and :4000.
+  # Place them behind an external reverse proxy (Nginx Proxy Manager / Caddy
+  # / Traefik / Cloudflare Tunnel) that terminates TLS at your domain and
+  # forwards:
+  #   /api/*  →  backend:4000  (strip /api/ before forwarding)
+  #   /*      →  frontend:3000
+  # See DEPLOY-PORTAINER.md for the Nginx Proxy Manager recipe.
 
 volumes:
   postgres_data:
   redis_data:
-  caddy_data:
-  caddy_config:

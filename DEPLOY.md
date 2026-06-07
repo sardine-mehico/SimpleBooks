@@ -1,18 +1,17 @@
 # SimpleBooks — VPS deployment guide
 
-End-to-end setup on a fresh Linux VPS to bring up SimpleBooks v0.3 at your own
-domain. Tested against Ubuntu 22.04+ / Debian 12+.
+> **Looking for the supported deploy path?** See **[DEPLOY-PORTAINER.md](DEPLOY-PORTAINER.md)** — Portainer + Nginx Proxy Manager. That's the documented, in-use production setup.
 
-This guide assumes:
+This page covers a minimal bare-metal alternative: a Linux VPS running `docker compose -f docker-compose.prod.yml` directly behind whatever reverse proxy you already run. Tested against Ubuntu 22.04+ / Debian 12+.
 
-- A VPS reachable on a public IP, with ports **80** and **443** open in the
-  firewall.
-- A DNS A-record pointing your chosen domain (e.g.
-  `simplebooks.mysite.com`) at the VPS IP.
+Assumptions:
+
+- A VPS reachable on a public IP with the ports your reverse proxy needs (typically **80** + **443**) open.
+- A DNS A-record pointing your chosen domain (e.g. `simplebooks.mysite.com`) at the VPS IP.
 - You can SSH in as a user with `sudo`.
+- **You already have a reverse proxy** (Nginx Proxy Manager, Caddy, Traefik, Cloudflare Tunnel, etc.) terminating TLS at that domain. The bundled compose does **not** include one — it just exposes `:3000` (frontend) and `:4000` (backend) on the host and trusts you to front them.
 
-The production stack pulls pre-built images from **GitHub Container Registry
-(GHCR)**. You do not build on the VPS.
+The production stack pulls pre-built images from **GitHub Container Registry (GHCR)**. You do not build on the VPS.
 
 ---
 
@@ -38,16 +37,15 @@ docker version
 
 ## 2. Get the deployment files
 
-You only need three files on the VPS — no source code. Either:
+You only need two files on the VPS — no source code. Either:
 
 ```bash
 # Option A: clone the repo (most convenient)
 git clone https://github.com/sardine-mehico/SimpleBooks.git
 cd SimpleBooks
 
-# Option B: scp just the three files you need
+# Option B: scp just the two files you need
 #   docker-compose.prod.yml
-#   Caddyfile
 #   .env.prod.example
 ```
 
@@ -85,18 +83,7 @@ seeds them into the DB on first boot. Edits in the UI afterwards always win.
   providers. Slot 1 is primary, slot 2 is fallback. Per-slot fields:
   `NAME`, `MODEL`, `API_BASE_URL`, `API_KEY` (and optional `RPM`, default 15).
 
-Leave `TAG=0.3` for the first deploy.
-
-## 4. Update the domain in `Caddyfile`
-
-```bash
-sed -i 's/simplebooks.mysite.com/your-domain.example/g' Caddyfile
-```
-
-Caddy auto-provisions Let's Encrypt certificates on first boot — no extra
-config required as long as ports 80 and 443 are open.
-
-## 5. Pull and start
+## 4. Pull and start
 
 ```bash
 # Pull images (public — no GHCR auth needed)
@@ -111,7 +98,6 @@ Verify each service is healthy:
 ```bash
 docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs --tail=50 backend
-docker compose -f docker-compose.prod.yml logs --tail=20 caddy
 ```
 
 On first boot the backend runs `prisma db push` against an empty database, then
@@ -122,17 +108,32 @@ seeds:
 - 6 recurring schedules
 - 10 invoice templates + 10 email templates
 - 1 sample billing company + 6 sample customers + 4 sample items + 10 sample
-  invoices (delete these from the UI to start clean — see step 7)
+  invoices (delete these from the UI to start clean — see step 6)
+
+## 5. Wire your reverse proxy
+
+The compose exposes:
+- `frontend` on host `:3000`
+- `backend` on host `:4000`
+
+Point your reverse proxy at the same host's loopback (or the docker bridge IP if the proxy runs in a separate container) and route:
+
+```
+/api/*   →  http://localhost:4000   (strip /api/ before forwarding)
+/*       →  http://localhost:3000
+```
+
+The frontend reads `API_URL` from `window.__SB_CONFIG__` at runtime — change `API_URL` in `.env` + restart frontend; no rebuild needed.
+
+If you don't have a reverse proxy yet, the **Nginx Proxy Manager** recipe in [DEPLOY-PORTAINER.md](DEPLOY-PORTAINER.md) is the documented happy path.
 
 ## 6. First-load checks
 
 Open `https://<your-domain>` in your browser.
 
-- The login page is a placeholder (auth is not yet wired); you'll land
-  straight on the Dashboard.
-- Settings → Mail Configuration: enter SMTP credentials and click Save. You
-  should see a green toast.
-- Settings → Tax Types: should show GST 10% and No tax already.
+- Login screen shows `$impleBooks` wordmark on the navy header.
+- Log in with the `ADMIN_USERNAME` / `ADMIN_PASSWORD` you set in `.env`.
+- Admin lands on the Dashboard.
 
 If anything fails:
 
@@ -159,8 +160,7 @@ DELETE FROM "BillingCompany";
 '
 ```
 
-This preserves the seed catalogue (categories, tags, tax types, templates)
-while removing the sample business records.
+This preserves the seed catalogue (categories, tags, tax types, templates) while removing the sample business records.
 
 ## 8. Backups
 
@@ -181,26 +181,20 @@ cat /var/backups/simplebooks/20260605.dump \
 
 ## 9. Upgrading to a new release
 
-When a new tag is published:
-
 ```bash
-# In .env, change TAG to the new version (e.g. 0.4)
-TAG=0.4
-
-# Then:
 docker compose -f docker-compose.prod.yml --env-file .env pull
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
-Prisma will run `db push` on backend boot, applying any additive schema
-changes automatically.
+Both images are tracked at `:latest`. Prisma will run `db push` on backend boot, applying any additive schema changes automatically.
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
-| Caddy logs `connection refused` for backend or frontend | Containers still starting; wait ~30s after `up -d` |
-| HTTPS not working / cert error | DNS A-record not pointing at this VPS, or port 80 not open (LE challenge fails) |
-| "View PDF" button goes to `localhost:4000` in browser | `API_URL` env var unset on the frontend container — set it in `.env` (e.g. `API_URL=https://your-domain.com/api`) and restart. No rebuild required (runtime-injected). |
-| Emails not sending | Configure SMTP via Settings → Mail Configuration (not via env). Then the backend uses what's in the database. |
-| Telegram bot inactive | Token unset OR backend can't reach api.telegram.org (rare; some hosts firewall Telegram IPs) |
+| `docker compose ps` shows backend restarting | `[FATAL]` log line — `ADMIN_USERNAME` or `ADMIN_PASSWORD` not set in `.env`. |
+| Browser hits frontend but `/api/*` 502s | Reverse-proxy routing — `/api/*` must forward to `backend:4000` with the `/api/` prefix stripped. |
+| HTTPS not working / cert error | Your reverse proxy isn't terminating TLS yet, or DNS A-record not pointing at this VPS. |
+| "View PDF" button hits `localhost:4000` from the browser | `API_URL` in `.env` is still localhost — set it to `https://<your-domain>/api` and restart. No rebuild required (runtime-injected). |
+| Emails not sending | Configure SMTP via Settings → Mail Configuration (not via env). |
+| Telegram bot inactive | `TELEGRAM_BOT_TOKEN` unset OR backend can't reach api.telegram.org. |

@@ -67,13 +67,33 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const extraHeaders: Record<string, string> = {};
+  // SSR path: `credentials: include` does nothing on the server. To call
+  // an authenticated backend endpoint during page render we must read the
+  // browser's request cookie via next/headers and forward it as a header.
+  // Without this, every authenticated server component renders empty
+  // (silent 401 caught by the page-level .catch fallbacks).
+  if (isServer) {
+    try {
+      // Dynamic-require so this module stays loadable in non-Next contexts
+      // (e.g. lib/auth.ts on the client). next/headers is async in 15.
+      const { cookies } = await import("next/headers");
+      const jar = await cookies();
+      const tok = jar.get("sb_session")?.value;
+      if (tok) extraHeaders["cookie"] = `sb_session=${tok}`;
+    } catch {
+      // Not running inside a Next request (build, script). Continue
+      // unauthenticated — the catch on the caller covers it.
+    }
+  }
   const res = await fetch(`${apiBase()}${path}`, {
     ...init,
-    // credentials: 'include' is required so the browser sends the
-    // sb_session cookie alongside cross-origin fetches (frontend and
-    // backend live on different ports in dev / same domain in prod).
+    // credentials: 'include' makes the BROWSER send the sb_session cookie
+    // alongside cross-origin fetches (frontend and backend on different
+    // ports in dev / same domain in prod). On the server, the cookie is
+    // forwarded explicitly via the extraHeaders block above.
     credentials: "include",
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "content-type": "application/json", ...extraHeaders, ...(init?.headers ?? {}) },
     cache: "no-store",
   });
   if (!res.ok) {

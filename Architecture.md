@@ -248,22 +248,11 @@ https://billing.mysite.com/api ─►│  internal :4000         │
 ```
 
 Why `/api`:
-- The backend does **not** strip `/api` itself. The reverse proxy (Caddy / Nginx / Traefik) strips `/api/*` → `backend:4000/*` before forwarding.
+- The backend does **not** strip `/api` itself. The reverse proxy (Nginx Proxy Manager in the supported deploy, or any equivalent) strips `/api/*` → `backend:4000/*` before forwarding.
 - Without `/api`, the frontend would hit `https://<domain>/companies`, `https://<domain>/invoices`, etc. directly and collide with frontend page routes (`/companies` is a real Next.js page).
 - Single-origin avoids CORS configuration.
 
-Example Caddy block:
-
-```caddy
-billing.mysite.com {
-    handle_path /api/* {
-        reverse_proxy backend:4000
-    }
-    handle {
-        reverse_proxy frontend:3000
-    }
-}
-```
+See [DEPLOY-PORTAINER.md](DEPLOY-PORTAINER.md) for the supported Nginx Proxy Manager routing recipe; [DEPLOY.md](DEPLOY.md) covers the bare-`docker compose -f docker-compose.prod.yml` path for anyone fronting it with a different proxy.
 
 `NEXT_PUBLIC_*` values are baked into the JS bundle at `next build`. Changing `NEXT_PUBLIC_API_URL` requires `docker compose build frontend` + restart — exporting the var at run time has no effect.
 
