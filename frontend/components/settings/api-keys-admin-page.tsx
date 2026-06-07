@@ -51,16 +51,16 @@ export function ApiKeysAdminPage() {
           No active API_USER accounts exist. Create one in Settings → Users first.
         </div>
       ) : null}
-      <div className="overflow-x-auto">
+      <div className="max-h-[60vh] overflow-auto rounded-md border border-slate-100">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="py-2 pr-3">Label</th>
-              <th className="py-2 pr-3">User</th>
-              <th className="py-2 pr-3">Key</th>
-              <th className="py-2 pr-3">Last used</th>
-              <th className="py-2 pr-3">Status</th>
-              <th className="py-2 pr-3 text-right">Actions</th>
+              <th className="bg-white py-2 px-3">Label</th>
+              <th className="bg-white py-2 px-3">User</th>
+              <th className="bg-white py-2 px-3">Key</th>
+              <th className="bg-white py-2 px-3">Last used</th>
+              <th className="bg-white py-2 px-3">Status</th>
+              <th className="bg-white py-2 px-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>

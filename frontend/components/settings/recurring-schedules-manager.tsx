@@ -92,14 +92,14 @@ export function RecurringSchedulesManager({ initial }: { initial: RecurringSched
             <Plus className="h-4 w-4" /> New schedule
           </Button>
         </div>
-        <div className="overflow-hidden rounded-md border border-slate-200">
+        <div className="max-h-[60vh] overflow-auto rounded-md border border-slate-200">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-medium uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-4 py-2.5 text-left">Name</th>
-                <th className="px-4 py-2.5 text-left">Interval</th>
-                <th className="px-4 py-2.5 text-left">Status</th>
-                <th className="px-4 py-2.5"></th>
+                <th className="bg-slate-50 px-4 py-2.5 text-left">Name</th>
+                <th className="bg-slate-50 px-4 py-2.5 text-left">Interval</th>
+                <th className="bg-slate-50 px-4 py-2.5 text-left">Status</th>
+                <th className="bg-slate-50 px-4 py-2.5"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

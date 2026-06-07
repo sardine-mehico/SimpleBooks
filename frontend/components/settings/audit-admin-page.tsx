@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Pagination } from "@/components/data/pagination";
 import { listAudit, type AuditAction, type AuditRow } from "@/lib/audit";
+
+const PAGE_SIZE = 50;
 
 const ACTIONS: AuditAction[] = [
   "LOGIN_SUCCESS", "LOGIN_FAILURE", "LOGOUT",
@@ -36,6 +39,7 @@ export function AuditAdminPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   const load = async () => {
     try {
@@ -47,7 +51,13 @@ export function AuditAdminPage() {
       }));
     } catch (e: any) { setError(e?.message ?? "Load failed."); }
   };
-  useEffect(() => { void load(); }, [action, from, to]);
+  useEffect(() => { void load(); setPage(0); }, [action, from, to]);
+
+  const total = rows?.length ?? 0;
+  const pageRows = useMemo(
+    () => (rows ?? []).slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [rows, page],
+  );
 
   return (
     <Card className="space-y-4 p-4 md:p-6">
@@ -78,37 +88,40 @@ export function AuditAdminPage() {
         </div>
       </div>
       {error ? <div className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="py-2 pr-3">When</th>
-              <th className="py-2 pr-3">Actor</th>
-              <th className="py-2 pr-3">Action</th>
-              <th className="py-2 pr-3">Target</th>
-              <th className="py-2 pr-3">IP</th>
-              <th className="py-2 pr-3">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows === null ? (
-              <tr><td className="py-4 text-slate-400" colSpan={6}>Loading…</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td className="py-4 text-slate-400" colSpan={6}>No entries.</td></tr>
-            ) : rows.map((r) => (
-              <tr key={r.id} className="border-b border-slate-100 align-top">
-                <td className="py-2 pr-3 font-mono text-xs text-slate-500">{new Date(r.createdAt).toLocaleString()}</td>
-                <td className="py-2 pr-3 text-slate-700">{r.actor?.displayName ?? <span className="text-slate-400">—</span>}<div className="font-mono text-xs text-slate-400">{r.actor?.username ?? ""}</div></td>
-                <td className="py-2 pr-3"><Badge tone={ACTION_TONE[r.action]}>{r.action}</Badge></td>
-                <td className="py-2 pr-3 text-slate-600">{r.targetType ?? "—"}{r.targetId ? <span className="font-mono text-xs text-slate-400"> / {r.targetId}</span> : null}</td>
-                <td className="py-2 pr-3 font-mono text-xs text-slate-500">{r.ipAddress ?? "—"}</td>
-                <td className="py-2 pr-3 max-w-md break-all text-xs text-slate-500">
-                  {r.metadata ? <code>{JSON.stringify(r.metadata)}</code> : "—"}
-                </td>
+      <div className="overflow-hidden rounded-md border border-slate-100">
+        <div className="max-h-[60vh] overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="bg-white py-2 px-3">When</th>
+                <th className="bg-white py-2 px-3">Actor</th>
+                <th className="bg-white py-2 px-3">Action</th>
+                <th className="bg-white py-2 px-3">Target</th>
+                <th className="bg-white py-2 px-3">IP</th>
+                <th className="bg-white py-2 px-3">Details</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows === null ? (
+                <tr><td className="py-4 px-3 text-slate-400" colSpan={6}>Loading…</td></tr>
+              ) : pageRows.length === 0 ? (
+                <tr><td className="py-4 px-3 text-slate-400" colSpan={6}>No entries.</td></tr>
+              ) : pageRows.map((r) => (
+                <tr key={r.id} className="border-b border-slate-100 align-top">
+                  <td className="py-2 px-3 font-mono text-xs text-slate-500">{new Date(r.createdAt).toLocaleString()}</td>
+                  <td className="py-2 px-3 text-slate-700">{r.actor?.displayName ?? <span className="text-slate-400">—</span>}<div className="font-mono text-xs text-slate-400">{r.actor?.username ?? ""}</div></td>
+                  <td className="py-2 px-3"><Badge tone={ACTION_TONE[r.action]}>{r.action}</Badge></td>
+                  <td className="py-2 px-3 text-slate-600">{r.targetType ?? "—"}{r.targetId ? <span className="font-mono text-xs text-slate-400"> / {r.targetId}</span> : null}</td>
+                  <td className="py-2 px-3 font-mono text-xs text-slate-500">{r.ipAddress ?? "—"}</td>
+                  <td className="py-2 px-3 max-w-md break-all text-xs text-slate-500">
+                    {r.metadata ? <code>{JSON.stringify(r.metadata)}</code> : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
       </div>
     </Card>
   );

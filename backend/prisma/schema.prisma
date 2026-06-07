@@ -881,3 +881,16 @@ model AllocationEvent {
   @@index([invoiceId])
   @@index([createdAt])
 }
+
+// Per-table auto-purge schedule for log/audit tables. Drives a daily BullMQ
+// sweep that calls RetentionService.purge() for each enabled row. The `table`
+// PK is the same string used in the Data Retention UI ("AuditLog", "AiCall",
+// etc). Manual purge from the UI is unaffected — this just adds a scheduled
+// path. `cutoffAge` is one of: '7d' | '30d' | '90d' | '1y'.
+model RetentionPolicy {
+  table     String   @id
+  cutoffAge String
+  enabled   Boolean  @default(false)
+  lastRunAt DateTime?
+  updatedAt DateTime @updatedAt
+}

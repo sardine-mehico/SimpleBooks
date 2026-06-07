@@ -13,12 +13,37 @@ const TABLES = [
 ] as const;
 export type RetentionTable = (typeof TABLES)[number];
 
+export type RetentionAge = '7d' | '30d' | '90d' | '1y';
+
 @Injectable()
 export class RetentionService {
   constructor(private prisma: PrismaService) {}
 
   tables(): readonly RetentionTable[] {
     return TABLES;
+  }
+
+  async listPolicies() {
+    const rows = await this.prisma.retentionPolicy.findMany();
+    const byTable = new Map(rows.map((r) => [r.table, r] as const));
+    // Always return a row per known table (defaults: 1y, disabled).
+    return TABLES.map((t) => {
+      const row = byTable.get(t);
+      return {
+        table: t,
+        cutoffAge: (row?.cutoffAge as RetentionAge) ?? '1y',
+        enabled: row?.enabled ?? false,
+        lastRunAt: row?.lastRunAt ? row.lastRunAt.toISOString() : null,
+      };
+    });
+  }
+
+  async upsertPolicy(table: RetentionTable, cutoffAge: RetentionAge, enabled: boolean) {
+    return this.prisma.retentionPolicy.upsert({
+      where: { table },
+      create: { table, cutoffAge, enabled },
+      update: { cutoffAge, enabled },
+    });
   }
 
   async stats() {
