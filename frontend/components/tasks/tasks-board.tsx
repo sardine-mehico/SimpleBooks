@@ -259,8 +259,8 @@ export function TasksBoard({ initial }: { initial: Task[] }) {
       )}
 
       <Card className="flex max-h-[calc(100vh-12rem)] flex-col overflow-hidden">
-        <div className="flex w-full flex-1 flex-col overflow-x-auto overflow-y-hidden md:overflow-visible">
-        <div className="flex min-w-[700px] flex-1 flex-col md:min-w-0">
+        <div className="flex w-full flex-1 flex-col overflow-x-auto overflow-y-hidden">
+        <div className="flex min-w-[700px] min-h-0 flex-1 flex-col md:min-w-0">
         <div className="grid shrink-0 grid-cols-[auto_1fr_120px_140px_140px_auto] items-center gap-x-4 border-b border-slate-100 bg-[#b6bacb] px-5 py-2.5 text-[12px] font-medium uppercase tracking-wider text-white">
           <div className="w-4" />
           <div>Task</div>

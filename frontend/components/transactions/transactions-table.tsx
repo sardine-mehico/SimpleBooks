@@ -563,8 +563,8 @@ export function TransactionsTable({
             </Button>
           </div>
         )}
-        <div className="flex w-full flex-1 flex-col overflow-x-auto overflow-y-hidden md:overflow-visible">
-        <div className="flex min-w-[820px] flex-1 flex-col md:min-w-0">
+        <div className="flex w-full flex-1 flex-col overflow-x-auto overflow-y-hidden">
+        <div className="flex min-w-[820px] min-h-0 flex-1 flex-col md:min-w-0">
         <div
           className="grid shrink-0 items-center gap-x-4 border-b border-slate-100 bg-[#b6bacb] px-5 py-2.5 text-[12px] font-medium uppercase tracking-wider text-white"
           style={{ gridTemplateColumns: gridTemplate }}
