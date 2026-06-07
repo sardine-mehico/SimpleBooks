@@ -15,6 +15,18 @@ class LoginDto {
 
 const COOKIE_NAME = 'sb_session';
 
+// Whether to mark the session cookie `Secure`. Defaults to NODE_ENV=production,
+// but an explicit `SESSION_COOKIE_SECURE=true|false` overrides — needed when the
+// stack runs with NODE_ENV=production behind a plain-HTTP LAN endpoint (browsers
+// refuse to store Secure cookies on http://). Set to `false` to allow HTTP LAN
+// login; keep at `true` (or unset) when fronted by HTTPS.
+function sessionCookieSecure(): boolean {
+  const override = process.env.SESSION_COOKIE_SECURE;
+  if (override === 'true') return true;
+  if (override === 'false') return false;
+  return process.env.NODE_ENV === 'production';
+}
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -30,7 +42,7 @@ export class AuthController {
     res.cookie(COOKIE_NAME, token, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: sessionCookieSecure(),
       maxAge: SESSION_LIFETIME_MS,
       path: '/',
     });
