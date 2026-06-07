@@ -685,6 +685,32 @@ The spec above is aspirational. This is what's in code as of v0.5, where it dive
 - **CommandBar search hides on mobile.** `hidden md:block` on the search input. The hamburger + brand text + bell fit comfortably; adding the search makes the bell overflow. The aspirational "icon-that-expands" pattern from the spec is not built — search is desktop/tablet-only today.
 - **Touch heights came in earlier.** Button (`h-9 max-sm:h-10`), Input (`h-9 max-sm:h-10`), Select trigger (`h-9 max-sm:h-10`), Textarea (`min-h-[88px] max-sm:min-h-[97px]`) were already in place pre-v0.5. The 48px-mobile target in the cheatsheet is not enforced — controls bump to 40px (`h-10`) on mobile.
 
+### Bounded-table pattern (v0.10.3)
+
+Most lists go through `FilteredList → ListTable`, which is already height-bound by the page chrome and renders its own pagination footer. Standalone tables that don't sit inside `ListTable` — Reports' `TotalsTable`, the Audit Log table, and the small Settings admin tables (Users, API Keys, Recurring Schedules, Data Retention) — would otherwise grow without bound and push the page scrollbar down past 5000+ pixels. Pattern to keep them in their card:
+
+```tsx
+<div className="max-h-[60vh] overflow-auto rounded-md border border-slate-100">
+  <table>
+    <thead className="sticky top-0 z-10 bg-white">
+      {/* header cells must each carry `bg-white` so the sticky row doesn't
+          become transparent over the scrolling body */}
+      <tr>{/* … */}</tr>
+    </thead>
+    <tbody>{/* … */}</tbody>
+  </table>
+  {/* For tables that can exceed ~100 rows (Audit Log), drop the existing
+      `<Pagination>` component here outside the scroll container so the
+      footer remains visible. */}
+</div>
+```
+
+Key constraints:
+- The `bg-white` on each `<th>` is load-bearing — `sticky` keeps the row in flow, and without an opaque background body rows scroll *under* it visibly.
+- `max-h-[60vh]` matches the visual rhythm of `Card` heights elsewhere; keep this value consistent so different admin pages don't have wildly different scroll regions.
+- For Reports' `TotalsTable`, parents + children remain in document order (no virtualisation, no grouping headers) — the sticky-thead is the only scaffolding.
+- Audit Log (`/settings/audit`) loads up to 500 rows and slices them client-side 50/page via the standard `<Pagination>` — same component used in `list-table.tsx`. Reuse it; don't reinvent.
+
 ### PWA shell
 
 Installable since v0.5.

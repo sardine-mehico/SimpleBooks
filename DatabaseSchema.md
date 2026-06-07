@@ -882,3 +882,32 @@ Transaction ─< Allocation >─ Invoice
 
 Tag >─ Customer (optional, ON DELETE SET NULL — 2026-05-28, replaces Vendor>─Customer)
 ```
+
+---
+
+## v0.10.3 — Data retention auto-purge
+
+### RetentionPolicy
+
+Per-table auto-purge schedule. Drives the daily BullMQ sweep (`retention-purge`
+queue, cron `15 3 * * *`) that calls `RetentionService.purge()` for each
+enabled row. Manual purge from `/settings/data-retention` is unaffected — this
+table only adds a scheduled path.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `table` | string | PK — same identifier used in the Data Retention UI: `AuditLog`, `TransactionImport`, `AllocationEvent`, `CategorisationEvent`, `AiCall`, `Session` |
+| `cutoffAge` | string | one of `7d`, `30d`, `90d`, `1y` — `all` is intentionally NOT allowed for auto-purge to prevent fat-finger wipes on a schedule |
+| `enabled` | bool | default `false` — only enabled rows are picked up by the daily sweep |
+| `lastRunAt` | datetime? | stamped at the end of each successful auto-purge run; visible to the admin under the Auto-purge switch |
+| `updatedAt` | datetime | `@updatedAt` |
+
+Notes:
+- The table is intentionally sparse — `RetentionService.listPolicies()`
+  always returns a row per managed table, defaulting to `cutoffAge=1y, enabled=false`
+  for tables with no row yet, so the UI doesn't need to call upsert before render.
+- Each auto-purge run writes a corresponding `AuditLog` row with
+  `action=DATA_RETENTION_PURGE` and `metadata.auto=true`. Manual purges have
+  `metadata.auto=undefined` and carry the actor ID.
+- This model is fully additive — `prisma db push` applies cleanly on existing
+  dev databases without `down -v`.

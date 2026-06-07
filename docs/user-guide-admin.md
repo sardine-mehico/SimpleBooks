@@ -89,7 +89,15 @@ To control growth, purge from Settings → Data Retention.
 
 ## 7. Settings → Data Retention
 
-Admin-only. Shows per-table current row count and oldest-entry date. Pick a cutoff (`7d`, `30d`, `90d`, `1y`, or `all`) and click **Purge** to delete entries older than that.
+Admin-only. Shows per-table current row count and oldest-entry date. Each row has two independent controls:
+
+**Manual purge** (right-hand side)
+Pick a cutoff (`7d`, `30d`, `90d`, `1y`, or `all` — default `1y`) and click **Purge now** to delete entries older than that. One-shot. Audited as you.
+
+**Auto-purge daily** (v0.10.3, left-hand side)
+Flip the **Auto-purge** switch and pick a cutoff (`7d`, `30d`, `90d`, `1y`). A nightly sweep at **03:15** deletes anything older than your chosen cutoff for every table where the switch is on. The "Last auto-run" caption under the switch shows the most recent successful run. Each auto-run writes a `DATA_RETENTION_PURGE` audit entry tagged `auto: true`, so you can always reconstruct what was deleted and when.
+
+> **Note:** the `all` cutoff is intentionally not offered for auto-purge — it's only available for manual, one-shot purges. The schedule never wipes a table to zero on its own.
 
 Tables managed here:
 
@@ -98,9 +106,9 @@ Tables managed here:
 | Audit Log | Login events, role changes, deletes |
 | Import Logs | CSV import receipts |
 | Allocation Events | Payment apply / un-apply audit |
-| Categorisation Events | **AI training signal — purge cautiously.** The AI Categoriser uses recent events as few-shot examples; deleting them degrades suggestion quality for a while. |
+| Categorisation Events | **AI training signal — purge cautiously.** The AI Categoriser uses recent events as few-shot examples; deleting them degrades suggestion quality for a while. Leaving auto-purge off here is reasonable. |
 | AI Calls | One row per LLM request/response |
-| Sessions | Expired sessions are auto-purged hourly. This row is here for diagnostic clarity. |
+| Sessions | Expired sessions are auto-purged hourly independent of any policy. This row is here for diagnostic clarity. |
 
 Purges write their own `DATA_RETENTION_PURGE` audit entry so the action itself is recoverable in case you need to trace what was removed.
 
