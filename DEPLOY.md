@@ -66,6 +66,7 @@ Edit at minimum:
   long and unique; edit here + restart to change.
 - `API_URL` — `https://<your-domain>/api`  (keep the `/api`; injected into HTML at runtime)
 - `PUBLIC_APP_URL` — `https://<your-domain>` (no `/api`; used by backend for invoice links)
+- `SESSION_COOKIE_SECURE=true` — **required for HTTPS deploys.** Marks the session cookie `Secure` so browsers only send it over TLS. Never ship `false` in production; that's a local-LAN-HTTP-only escape hatch.
 - `TELEGRAM_WEBHOOK_DOMAIN` — your domain (or leave empty to disable bot)
 - `TELEGRAM_WEBHOOK_SECRET` — long random string
 

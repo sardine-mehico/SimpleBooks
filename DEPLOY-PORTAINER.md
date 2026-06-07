@@ -59,6 +59,7 @@ sudo chown -R 999:1000 /srv/docker/simplebooks/redis
    | `REDIS_URL` | `redis://redis:6379` |
    | `PUBLIC_APP_URL` | `https://simplebooks.mysite.com` |
    | `API_URL` | `https://simplebooks.mysite.com/api` *(runtime-injected; change anytime)* |
+   | `SESSION_COOKIE_SECURE` | `true` *(REQUIRED for HTTPS — marks `sb_session` cookie `Secure`. Never `false` in production.)* |
    | `TELEGRAM_BOT_TOKEN` | *(optional — leave empty to disable the bot)* |
    | `TELEGRAM_WEBHOOK_DOMAIN` | `simplebooks.mysite.com` *(if bot enabled)* |
    | `TELEGRAM_WEBHOOK_SECRET` | *(long random string if bot enabled)* |
