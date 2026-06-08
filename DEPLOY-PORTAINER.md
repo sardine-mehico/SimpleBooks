@@ -4,7 +4,14 @@ Companion to [DEPLOY.md](./DEPLOY.md). Use this guide when you're running
 Docker via **Portainer** with **Nginx Proxy Manager** (NPM) already handling
 your reverse proxy on the `npm_proxy` network.
 
-The compose file you want is [`docker-compose.portainer.yml`](./docker-compose.portainer.yml).
+Two compose files target this deploy style — pick the one that matches your VPS conventions:
+
+| File | When to use it |
+|---|---|
+| [`docker-compose.portainer.yml`](./docker-compose.portainer.yml) | Generic Portainer + NPM recipe. Uses Docker named volumes. |
+| [`docker-compose-production-vps.yml`](./docker-compose-production-vps.yml) | Tighter VPS recipe: bind-mounts under `/srv/docker/simplebooks/{db_data,redis_data}`, `expose:` instead of `ports:` (NPM-internal only), `TZ: Australia/Perth` on every service, postgres 18 + redis 8, `SESSION_COOKIE_SECURE` defaulted to `true`, all auth + Resend + Telegram + AI env wired through. Use this when your host already follows the `/srv/docker/<app>/` layout. |
+
+Everything below applies to either file — substitute the compose name in the commands as needed.
 
 ---
 

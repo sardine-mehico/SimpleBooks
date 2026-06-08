@@ -1,0 +1,183 @@
+# =============================================================================
+# SimpleBooks — VPS production compose (Nginx Proxy Manager + Portainer)
+# =============================================================================
+# Tailored to a single-VPS setup with:
+#   - Host volume base: /srv/docker/simplebooks/
+#   - Reverse proxy:    Nginx Proxy Manager on an existing `npm_proxy` network
+#   - No public ports:  backend + frontend are reachable only via NPM
+#   - Timezone:         Australia/Perth
+#   - Images:           postgres:18, redis:8 from the official registries
+#
+# First-time setup on the VPS:
+#   sudo mkdir -p /srv/docker/simplebooks/db_data /srv/docker/simplebooks/redis_data
+#   # The postgres + redis images chown their data dirs on first start, so no
+#   # explicit chown is required up-front.
+#
+# Required env vars (set via Portainer stack env, an .env file, or both):
+#   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL, REDIS_URL,
+#   ADMIN_USERNAME, ADMIN_PASSWORD,
+#   API_URL, PUBLIC_APP_URL
+#
+# Optional env vars (sensible defaults shown below where set):
+#   SESSION_COOKIE_SECURE (default true — REQUIRED for HTTPS deploys, never false),
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_DOMAIN, TELEGRAM_WEBHOOK_SECRET,
+#   TELEGRAM_ALLOWLIST_USERNAMES,
+#   SMTP_HOST, SMTP_PORT, SMTP_ENCRYPTION, SMTP_USER, SMTP_PASSWORD,
+#   RESEND_API_KEY, RESEND_FROM, NOTIFICATION_EMAILS,
+#   AI_PROVIDER_{1,2}_NAME / _MODEL / _API_BASE_URL / _API_KEY / _RPM,
+#   AI_TIMEOUT_INLINE_MS, AI_TIMEOUT_BULK_MS, AI_BULK_CONCURRENCY
+
+name: simplebooks
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: simplebooks-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: Australia/Perth
+      PGTZ: Australia/Perth
+    volumes:
+      # Mounts the actual data dir (PGDATA), per the VPS convention
+      # `database data at /srv/docker/<app>/db_data`. PG image chowns on first
+      # start, so an empty directory is fine.
+      - /srv/docker/simplebooks/db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+    # Not exposed publicly. Connect via `docker compose exec postgres psql ...`
+    # or Portainer's container console for ad-hoc work.
+
+  redis:
+    image: redis:8-alpine
+    container_name: simplebooks-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      TZ: Australia/Perth
+    volumes:
+      - /srv/docker/simplebooks/redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  backend:
+    image: ghcr.io/sardine-mehico/simplebooks-backend:latest
+    container_name: simplebooks-backend
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    environment:
+      # --- Wiring ------------------------------------------------------------
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      PORT: 4000
+      NODE_ENV: production
+      TZ: Australia/Perth
+
+      # --- Auth (REQUIRED) ---------------------------------------------------
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # MUST be `true` for HTTPS deploys (marks the session cookie Secure).
+      # Defaults to true; set to false ONLY for plain-HTTP LAN dev.
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+
+      # --- Public URLs (REQUIRED) -------------------------------------------
+      # The backend uses PUBLIC_APP_URL to build /i/<token> invoice links in
+      # outgoing customer emails. The frontend reads API_URL for browser-side
+      # fetches; both are read at runtime, no rebuild needed on change.
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+
+      # --- Telegram (optional) ----------------------------------------------
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_DOMAIN: ${TELEGRAM_WEBHOOK_DOMAIN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_ALLOWLIST_USERNAMES: ${TELEGRAM_ALLOWLIST_USERNAMES:-}
+
+      # --- SMTP env-bootstrap (optional) ------------------------------------
+      # All five must be set together to seed Mail Configuration on first
+      # boot. Once seeded, UI edits in Settings -> Mail Configuration always
+      # win. Partial config is logged and skipped.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_ENCRYPTION: ${SMTP_ENCRYPTION:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+
+      # --- Resend failure-alert channel (optional) --------------------------
+      # Separate from customer-facing SMTP — see docs/user-guide-admin.md §10.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      # Comma-separated extra recipients in addition to the failing invoice's
+      # billing-company `accountsEmail`. Use for admin-ops "always copy me".
+      NOTIFICATION_EMAILS: ${NOTIFICATION_EMAILS:-}
+
+      # --- AI providers env-bootstrap (optional) ----------------------------
+      AI_PROVIDER_1_NAME: ${AI_PROVIDER_1_NAME:-}
+      AI_PROVIDER_1_MODEL: ${AI_PROVIDER_1_MODEL:-}
+      AI_PROVIDER_1_API_BASE_URL: ${AI_PROVIDER_1_API_BASE_URL:-}
+      AI_PROVIDER_1_API_KEY: ${AI_PROVIDER_1_API_KEY:-}
+      AI_PROVIDER_1_RPM: ${AI_PROVIDER_1_RPM:-15}
+      AI_PROVIDER_2_NAME: ${AI_PROVIDER_2_NAME:-}
+      AI_PROVIDER_2_MODEL: ${AI_PROVIDER_2_MODEL:-}
+      AI_PROVIDER_2_API_BASE_URL: ${AI_PROVIDER_2_API_BASE_URL:-}
+      AI_PROVIDER_2_API_KEY: ${AI_PROVIDER_2_API_KEY:-}
+      AI_PROVIDER_2_RPM: ${AI_PROVIDER_2_RPM:-15}
+
+      # --- AI runtime tuning -------------------------------------------------
+      AI_TIMEOUT_INLINE_MS: ${AI_TIMEOUT_INLINE_MS:-20000}
+      AI_TIMEOUT_BULK_MS: ${AI_TIMEOUT_BULK_MS:-60000}
+      AI_BULK_CONCURRENCY: ${AI_BULK_CONCURRENCY:-5}
+    expose:
+      - "4000"
+    networks:
+      - internal    # talks to postgres + redis
+      - npm_proxy   # NPM proxies /api/* here
+
+  frontend:
+    image: ghcr.io/sardine-mehico/simplebooks-frontend:latest
+    container_name: simplebooks-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      TZ: Australia/Perth
+      # Server-side fetches use the in-container hostname; browser-side reads
+      # API_URL injected into the HTML at request time. The frontend container
+      # itself doesn't need DATABASE_URL or any other backend env.
+      API_URL_INTERNAL: http://simplebooks-backend:4000
+      API_URL: ${API_URL}
+    expose:
+      - "3000"
+    networks:
+      - internal    # talks to backend (SSR fetches)
+      - npm_proxy   # NPM proxies / here
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  # Internal-only network — postgres + redis live here exclusively and are
+  # never reachable from outside this stack.
+  internal:
+    name: simplebooks_internal
+    driver: bridge
+
+  # Nginx Proxy Manager's network. Must already exist (NPM itself creates it
+  # when its own stack comes up). Backend + frontend join it so NPM can
+  # forward `/` to frontend:3000 and `/api/*` to backend:4000 by container DNS.
+  npm_proxy:
+    name: npm_proxy
+    external: true
