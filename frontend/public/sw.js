@@ -8,7 +8,7 @@
  *     mutation state is too sensitive to stale-serve.
  * Bump CACHE_VERSION on every release so old caches get purged.
  */
-const CACHE_VERSION = "sb-v0.5";
+const CACHE_VERSION = "sb-v0.11.1";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 
