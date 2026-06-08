@@ -1,6 +1,6 @@
 # SimpleBooks — Admin User Guide
 
-> v0.10. Covers Users, Roles, API Keys, Audit Log, Data Retention, and the Telegram bot. Banking is documented separately in `user-guide-banking.md`.
+> v0.10.6. Covers Users, Roles, API Keys, Audit Log, Data Retention, env-driven bootstrap, the Telegram bot, and the SMTP vs Resend email split. Banking is documented separately in `user-guide-banking.md`.
 
 ## 1. Roles at a glance
 
@@ -116,7 +116,8 @@ Purges write their own `DATA_RETENTION_PURGE` audit entry so the action itself i
 
 Populate the env once and SimpleBooks comes up fully functional. Every block is idempotent: written only when the corresponding row(s) are absent, so subsequent edits in the UI always win.
 
-- **SMTP** — `SMTP_HOST`, `SMTP_PORT`, `SMTP_ENCRYPTION` (`NONE`/`SSL`/`TLS`/`STARTTLS`), `SMTP_USER`, `SMTP_PASSWORD`. All five required.
+- **SMTP** — `SMTP_HOST`, `SMTP_PORT`, `SMTP_ENCRYPTION` (`NONE`/`SSL`/`TLS`/`STARTTLS`), `SMTP_USER`, `SMTP_PASSWORD`. All five required. Customer-facing email — see §10 for the full SMTP vs Resend explanation.
+- **Resend (failure-alert channel)** — `RESEND_API_KEY` (+ optional `RESEND_FROM`, defaults to the shared `onboarding@resend.dev`). Separate from SMTP — only fires when an invoice send fails. See §10.
 - **Telegram allowlist** — `TELEGRAM_ALLOWLIST_USERNAMES` — comma-separated handles (no `@`). Each becomes a `TelegramAllowlist` row labelled with the env admin's username. **Recommendation:** link your own Telegram username to admin for full bot capability — the bot acts as the linked SimpleBooks user, so admin gives it full access to add / list / edit / delete tasks and receive notifications.
 - **AI providers** — two optional slots. Per slot: `AI_PROVIDER_{1,2}_NAME`, `_MODEL`, `_API_BASE_URL`, `_API_KEY`, optional `_RPM` (default 15). Slot 1 is marked primary, slot 2 fallback.
 
@@ -158,7 +159,48 @@ The Delete button is only rendered when the linked user has `action.delete`. A b
 
 **Allowlist-row hygiene.** If you delete the linked SimpleBooks user, the FK is set to NULL and the bot rejects further commands from that handle with `Sorry, @… is not authorized.` Admin must re-link via Settings → Telegram. This is by design — bot capability without a linked user would silently default to allowing everything.
 
-## 10. Public surfaces (no auth)
+## 10. Email — SMTP vs Resend
+
+SimpleBooks uses **two different email channels for two different jobs**. They never overlap, and you should configure both.
+
+### SMTP — customer-facing email
+
+Sends invoices and statements *to your customers* over standard SMTP (port 25 / 465 / 587). Configured per-billing-company in **Settings → Mail Configuration** (or seeded once from `SMTP_HOST` / `_PORT` / `_ENCRYPTION` / `_USER` / `_PASSWORD` env on first boot). Used every time you click **Send** on an invoice or statement.
+
+You'll want a real transactional provider — Brevo / SendGrid / Mailgun / Postmark / your hosting provider's SMTP. All five env fields are required together; partial config is logged and skipped.
+
+### Resend — admin failure-alert channel
+
+`RESEND_API_KEY` (free tier 100 sends/day at https://resend.com) activates a totally separate **HTTPS** email channel the backend uses *to alert you when something breaks*. This exists precisely because **the customer SMTP itself might be the thing that's broken** — using that same SMTP to email yourself about its own outage obviously won't work. Resend rides over HTTPS to a separate provider, so a broken customer SMTP can't suppress its own alarms.
+
+When an invoice send fails (synchronous + 3 retry attempts, 10-minute fixed backoff, ~30 minutes total), the backend fires a notification through `NotificationsService.notifyInvoiceSendFailed()`:
+
+1. **Telegram first** — pings every chat that has ever `/start`-ed the bot. If that succeeds, stop.
+2. **Resend as fallback** — if Telegram is down or no handles are allowlisted, sends a plain-text alert via Resend's HTTPS API.
+
+If neither is configured, the failure is logged to the backend container only — you'll never see it.
+
+**`RESEND_FROM`** defaults to Resend's shared `onboarding@resend.dev`. Override once you've verified your own sending domain in Resend (recommended for anything beyond local dev).
+
+### Quick truth table
+
+| Scenario | Channel used |
+|---|---|
+| Click **Send** on an invoice | SMTP (customer-facing) |
+| Send a customer statement | SMTP |
+| Recurring invoice auto-generates + sends | SMTP |
+| Background queue retries an invoice and gives up | Telegram → Resend (fallback) |
+| Customer SMTP itself is broken | Telegram → Resend (the whole point of Resend) |
+
+### Setup recommendation
+
+- **SMTP** — required for customer email. Configure in **Settings → Mail Configuration** per billing company, or env-seed it.
+- **Telegram allowlist** — the primary alert channel (instant on your phone, no domain to maintain). Configure in **Settings → Telegram** or env-seed via `TELEGRAM_ALLOWLIST_USERNAMES`.
+- **Resend** — the belt-and-suspenders backup so failure alerts still land if SMTP and Telegram are both unreachable. Set `RESEND_API_KEY` in env. Once you have a sending domain verified in Resend, set `RESEND_FROM` to your own address.
+
+You can leave Resend unset — Telegram is the primary channel. But you lose the alarm-of-last-resort if Telegram is also unreachable.
+
+## 11. Public surfaces (no auth)
 
 These remain reachable without a SimpleBooks login by design:
 

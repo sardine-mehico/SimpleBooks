@@ -63,8 +63,8 @@ sudo chown -R 999:1000 /srv/docker/simplebooks/redis
    | `TELEGRAM_BOT_TOKEN` | *(optional — leave empty to disable the bot)* |
    | `TELEGRAM_WEBHOOK_DOMAIN` | `simplebooks.mysite.com` *(if bot enabled)* |
    | `TELEGRAM_WEBHOOK_SECRET` | *(long random string if bot enabled)* |
-   | `RESEND_API_KEY` | *(optional)* |
-   | `RESEND_FROM` | *(optional)* |
+   | `RESEND_API_KEY` | *(optional — HTTPS failure-alert channel, fires when invoice send fails. Free tier 100/day at https://resend.com. Independent of customer-facing SMTP; see user-guide-admin.md §10)* |
+   | `RESEND_FROM` | *(optional — defaults to `onboarding@resend.dev`; override once your sending domain is verified in Resend)* |
 
    > ⚠️ Use the **same password** in `POSTGRES_PASSWORD` and inside `DATABASE_URL`.
    > A mismatch is the #1 cause of "backend can't reach DB" on first boot.
@@ -147,8 +147,8 @@ Open `https://simplebooks.mysite.com` in your browser:
 
 - Dashboard should load.
 - Open **Settings → Tax Types** → should show GST 10% and No tax (seeded automatically).
-- Open **Settings → Mail Configuration** → enter SMTP credentials and click **Save**.
-  You should see a green toast confirming the save.
+- Open **Settings → Mail Configuration** → enter SMTP credentials for *customer-facing* email (invoices + statements) and click **Save**.
+  You should see a green toast confirming the save. This is separate from `RESEND_API_KEY` in env — Resend is the admin failure-alert fallback, SMTP is what reaches your customers. See `docs/user-guide-admin.md` §10 for the full SMTP-vs-Resend explanation.
 
 Direct API ping:
 

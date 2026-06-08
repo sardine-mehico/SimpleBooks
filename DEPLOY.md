@@ -74,7 +74,19 @@ Edit at minimum:
 seeds them into the DB on first boot. Edits in the UI afterwards always win.
 
 - `SMTP_HOST` / `SMTP_PORT` / `SMTP_ENCRYPTION` / `SMTP_USER` / `SMTP_PASSWORD`
-  — all five required; seeds Mail Configuration.
+  — all five required; seeds Mail Configuration. **Customer-facing email** —
+  used every time you click "Send" on an invoice or statement. Use a real
+  transactional provider (Brevo / SendGrid / Mailgun / Postmark).
+- `RESEND_API_KEY` (+ optional `RESEND_FROM`) — **separate from SMTP.**
+  Activates an HTTPS failure-alert channel that the backend uses to email
+  *you* when an invoice send fails (after Telegram is tried first). It
+  exists because a broken customer SMTP can't be used to email about its
+  own outage — Resend rides over HTTPS to a different provider. Free tier
+  100/day at https://resend.com. Leave empty to skip; Telegram remains the
+  primary notification channel. Once you verify your own sending domain in
+  Resend, set `RESEND_FROM` to your own address (defaults to the shared
+  `onboarding@resend.dev`). Full SMTP-vs-Resend explanation in
+  `docs/user-guide-admin.md` §10.
 - `TELEGRAM_ALLOWLIST_USERNAMES` — comma-separated Telegram usernames
   (no `@`). Each becomes a TelegramAllowlist row linked to the env admin.
   **Recommendation:** link your own Telegram handle to admin for full bot
