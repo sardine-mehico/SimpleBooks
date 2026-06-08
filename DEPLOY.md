@@ -87,6 +87,12 @@ seeds them into the DB on first boot. Edits in the UI afterwards always win.
   Resend, set `RESEND_FROM` to your own address (defaults to the shared
   `onboarding@resend.dev`). Full SMTP-vs-Resend explanation in
   `docs/user-guide-admin.md` §10.
+- `NOTIFICATION_EMAILS` — optional comma-separated list of extra addresses
+  that receive the failure-alert email. By default the alert goes only to
+  the failing invoice's billing-company `accountsEmail`; set this when you
+  want a personal copy of every alert regardless of which billing company
+  is affected. Example: `NOTIFICATION_EMAILS=alice@you.com,bob@you.com`.
+  Multiple recipients land in one Resend call.
 - `TELEGRAM_ALLOWLIST_USERNAMES` — comma-separated Telegram usernames
   (no `@`). Each becomes a TelegramAllowlist row linked to the env admin.
   **Recommendation:** link your own Telegram handle to admin for full bot

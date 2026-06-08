@@ -33,12 +33,19 @@ export class ResendService {
     return !!this.client;
   }
 
-  async sendPlain(to: string, subject: string, text: string): Promise<{ id?: string }> {
-    if (!this.client) {
-      this.log.warn(`Resend disabled — skipped notification to ${to}: ${subject}`);
+  // `to` accepts a single address or an array. Resend's API takes the array
+  // form directly so multiple recipients = one HTTPS call, one quota slot.
+  async sendPlain(to: string | string[], subject: string, text: string): Promise<{ id?: string }> {
+    const recipients = Array.isArray(to) ? to : [to];
+    if (recipients.length === 0) {
+      this.log.warn(`Resend skipped — no recipients for "${subject}".`);
       return {};
     }
-    const res = await this.client.emails.send({ from: this.fromAddress, to, subject, text });
+    if (!this.client) {
+      this.log.warn(`Resend disabled — skipped notification to ${recipients.join(', ')}: ${subject}`);
+      return {};
+    }
+    const res = await this.client.emails.send({ from: this.fromAddress, to: recipients, subject, text });
     if ('error' in res && res.error) {
       throw new Error(res.error.message ?? 'Resend send failed');
     }

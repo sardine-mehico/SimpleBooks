@@ -65,6 +65,7 @@ sudo chown -R 999:1000 /srv/docker/simplebooks/redis
    | `TELEGRAM_WEBHOOK_SECRET` | *(long random string if bot enabled)* |
    | `RESEND_API_KEY` | *(optional — HTTPS failure-alert channel, fires when invoice send fails. Free tier 100/day at https://resend.com. Independent of customer-facing SMTP; see user-guide-admin.md §10)* |
    | `RESEND_FROM` | *(optional — defaults to `onboarding@resend.dev`; override once your sending domain is verified in Resend)* |
+   | `NOTIFICATION_EMAILS` | *(optional — comma-separated extra addresses that receive failure alerts in addition to the failing invoice's billing-company `accountsEmail`. Example: `alice@you.com,bob@you.com`. Useful for multi-billing-co setups so ops sees every alert)* |
 
    > ⚠️ Use the **same password** in `POSTGRES_PASSWORD` and inside `DATABASE_URL`.
    > A mismatch is the #1 cause of "backend can't reach DB" on first boot.

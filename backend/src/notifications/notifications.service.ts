@@ -41,17 +41,48 @@ export class NotificationsService {
       this.log.warn(`Telegram broadcast failed: ${(e as Error).message}`);
     }
 
-    // Email — only when the billing company has an accountsEmail.
-    const to = inv.billingCompany?.accountsEmail;
-    if (!to) {
-      this.log.warn(`Skipped failure email for invoice ${inv.invoiceNumber}: billing company has no accountsEmail.`);
+    // Email recipients:
+    //   1. Billing company's accountsEmail (per-invoice tenant address).
+    //   2. Every address in NOTIFICATION_EMAILS env (comma-separated, trimmed,
+    //      lowercased, deduped). Used by ops to "always copy me" regardless
+    //      of which billing company owns the failing invoice.
+    // The two sources are merged into a single Resend call so multiple
+    // recipients cost one HTTPS quota slot.
+    const recipients = mergeRecipients(
+      inv.billingCompany?.accountsEmail,
+      process.env.NOTIFICATION_EMAILS,
+    );
+    if (recipients.length === 0) {
+      this.log.warn(`Skipped failure email for invoice ${inv.invoiceNumber}: no billing-company accountsEmail and NOTIFICATION_EMAILS unset.`);
       return;
     }
     try {
-      await this.resend.sendPlain(to, summary, body);
-      this.log.log(`Send-failure email queued via Resend to ${to}`);
+      await this.resend.sendPlain(recipients, summary, body);
+      this.log.log(`Send-failure email queued via Resend to ${recipients.join(', ')}`);
     } catch (e) {
-      this.log.warn(`Resend send-failure email to ${to} failed: ${(e as Error).message}`);
+      this.log.warn(`Resend send-failure email to ${recipients.join(', ')} failed: ${(e as Error).message}`);
     }
   }
+}
+
+// Build a deduped lowercased recipient list from the billing-co address +
+// the comma-separated NOTIFICATION_EMAILS env. Exported test target.
+export function mergeRecipients(
+  billingCoEmail: string | null | undefined,
+  envCsv: string | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw: string | null | undefined) => {
+    if (!raw) return;
+    const v = raw.trim().toLowerCase();
+    if (!v || seen.has(v)) return;
+    seen.add(v);
+    out.push(v);
+  };
+  push(billingCoEmail);
+  if (envCsv) {
+    for (const part of envCsv.split(',')) push(part);
+  }
+  return out;
 }

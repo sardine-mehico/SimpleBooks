@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Search } from "lucide-react";
+import { LogOut, Search } from "lucide-react";
 import { MobileSidebar } from "./mobile-sidebar";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { logout } from "@/lib/auth";
@@ -34,10 +34,6 @@ export function CommandBar() {
             {user.displayName}
           </span>
         ) : null}
-        <button className="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Notifications">
-          <Bell className="h-5 w-5 md:h-4 md:w-4" />
-          <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-rose-500" />
-        </button>
         <button
           onClick={onLogout}
           className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
