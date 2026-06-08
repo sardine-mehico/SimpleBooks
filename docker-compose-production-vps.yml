@@ -10,8 +10,11 @@
 #
 # First-time setup on the VPS:
 #   sudo mkdir -p /srv/docker/simplebooks/db_data /srv/docker/simplebooks/redis_data
-#   # The postgres + redis images chown their data dirs on first start, so no
-#   # explicit chown is required up-front.
+#   sudo chown -R 999:999 /srv/docker/simplebooks/db_data /srv/docker/simplebooks/redis_data
+#   # UID 999 = postgres user (and redis user) inside the official images. The
+#   # entrypoint will fail to chown a root-owned bind mount, so set ownership
+#   # up-front. The db_data dir must be EMPTY on first start — Postgres 18+
+#   # places its versioned subdir (e.g. `18/docker`) under it.
 #
 # Required env vars (set via Portainer stack env, an .env file, or both):
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL, REDIS_URL,
@@ -31,7 +34,7 @@ name: simplebooks
 
 services:
   postgres:
-    image: postgres:18
+    image: postgres:18-alpine
     container_name: simplebooks-postgres
     restart: unless-stopped
     environment:
@@ -41,10 +44,14 @@ services:
       TZ: Australia/Perth
       PGTZ: Australia/Perth
     volumes:
-      # Mounts the actual data dir (PGDATA), per the VPS convention
-      # `database data at /srv/docker/<app>/db_data`. PG image chowns on first
-      # start, so an empty directory is fine.
-      - /srv/docker/simplebooks/db_data:/var/lib/postgresql/data
+      # Postgres 18+ stores data in a versioned subdirectory under
+      # /var/lib/postgresql (e.g. /var/lib/postgresql/18/docker) so that
+      # `pg_upgrade --link` works without crossing mount boundaries. Mounting
+      # the parent dir is the official recommendation:
+      # https://github.com/docker-library/postgres/pull/1259
+      # On a fresh deploy, /srv/docker/simplebooks/db_data must be empty —
+      # PG 18 refuses to start if it finds data at the legacy data/ path.
+      - /srv/docker/simplebooks/db_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
