@@ -195,7 +195,7 @@ The primary financial document. Backend module: `invoices`. Route prefix: `/invo
 - **Footer card** (2-column grid):
   - Payment Details (rich-text editor, B/I/U). On every user-driven customer change, this field is **reset** to the newly-selected billing company's `paymentDetails` — any prior content (including manual edits or the previous customer's auto-fill) is discarded. Clearing the customer empties the field. The first render of an existing invoice is skipped so a saved value is never clobbered.
   - Internal Notes (textarea, not shown to customer)
-  - Terms (textarea, full width below). On a **new** invoice this prefills with the standard wording: *"Please reference invoice number when making payment. A $25 search fee applies if the funds cannot be properly allocated to your account."* Existing invoices keep whatever was saved.
+  - Terms (textarea, full width below). On a **new** invoice the field opens empty; when the user saves, the frontend sends `terms: undefined` which tells `InvoicesService.create` to substitute `Preferences.defaultInvoiceTerms` (configured at **Settings → Terms**). If no default is set the invoice is saved without terms. Existing invoices open with whatever was previously saved on that invoice.
 
 ### Logic
 - All money/tax fields recompute on every save; user cannot type them directly.
@@ -207,7 +207,7 @@ The primary financial document. Backend module: `invoices`. Route prefix: `/invo
   - `IN_7_DAYS` → +6 days
   - `DUE_ON_RECEIPT` → same day as invoice date
   - On initial load of an existing invoice the saved Due Date is preserved (the auto-compute skips its first render). Manual edits to Due Date are kept until the user next changes Customer or Invoice Date.
-- **Default Terms** prefill on `/invoices/new`. Existing invoices keep their saved value.
+- **Default Terms from Settings.** `InvoicesService.create` substitutes `Preferences.defaultInvoiceTerms` whenever the frontend sends `terms: undefined` (new invoice, field left empty). An explicit empty string from the client means "no terms" and is preserved as-is. Existing invoices always keep their saved value — changing Settings → Terms does NOT retroactively update already-saved invoices.
 
 ### Page chrome — Back / Cancel / Edit / Save / hamburger
 The invoice edit page (and every other edit page) uses [EditPageChrome](frontend/components/layout/edit-page-chrome.tsx). Top row:
@@ -306,7 +306,7 @@ Four cards, top to bottom. Card 1 is recurring-specific; Cards 2–4 are rendere
   - Row 4: **PO Number** (text — moved here from the invoice-form right column; flows to every generated invoice as a template default)
 - **Card 2 — Customer & Billing Company:** mirror of the invoice form's "From" card. The right column (Invoice Number / Invoice Date / Due Date / Status) is removed entirely — those belong on generated invoices, not the template.
 - **Card 3 — Line Items:** Items & Description combo, Amount column, Tax dropdown, "+ Add Line Item" below the list. Same [Dynamic Fields](#dynamic-fields--settingsdynamic-fields-display-only) substitution on item pick. Totals strip below is informational on the template — totals on each generated invoice are recomputed at run time.
-- **Card 4 — Footer:** Payment Details (rich-text B/I/U, auto-populates from billing company on customer change) · Internal Notes · Terms (full-width; new rules prefill the standard wording).
+- **Card 4 — Footer:** Payment Details (rich-text B/I/U, auto-populates from billing company on customer change) · Internal Notes · Terms (full-width; new rules open empty and the backend substitutes `Preferences.defaultInvoiceTerms` at save — see **Settings → Terms**).
 
 ### Save validation
 The Save button is **disabled** until **all** of:
@@ -392,6 +392,18 @@ All Settings routes live under `/settings/<section>`. The sidebar of the Setting
 - **Form layout:** Timezone (select) · Financial Year Start (select of month names). Save button bottom-right.
 - Defaults apply both to the Prisma schema (`@default`) and the seeded singleton — fresh installs land on Australia/Perth + July with no further action.
 - `dateFormat` is **not** present (removed by spec). Date formatting in the UI uses fixed `en-US` / hand-coded `dd/mm/yyyy HH:MM AM/PM` patterns.
+
+### Terms — `/settings/terms` (v0.12.0)
+Single multi-line textarea for the system-wide default Terms text. Stored in `Preferences.defaultInvoiceTerms` (nullable string, `NULL` = no default set).
+
+- **Form layout:** Large textarea (10 rows, min-height 240 px) · Revert button (restores to the last saved value) · Save button (disabled until text has changed).
+- **How it flows to invoices:**
+  - **New manual invoices (`POST /invoices`):** The frontend sends `terms: undefined` when the textarea is empty. `InvoicesService.create` detects `undefined` and fetches `Preferences.defaultInvoiceTerms`, inserting it onto the new invoice. An explicit empty string from the client means "save with no terms" and is preserved as-is.
+  - **New recurring rules (`POST /recurring`):** Same logic — `RecurringService.create` substitutes the default when `data.terms === undefined`. The default is **snapshotted onto the rule** at creation time.
+  - **Auto-generated invoices (recurring processor):** The cron passes `terms: rule.terms ?? undefined`. If the rule has no terms stored (null), it falls back to `undefined`, which again triggers the Settings default lookup in `InvoicesService.create`.
+- **Scope of effect:** Only applies to **newly created** entities. Changing Settings → Terms does NOT retroactively update already-saved invoices or recurring rules.
+- **Line breaks** (`\n`) are preserved end-to-end: the textarea writes `\n` separators, the DB stores plain text, invoice edit form textareas render them as separate lines, and the React-PDF templates split on `\n` for paragraph layout.
+- **Access control:** Gated by the `settings.terms` capability. ADMIN, BOOKKEEPER, and API_USER can edit; ACCOUNTANT cannot. API endpoints: `GET /preferences/terms` · `PUT /preferences/terms { defaultInvoiceTerms: string }`.
 
 ### Mail Configuration — `/settings/mail-configuration` (singleton)
 | Field | Type | Notes |
