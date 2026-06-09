@@ -98,6 +98,19 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    // SSR 401 handling: a stale session cookie (e.g. survived a DB wipe
+    // that cleared the Session table) gets past `middleware.ts` because
+    // middleware can only check that the cookie EXISTS, not that the
+    // backend still recognises it. Without this branch, every authed
+    // server component throws ApiError(401) and Next.js renders a generic
+    // "Application error" page with no path back to login. Redirecting
+    // forces a fresh login. `redirect()` throws a NEXT_REDIRECT signal
+    // which Next.js catches up the stack — do NOT wrap it in try/catch
+    // or the signal gets swallowed and the redirect never happens.
+    if (isServer && res.status === 401) {
+      const nav = await import("next/navigation").catch(() => null);
+      if (nav) nav.redirect("/login");
+    }
     throw new ApiError(res.status, path, body);
   }
   if (res.status === 204) return undefined as T;
