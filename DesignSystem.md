@@ -709,7 +709,7 @@ Key constraints:
 - The `bg-white` on each `<th>` is load-bearing — `sticky` keeps the row in flow, and without an opaque background body rows scroll *under* it visibly.
 - `max-h-[60vh]` matches the visual rhythm of `Card` heights elsewhere; keep this value consistent so different admin pages don't have wildly different scroll regions.
 - For Reports' `TotalsTable`, parents + children remain in document order (no virtualisation, no grouping headers) — the sticky-thead is the only scaffolding.
-- Audit Log (`/settings/audit`) loads up to 500 rows and slices them client-side 50/page via the standard `<Pagination>` — same component used in `list-table.tsx`. Reuse it; don't reinvent.
+- Audit Log (`/settings/audit`) loads up to 500 rows and slices them client-side **100/page** (v0.11.3; was 50/page in v0.10.3) via the standard `<Pagination>` — same component used in `list-table.tsx`. Reuse it; don't reinvent.
 
 ### PWA shell
 

@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiClient } from "@/lib/api";
@@ -28,6 +28,8 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
   const [rows, setRows] = useState(initial);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [open, setOpen] = useState(false);
+  // `editingId` is the row being edited; null = create flow.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ username: "", userId: "", botName: "", botToken: "", note: "" });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -42,7 +44,25 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
   }
   function resetForm() {
     setForm({ username: "", userId: "", botName: "", botToken: "", note: "" });
+    setEditingId(null);
     setError(null);
+  }
+
+  function openCreate() {
+    resetForm();
+    setOpen(true);
+  }
+  function openEdit(row: AllowlistEntry) {
+    setEditingId(row.id);
+    setForm({
+      username: row.username,
+      userId: row.user?.id ?? row.userId ?? "",
+      botName: row.botName ?? "",
+      botToken: row.botToken ?? "",
+      note: row.note ?? "",
+    });
+    setError(null);
+    setOpen(true);
   }
 
   async function refresh() {
@@ -50,18 +70,29 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
     setRows(next);
   }
 
-  async function add(e: React.FormEvent) {
+  async function save(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSaving(true);
     try {
-      await apiClient.post("/telegram/allowlist", {
+      const payload = {
         username: form.username.trim().replace(/^@/, ""),
         userId: form.userId,
-        botName: form.botName.trim() || undefined,
-        botToken: form.botToken.trim() || undefined,
-        note: form.note.trim() || undefined,
-      });
+        botName: form.botName.trim(),
+        botToken: form.botToken.trim(),
+        note: form.note.trim(),
+      };
+      if (editingId) {
+        await apiClient.patch(`/telegram/allowlist/${editingId}`, payload);
+      } else {
+        await apiClient.post("/telegram/allowlist", {
+          ...payload,
+          // POST preserves the original semantics of omitting empty optionals.
+          botName: payload.botName || undefined,
+          botToken: payload.botToken || undefined,
+          note: payload.note || undefined,
+        });
+      }
       resetForm();
       setOpen(false);
       startTransition(refresh);
@@ -91,18 +122,16 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
           </p>
         </div>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button size="sm"><Plus className="h-4 w-4" />Add user</Button>
-          </DialogTrigger>
+          <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" />Add user</Button>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Add allowlisted user</DialogTitle>
+              <DialogTitle>{editingId ? "Edit allowlisted user" : "Add allowlisted user"}</DialogTitle>
               <DialogDescription>
                 Bot Token is stored for reference only — the bot actually runs against{" "}
                 <code className="rounded bg-slate-100 px-1">TELEGRAM_BOT_TOKEN</code> in <code>.env</code>.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={add} className="flex flex-col gap-3">
+            <form onSubmit={save} className="flex flex-col gap-3">
               <Field label="Telegram Username" required>
                 <Input
                   value={form.username}
@@ -147,7 +176,9 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
               {error ? <p className="text-xs text-rose-600">{error}</p> : null}
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={() => { setOpen(false); resetForm(); }}>Cancel</Button>
-                <Button type="submit" disabled={saving || !form.userId}>{saving ? "Adding…" : "Add user"}</Button>
+                <Button type="submit" disabled={saving || !form.userId}>
+                  {saving ? "Saving…" : editingId ? "Save changes" : "Add user"}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -159,7 +190,7 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
         <code className="rounded bg-white px-1">TELEGRAM_BOT_TOKEN</code>; whatever you store here is never used at runtime.
       </div>
 
-      <div className="grid grid-cols-[160px_180px_140px_1fr_1fr_40px] items-center gap-x-4 border-b border-slate-100 px-5 py-2 text-[11px] font-medium uppercase tracking-wider text-slate-400">
+      <div className="grid grid-cols-[160px_180px_140px_1fr_1fr_64px] items-center gap-x-4 border-b border-slate-100 px-5 py-2 text-[11px] font-medium uppercase tracking-wider text-slate-400">
         <div>Username</div>
         <div>Linked user</div>
         <div>Bot Name</div>
@@ -176,7 +207,7 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
         {rows.map((r) => (
           <li
             key={r.id}
-            className="grid grid-cols-[160px_180px_140px_1fr_1fr_40px] items-center gap-x-4 px-5 py-3 text-sm"
+            className="grid grid-cols-[160px_180px_140px_1fr_1fr_64px] items-center gap-x-4 px-5 py-3 text-sm"
           >
             <span className="truncate font-mono text-slate-900">@{r.username}</span>
             <span className="truncate text-slate-700">
@@ -193,13 +224,22 @@ export function TelegramAllowlist({ initial }: { initial: AllowlistEntry[] }) {
               {r.botToken ?? "—"}
             </span>
             <span className="truncate text-xs text-slate-500">{r.note ?? "—"}</span>
-            <button
-              onClick={() => remove(r.id)}
-              className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-              aria-label="Remove"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <div className="flex items-center justify-end gap-1">
+              <button
+                onClick={() => openEdit(r)}
+                className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Edit"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => remove(r.id)}
+                className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                aria-label="Remove"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
           </li>
         ))}
       </ul>

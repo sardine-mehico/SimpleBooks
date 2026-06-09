@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Pagination } from "@/components/data/pagination";
 import { listAudit, type AuditAction, type AuditRow } from "@/lib/audit";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
 
 const ACTIONS: AuditAction[] = [
   "LOGIN_SUCCESS", "LOGIN_FAILURE", "LOGOUT",

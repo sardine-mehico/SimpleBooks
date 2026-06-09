@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateAllowlistDto } from './allowlist.dto';
+import { CreateAllowlistDto, UpdateAllowlistDto } from './allowlist.dto';
 
 export const normalizeUsername = (u: string) => u.trim().replace(/^@/, '').toLowerCase();
 
@@ -29,6 +29,34 @@ export class TelegramAllowlistService {
           note: data.note,
         },
       });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('That username is already on the allowlist.');
+      }
+      throw e;
+    }
+  }
+
+  async update(id: string, data: UpdateAllowlistDto) {
+    const row = await this.prisma.telegramAllowlist.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException();
+    // If a new linked user is requested, validate it exists.
+    if (data.userId !== undefined) {
+      const linkedUser = await this.prisma.user.findUnique({ where: { id: data.userId } });
+      if (!linkedUser) throw new BadRequestException('Linked user not found.');
+    }
+    // Build a minimal update payload — `undefined` keys are skipped by Prisma;
+    // explicit empty strings for botName/botToken/note are kept so admins can
+    // clear those fields by saving them blank.
+    const update: Prisma.TelegramAllowlistUpdateInput = {
+      username: data.username !== undefined ? normalizeUsername(data.username) : undefined,
+      user: data.userId !== undefined ? { connect: { id: data.userId } } : undefined,
+      botName: data.botName,
+      botToken: data.botToken,
+      note: data.note,
+    };
+    try {
+      return await this.prisma.telegramAllowlist.update({ where: { id }, data: update });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('That username is already on the allowlist.');
