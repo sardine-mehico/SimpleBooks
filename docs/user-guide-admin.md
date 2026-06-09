@@ -94,8 +94,8 @@ Admin-only. Shows per-table current row count and oldest-entry date. Each row ha
 **Manual purge** (right-hand side)
 Pick a cutoff (`7d`, `30d`, `90d`, `1y`, or `all` — default `1y`) and click **Purge now** to delete entries older than that. One-shot. Audited as you.
 
-**Auto-purge daily** (v0.10.3, left-hand side)
-Flip the **Auto-purge** switch and pick a cutoff (`7d`, `30d`, `90d`, `1y`). A nightly sweep at **03:15** deletes anything older than your chosen cutoff for every table where the switch is on. The "Last auto-run" caption under the switch shows the most recent successful run. Each auto-run writes a `DATA_RETENTION_PURGE` audit entry tagged `auto: true`, so you can always reconstruct what was deleted and when.
+**Auto-purge at selected interval** (v0.10.3, left-hand side; renamed v0.11.2)
+Flip the **Auto-purge** switch and pick a cutoff (`7d`, `30d`, `90d`, `1y`). The label says "interval" because the cutoff defines a rolling retention window, not a wipe cadence. A nightly check at **03:15** scans the table and deletes only the rows that have aged past your chosen cutoff — anything newer stays put. So with `Older than 1 year` selected, a row gets deleted on the night it hits its 1-year birthday; the job still runs every night but most nights it may delete zero rows. That's fine — the check is cheap. The "Last auto-run" caption under the switch shows the most recent successful run. Each auto-run writes a `DATA_RETENTION_PURGE` audit entry tagged `auto: true`, so you can always reconstruct what was deleted and when.
 
 > **Note:** the `all` cutoff is intentionally not offered for auto-purge — it's only available for manual, one-shot purges. The schedule never wipes a table to zero on its own.
 

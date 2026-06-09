@@ -88,9 +88,11 @@ export function DataRetentionAdminPage() {
       <div>
         <h2 className="text-lg font-semibold text-slate-900">Data Retention</h2>
         <p className="text-sm text-slate-500">
-          Free disk space by deleting old log entries. Toggle <em>Auto-purge</em> to have the
-          configured cutoff applied every night at 03:15. The <em>Purge</em> button is a manual
-          one-shot using the dropdown next to it.
+          Free disk space by deleting old log entries. Toggle <em>Auto-purge at selected interval</em> to
+          have the configured cutoff enforced as a rolling window — a nightly check at 03:15 deletes
+          only the rows that have aged past the cutoff (e.g. "Older than 1 year"); rows newer than
+          that stay put. The <em>Purge now</em> button is a manual one-shot using the dropdown next
+          to it.
         </p>
       </div>
       {error ? <div className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
@@ -120,7 +122,7 @@ export function DataRetentionAdminPage() {
                     checked={!!policy?.enabled}
                     onCheckedChange={(v) => savePolicy(t.key, { enabled: v })}
                   />
-                  <span className="text-xs text-slate-600">Auto-purge daily</span>
+                  <span className="text-xs text-slate-600">Auto-purge at selected interval</span>
                 </div>
                 <Select
                   value={policyAge}
