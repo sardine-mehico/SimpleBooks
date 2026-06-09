@@ -17,6 +17,7 @@ import {
   Key,
   ListMagnifyingGlass,
   Broom,
+  TextAlignLeft,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useCapabilities } from "@/lib/use-current-user";
@@ -37,6 +38,7 @@ export const sections: SettingsSection[] = [
   { href: "/settings/ai-setup", label: "AI Setup", icon: Robot, cap: "settings.ai_setup" },
   { href: "/settings/tax-types", label: "Tax Types", icon: Percent, cap: "settings.tax_types" },
   { href: "/settings/recurring-schedules", label: "Recurring Schedules", icon: Repeat },
+  { href: "/settings/terms", label: "Terms", icon: TextAlignLeft, cap: "settings.terms" },
   { href: "/settings/dynamic-fields", label: "Dynamic Fields", icon: BracketsCurly },
   { href: "/settings/mail-configuration", label: "Mail Configuration", icon: EnvelopeSimple, cap: "settings.mail_config" },
   { href: "/settings/users", label: "Users", icon: Users, cap: "settings.users" },

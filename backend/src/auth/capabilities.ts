@@ -43,6 +43,7 @@ export type Capability =
   | 'settings.api_keys'
   | 'settings.audit'
   | 'settings.data_retention'
+  | 'settings.terms'
   // Cross-cutting actions.
   | 'action.delete'        // any DELETE-method endpoint
   | 'action.export'        // CSV / Excel / PDF download buttons
@@ -55,7 +56,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   'nav.tags', 'nav.rules',
   'settings.preferences', 'settings.email', 'settings.invoice_templates', 'settings.tax_types',
   'settings.ai_setup', 'settings.mail_config', 'settings.telegram', 'settings.users', 'settings.roles',
-  'settings.api_keys', 'settings.audit', 'settings.data_retention',
+  'settings.api_keys', 'settings.audit', 'settings.data_retention', 'settings.terms',
   'action.delete', 'action.export', 'action.docs_access',
 ];
 
@@ -90,6 +91,9 @@ function accountantCaps(): Record<Capability, boolean> {
   out['settings.api_keys'] = false;
   out['settings.audit'] = false;
   out['settings.data_retention'] = false;
+  // Terms is deliberately denied to accountants (v0.12.0). Admins,
+  // bookkeepers, and API users can edit; accountants cannot.
+  out['settings.terms'] = false;
   return out;
 }
 
@@ -115,7 +119,11 @@ function bookkeeperCaps(): Record<Capability, boolean> {
 
 function apiUserCaps(): Record<Capability, boolean> {
   // Identical to accountant — same posture, different authentication path.
-  return accountantCaps();
+  // Exception (v0.12.0): API users CAN edit Terms (admins + bookkeepers +
+  // API users are allowed; accountants are not), so flip it back on.
+  const out = accountantCaps();
+  out['settings.terms'] = true;
+  return out;
 }
 
 export const DEFAULT_CAPABILITIES_BY_ROLE: Record<UserRole, Record<Capability, boolean>> = {

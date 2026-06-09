@@ -15,6 +15,7 @@ import { InvoiceMailService } from '../mail/invoice-mail.service';
 import { PdfService } from '../pdf/pdf.service';
 import { pLimit } from '../ai/utils/p-limit';
 import { PrismaService } from '../prisma/prisma.service';
+import { AdminOnly } from '../auth/roles.decorator';
 
 @ApiTags('invoices')
 @Controller('invoices')
@@ -41,6 +42,17 @@ export class InvoicesController {
   @Get('trash')
   listTrash() {
     return this.invoices.listTrash();
+  }
+
+  // Empty the recycle bin. Triggered by Settings → Data Retention → Empty
+  // Recycle Bin. Admin-only (the controller doesn't apply @AdminOnly at the
+  // class level so we mark this one specifically).
+  @Post('trash/purge-all')
+  @HttpCode(200)
+  @AdminOnly()
+  async purgeAllTrash() {
+    const purged = await this.invoices.purgeAllTrash();
+    return { purged };
   }
 
   @Post(':id/restore')

@@ -49,13 +49,11 @@ export class RecurringProcessor extends WorkerHost {
 
   async process(_job: Job) {
     const now = new Date();
-    // Daily trash sweep — runs cheaply on every tick (no-op when no rows
-    // qualify); 30-day cutoff lives in InvoicesService.sweepTrash.
-    try {
-      await this.invoices.sweepTrash();
-    } catch (e) {
-      this.log.warn(`Trash sweep failed (will retry next tick): ${(e as Error).message}`);
-    }
+    // (v0.12.0) The 30-day automatic trash sweep was removed — invoices in
+    // the bin now stay there indefinitely and are only purged on demand via
+    // the "Empty Recycle Bin" button under Settings → Data Retention.
+    // InvoicesService.sweepTrash is kept for backward compatibility but no
+    // longer called from here.
     const due = await this.prisma.recurringRule.findMany({
       where: { active: true, nextRunAt: { lte: now } },
       include: {

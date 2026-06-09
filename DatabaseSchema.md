@@ -450,9 +450,13 @@ Lazily created on first GET when absent.
 | `id` | UUID | |
 | `timezone` | string (IANA TZ) | `Australia/Perth` |
 | `financialYearStart` | int (1–12) | `7` (July) |
+| `aiMiningThreshold` | int | `3` |
+| `defaultInvoiceTerms` | string? (v0.12.0) | `NULL` |
 | `createdAt` / `updatedAt` | datetime | |
 
 The recurring-invoice cron reads `timezone` once at backend boot — changing it via the UI requires a backend restart.
+
+`defaultInvoiceTerms` (v0.12.0) is the system-wide Terms text inserted onto every new invoice and recurring rule when the caller omits `terms` on create. Plain text with `\n` separators preserved end-to-end (form textareas, React-PDF templates, public invoice page). Edited from `/settings/terms` via `GET/PUT /preferences/terms`, gated by the `settings.terms` capability — ADMIN + BOOKKEEPER + API_USER can edit, ACCOUNTANT cannot.
 
 ---
 

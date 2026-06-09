@@ -112,6 +112,24 @@ Tables managed here:
 
 Purges write their own `DATA_RETENTION_PURGE` audit entry so the action itself is recoverable in case you need to trace what was removed.
 
+### Recycle bin (v0.12.0)
+
+Beneath the log-table list a separate **Recycle bin** section shows how many soft-deleted invoices are currently in the bin and a single **Empty Recycle Bin** button.
+
+- **Invoices are soft-deleted forever.** When you delete an invoice from `/invoices/:id`, it goes to the bin and stays there until you explicitly clear it. The previous 30-day automatic purge was removed in v0.12.0.
+- **Empty Recycle Bin** permanently deletes every invoice currently in the bin (irreversible). The action is admin-only and writes a backend warning log line per deleted row. Any `Allocation` rows pointing at those invoices are deleted in the same transaction; `AllocationEvent` audit rows survive because they record `invoiceId` as a plain string snapshot rather than a foreign key.
+
+If you want a specific invoice gone immediately without clearing the entire bin, use the per-invoice `DELETE /invoices/:id/purge` API (also admin-only).
+
+## 7a. Settings → Terms (v0.12.0)
+
+A single textarea at `/settings/terms`. Whatever you save here is automatically inserted into the **Terms** field of every newly created invoice (`/invoices/new`) and every new recurring rule (`/recurring/new`).
+
+- **Line breaks are preserved.** If you write three lines in the textarea, the invoice form, the public-invoice page, and the rendered PDF will all show three lines.
+- **Editable by ADMIN, BOOKKEEPER, API_USER. Accountants cannot edit Terms** — this is the only place in the matrix where API_USER's caps differ from accountant's by design.
+- **Caller can still override.** If a user changes the Terms text on a specific invoice form before saving, that override is what gets stored; the system default is only used when the caller didn't supply a value.
+- The default can be cleared by saving an empty textarea — the column goes back to `NULL` and new invoices start with no Terms.
+
 ## 8. Env-driven first-run setup
 
 Populate the env once and SimpleBooks comes up fully functional. Every block is idempotent: written only when the corresponding row(s) are absent, so subsequent edits in the UI always win.

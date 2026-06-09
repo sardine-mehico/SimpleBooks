@@ -467,6 +467,11 @@ model Preferences {
   timezone            String   @default("Australia/Perth")
   financialYearStart  Int      @default(7)
   aiMiningThreshold   Int      @default(3)
+  // Default Terms text prepended to every newly-created invoice (manual via
+  // /invoices/new and recurring-rule via /recurring/new). Stored as plain
+  // text with `\n` line breaks; rendered preserving line breaks both in the
+  // edit forms (textareas) and in the React-PDF templates.
+  defaultInvoiceTerms String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }

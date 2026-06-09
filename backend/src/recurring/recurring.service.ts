@@ -76,6 +76,9 @@ export class RecurringService implements OnModuleInit {
       select: { billingCompanyId: true },
     });
     const scheduleName = await this.deriveScheduleName(data.customerId, data.recurringScheduleId);
+    // Prefill from Settings → Terms unless the caller supplied their own
+    // (same semantics as InvoicesService.create).
+    const terms = data.terms !== undefined ? data.terms : await this.prefs.getDefaultInvoiceTerms();
 
     return this.prisma.recurringRule.create({
       data: {
@@ -92,7 +95,7 @@ export class RecurringService implements OnModuleInit {
         poNumber: data.poNumber,
         paymentDetails: data.paymentDetails,
         internalNotes: data.internalNotes,
-        terms: data.terms,
+        terms,
         lineItems: {
           create: data.lineItems.map((l, idx) => ({
             itemId: l.itemId || null,

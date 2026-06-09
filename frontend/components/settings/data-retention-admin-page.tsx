@@ -14,6 +14,7 @@ import {
   type RetentionPolicy,
   type RetentionTable,
 } from "@/lib/retention";
+import { apiClient } from "@/lib/api";
 
 const TABLES: { key: RetentionTable; label: string; note?: string }[] = [
   { key: "AuditLog", label: "Audit log", note: "Login events, role changes, deletes" },
@@ -42,18 +43,37 @@ const POLICY_AGE_OPTIONS: { value: RetentionAge; label: string }[] = [
 export function DataRetentionAdminPage() {
   const [stats, setStats] = useState<Record<string, { count: number; oldestAt: string | null }> | null>(null);
   const [policies, setPolicies] = useState<Map<RetentionTable, RetentionPolicy>>(new Map());
+  const [trashCount, setTrashCount] = useState<number | null>(null);
   const [age, setAge] = useState<Record<string, RetentionAge | "all">>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     try {
-      const [s, ps] = await Promise.all([retentionStats(), retentionPolicies()]);
+      const [s, ps, trash] = await Promise.all([
+        retentionStats(),
+        retentionPolicies(),
+        apiClient.get<Array<{ id: string }>>("/invoices/trash").catch(() => []),
+      ]);
       setStats(s);
       setPolicies(new Map(ps.map((p) => [p.table, p])));
+      setTrashCount(trash.length);
     } catch (e: any) { setError(e?.message ?? "Load failed."); }
   };
   useEffect(() => { void load(); }, []);
+
+  const emptyBin = async () => {
+    if (!window.confirm(`Permanently delete ${trashCount ?? 0} invoice(s) in the recycle bin? This cannot be undone.`)) return;
+    setBusy("__bin__"); setError(null);
+    try {
+      await apiClient.post<{ purged: number }>("/invoices/trash/purge-all", {});
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? "Empty bin failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const purge = async (t: RetentionTable) => {
     const selected = age[t] ?? policies.get(t)?.cutoffAge ?? "1y";
@@ -152,6 +172,33 @@ export function DataRetentionAdminPage() {
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-6 border-t border-slate-200 pt-5">
+        <h3 className="text-base font-semibold text-slate-900">Recycle bin</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Deleted invoices are kept in the bin indefinitely and never auto-purged. Use
+          <em> Empty Recycle Bin </em>
+          to permanently delete every soft-deleted invoice in one shot. There is no undo.
+        </p>
+        <div className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3">
+          <div className="flex-1 text-sm text-slate-600">
+            {trashCount === null ? (
+              <span className="text-slate-400">…</span>
+            ) : (
+              <>
+                <span className="font-mono">{trashCount.toLocaleString()}</span> invoice{trashCount === 1 ? "" : "s"} currently in the bin
+              </>
+            )}
+          </div>
+          <Button
+            variant="destructive"
+            onClick={emptyBin}
+            disabled={busy === "__bin__" || !trashCount}
+          >
+            {busy === "__bin__" ? "Emptying…" : "Empty Recycle Bin"}
+          </Button>
+        </div>
       </div>
     </Card>
   );

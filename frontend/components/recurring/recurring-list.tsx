@@ -20,6 +20,17 @@ import { sortActiveFirst, labelForOption } from "@/lib/sort-selectable";
 
 const SENDING_LABEL = Object.fromEntries(SENDING_OPTIONS.map((s) => [s.value, s.label]));
 
+// Sum every line's tax-inclusive total. Quantity is always 1 in the
+// recurring processor, so line total = unitPrice * (1 + taxRate/100).
+function recurringTotal(r: RecurringRule): number {
+  const lines = (r.lineItems ?? []) as Array<{ unitPrice: number | string; taxRate?: number | string | null }>;
+  return lines.reduce((sum, l) => {
+    const unit = Number(l.unitPrice || 0);
+    const rate = Number(l.taxRate || 0);
+    return sum + unit + unit * (rate / 100);
+  }, 0);
+}
+
 const columns: Column<RecurringRule>[] = [
   {
     key: "name",
@@ -50,12 +61,16 @@ const columns: Column<RecurringRule>[] = [
     sortValue: (r) => new Date(r.nextRunAt),
   },
   {
+    // Total amount including taxes — matches the invoice list's display and
+    // the value the processor stamps as `Invoice.totalAmount` when the rule
+    // fires. Quantity is always 1 for recurring rules (processor.ts), so
+    // line total = unitPrice * (1 + taxRate/100).
     key: "amount",
     label: "Amount",
     align: "right",
-    render: (r) => formatCurrency((r.lineItems ?? []).reduce((s, l) => s + Number(l.unitPrice || 0), 0)),
+    render: (r) => formatCurrency(recurringTotal(r)),
     width: "120px",
-    sortValue: (r) => (r.lineItems ?? []).reduce((s, l) => s + Number(l.unitPrice || 0), 0),
+    sortValue: (r) => recurringTotal(r),
   },
   {
     key: "sending",

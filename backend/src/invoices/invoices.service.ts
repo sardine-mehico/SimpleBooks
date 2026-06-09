@@ -6,6 +6,7 @@ import { CreateInvoiceDto, LineItemDto, UpdateInvoiceDto } from './dto';
 import { applyDynamicFields } from '../common/dynamic-fields';
 import { assertIfMatch } from '../common/etag';
 import { paymentTermsOffsetDays } from '../common/payment-terms.util';
+import { PreferencesService } from '../preferences/preferences.service';
 
 const PAYMENT_TERM_DAYS: Record<PaymentTerms, number> = {
   IN_28_DAYS: 28,
@@ -46,7 +47,7 @@ function computeTotals(lines: LineItemDto[]) {
 export class InvoicesService {
   private readonly log = new Logger(InvoicesService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private prefs: PreferencesService) {}
 
   list(opts?: { openOnly?: boolean; search?: string }) {
     const where: any = { deletedAt: null };
@@ -157,6 +158,12 @@ export class InvoicesService {
     const dueDate = data.dueDate
       ? new Date(data.dueDate)
       : deriveDueDate(invoiceDate, customer?.paymentTerms);
+    // Pre-fill Terms from the system default when the caller didn't supply
+    // their own. Caller-supplied empty string and `undefined` are treated
+    // differently: empty string means "save without terms"; undefined means
+    // "use the default". The frontend send `data.terms === undefined` for
+    // fresh invoices and the populated value when the user has edited it.
+    const terms = data.terms !== undefined ? data.terms : await this.prefs.getDefaultInvoiceTerms();
 
     return this.createWithNumber((tx, number) => tx.invoice.create({
       data: {
@@ -171,7 +178,7 @@ export class InvoicesService {
         poNumber: data.poNumber,
         paymentDetails: data.paymentDetails,
         internalNotes: data.internalNotes,
-        terms: data.terms,
+        terms,
         subtotal: totals.subtotal,
         taxAmount: totals.taxAmount,
         totalAmount: totals.totalAmount,
@@ -303,7 +310,10 @@ export class InvoicesService {
   }
 
   // Hard-delete (irreversible). Only allowed on already-trashed rows so a
-  // user can't accidentally bypass the soft-delete safety.
+  // user can't accidentally bypass the soft-delete safety. Allocations are
+  // wiped first because the FK is ON DELETE RESTRICT; AllocationEvent rows
+  // are kept (they store invoiceId as a plain string snapshot, not a FK,
+  // precisely so the audit trail survives invoice deletes).
   async purge(id: string) {
     const row = await this.prisma.invoice.findUnique({ where: { id } });
     if (!row) throw new NotFoundException();
@@ -313,12 +323,38 @@ export class InvoicesService {
       );
     }
     this.log.warn(`Invoice purged: INV-${row.invoiceNumber} (id=${id})`);
-    await this.prisma.invoice.delete({ where: { id } });
+    await this.prisma.$transaction([
+      this.prisma.allocation.deleteMany({ where: { invoiceId: id } }),
+      this.prisma.invoice.delete({ where: { id } }),
+    ]);
     return { ok: true };
   }
 
-  // Sweep — hard-delete rows soft-deleted ≥ 30 days ago. Called by the
-  // recurring sweep so it runs daily without needing a separate cron.
+  // (v0.12.0) Hard-delete every soft-deleted invoice in one shot. Triggered
+  // by the "Empty Recycle Bin" button under Settings → Data Retention.
+  // Allocations linked to these invoices are removed first (FK is RESTRICT);
+  // AllocationEvents are kept (string snapshot, not a FK).
+  async purgeAllTrash(): Promise<number> {
+    const ids = await this.prisma.invoice.findMany({
+      where: { deletedAt: { not: null } },
+      select: { id: true },
+    });
+    if (ids.length === 0) return 0;
+    const idList = ids.map((r) => r.id);
+    const [, result] = await this.prisma.$transaction([
+      this.prisma.allocation.deleteMany({ where: { invoiceId: { in: idList } } }),
+      this.prisma.invoice.deleteMany({ where: { id: { in: idList } } }),
+    ]);
+    if (result.count > 0) {
+      this.log.warn(`Recycle bin emptied: hard-deleted ${result.count} invoice(s)`);
+    }
+    return result.count;
+  }
+
+  // DEPRECATED (v0.12.0) — automatic 30-day trash sweep. Kept on the
+  // service for backward compatibility but no longer called from the
+  // recurring processor. Manual on-demand purge happens via
+  // `purgeAllTrash()`. Safe to remove in a future cleanup.
   async sweepTrash(): Promise<number> {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const result = await this.prisma.invoice.deleteMany({

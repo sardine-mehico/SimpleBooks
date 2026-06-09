@@ -35,6 +35,7 @@ export type Capability =
   | "settings.api_keys"
   | "settings.audit"
   | "settings.data_retention"
+  | "settings.terms"
   | "action.delete"
   | "action.export"
   | "action.docs_access";
@@ -46,7 +47,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "nav.tags", "nav.rules",
   "settings.preferences", "settings.email", "settings.invoice_templates", "settings.tax_types",
   "settings.ai_setup", "settings.mail_config", "settings.telegram", "settings.users", "settings.roles",
-  "settings.api_keys", "settings.audit", "settings.data_retention",
+  "settings.api_keys", "settings.audit", "settings.data_retention", "settings.terms",
   "action.delete", "action.export", "action.docs_access",
 ];
 
@@ -66,6 +67,8 @@ function accountantCaps(): Record<Capability, boolean> {
   out["settings.api_keys"] = false;
   out["settings.audit"] = false;
   out["settings.data_retention"] = false;
+  // Terms denied to accountant only (v0.12.0).
+  out["settings.terms"] = false;
   return out;
 }
 function bookkeeperCaps(): Record<Capability, boolean> {
@@ -88,11 +91,19 @@ function bookkeeperCaps(): Record<Capability, boolean> {
   return out;
 }
 
+function apiUserCaps(): Record<Capability, boolean> {
+  // Same posture as accountant except Terms — admins, bookkeepers, AND
+  // API users can edit; accountants cannot (v0.12.0).
+  const out = accountantCaps();
+  out["settings.terms"] = true;
+  return out;
+}
+
 export function capabilitiesForRole(role: AuthUser["role"]): Record<Capability, boolean> {
   switch (role) {
     case "ADMIN": return adminCaps();
     case "ACCOUNTANT": return accountantCaps();
     case "BOOKKEEPER": return bookkeeperCaps();
-    case "API_USER": return accountantCaps();
+    case "API_USER": return apiUserCaps();
   }
 }
