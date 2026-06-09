@@ -38,8 +38,7 @@ type AllocationWithTx = Allocation & {
   transaction?: { date: string; description: string } | null;
 };
 
-const DEFAULT_TERMS =
-  "Please reference invoice number when making payment.\nA $25 search fee applies if the funds cannot be properly allocated to your account.";
+
 
 // Format a Date as `yyyy-mm-dd` using local calendar parts. Using
 // `toISOString().slice(0, 10)` shifts the date when the user is in a positive
@@ -111,7 +110,7 @@ export function InvoiceForm({
   const [poNumber, setPoNumber] = useState(initial?.poNumber ?? "");
   const [paymentDetails, setPaymentDetails] = useState(initial?.paymentDetails ?? "");
   const [internalNotes, setInternalNotes] = useState(initial?.internalNotes ?? "");
-  const [terms, setTerms] = useState(initial?.terms ?? DEFAULT_TERMS);
+  const [terms, setTerms] = useState(initial?.terms ?? "");
   const [lines, setLines] = useState<BodyLine[]>(
     initial?.lineItems?.length
       ? initial.lineItems.map((l) => {

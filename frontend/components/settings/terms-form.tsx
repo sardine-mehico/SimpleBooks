@@ -25,10 +25,10 @@ export function TermsForm({ initial }: { initial: string }) {
     setSaving(true);
     try {
       await apiClient.put("/preferences/terms", { defaultInvoiceTerms: terms });
-      toast({ title: "Terms saved", description: "Will be applied to new invoices and recurring rules." });
+      toast.success("Terms saved — will be applied to new invoices and recurring rules.");
       router.refresh();
     } catch (err: any) {
-      toast({ title: "Save failed", description: err?.message ?? "Unknown error", variant: "destructive" });
+      toast.error("Save failed: " + (err?.message ?? "Unknown error"));
     } finally {
       setSaving(false);
     }
