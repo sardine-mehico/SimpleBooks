@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { api } from "@/lib/api";
+import { readRuntimeConfig } from "@/lib/runtime-config";
 import { PublicInvoiceView } from "@/components/public-invoice/public-invoice-view";
 import type { PublicInvoice } from "@/components/public-invoice/types";
 
@@ -19,5 +20,11 @@ export default async function PublicInvoicePage({
   } catch {
     notFound();
   }
-  return <PublicInvoiceView invoice={invoice} token={token} />;
+  // Compute the public PDF URL on the server so the SSR HTML already carries
+  // the right hostname. The client-side `browserApiBase()` falls back to
+  // `http://localhost:4000` during SSR (when window is undefined), which
+  // would leak into the rendered <a href=...> and bounce customers off to
+  // localhost when they clicked Download PDF.
+  const apiUrl = readRuntimeConfig().apiUrl;
+  return <PublicInvoiceView invoice={invoice} token={token} apiUrl={apiUrl} />;
 }

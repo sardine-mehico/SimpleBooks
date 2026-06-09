@@ -1,6 +1,5 @@
 "use client";
 
-import { browserApiBase } from "@/lib/api";
 import { PalettedInvoice, getPalette } from "./index";
 import type { PublicInvoice } from "./types";
 
@@ -11,15 +10,18 @@ import type { PublicInvoice } from "./types";
 export function PublicInvoiceView({
   invoice,
   token,
+  apiUrl,
 }: {
   invoice: PublicInvoice;
   token: string;
+  // Browser-facing backend URL, computed server-side from
+  // `readRuntimeConfig().apiUrl` and passed in so the SSR HTML carries the
+  // correct hostname (the previous version called `browserApiBase()` here,
+  // which defaulted to `http://localhost:4000` during SSR).
+  apiUrl: string;
 }) {
   const palette = getPalette(invoice.invoiceTemplate?.templateKey);
-  // Must be the browser-facing URL, not the in-compose `http://backend:4000`
-  // that the SSR-time `apiBase()` would bake in — customers' browsers can't
-  // route to a Docker service name.
-  const pdfUrl = `${browserApiBase()}/public/invoices/${token}/pdf`;
+  const pdfUrl = `${apiUrl}/public/invoices/${token}/pdf`;
   return (
     // Neutral "desk" background so the palette-tinted PalettedInvoice paper
     // reads as a discrete A4 sheet sitting on top.

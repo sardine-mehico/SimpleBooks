@@ -128,7 +128,7 @@ Partial blocks are logged as warnings and skipped.
 **(v0.10)** The bot runs as the SimpleBooks user linked to each allowlisted Telegram handle. Every command goes through that user's role + capabilities — the bot is never a privileged backdoor.
 
 **Setup**
-1. Settings → Telegram → **Add user**. Enter the Telegram handle (with or without `@`), pick the SimpleBooks user it should act as, and save. **For a personal-use bot, link to admin** — that gives the bot full task capability including delete. For a team bot, link each handle to the user whose role you want the bot to inherit.
+1. Settings → Telegram → **Add user**. Enter the Telegram handle (with or without `@`), pick the SimpleBooks user it should act as, and save. **For a personal-use bot, link to admin** — that gives the bot full task capability including delete. For a team bot, link each handle to the user whose role you want the bot to inherit. (v0.11.3) Each existing allowlist row carries a pencil icon — click it to re-open the same form pre-filled with the row's current values so you can change the linked user, rename the Telegram handle, or update the reference Bot Token / note without removing and re-creating.
 2. (Optional) populate `TELEGRAM_ALLOWLIST_USERNAMES` in `.env` — comma-separated handles. Each is created on first boot linked to the env admin. UI edits afterwards always win.
 
 **Commands**

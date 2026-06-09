@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto, LineItemDto, UpdateInvoiceDto } from './dto';
 import { applyDynamicFields } from '../common/dynamic-fields';
 import { assertIfMatch } from '../common/etag';
+import { paymentTermsOffsetDays } from '../common/payment-terms.util';
 
 const PAYMENT_TERM_DAYS: Record<PaymentTerms, number> = {
   IN_28_DAYS: 28,
@@ -330,16 +331,23 @@ export class InvoicesService {
   }
 
   // Duplicate an existing invoice into a new DRAFT. The clone gets a fresh
-  // invoice number, today's date as the invoice date, and the original's due
-  // date is left blank — the form's payment-terms effect will recompute it
-  // when the user opens the clone. Send-tracking columns are reset.
+  // invoice number, today's date as the invoice date, and the due date is
+  // computed from the customer's `paymentTerms` so the form opens with a
+  // correct value (the form's recompute effect only fires on changes after
+  // mount, so leaving dueDate null here used to leave the form blank).
+  // Send-tracking columns are reset.
   async clone(id: string) {
     const src = await this.get(id);
+    const invoiceDate = new Date();
+    invoiceDate.setHours(0, 0, 0, 0);
+    const offset = paymentTermsOffsetDays(src.customer?.paymentTerms ?? null);
+    const dueDate = new Date(invoiceDate);
+    dueDate.setDate(dueDate.getDate() + offset);
     return this.createWithNumber((tx, number) => tx.invoice.create({
       data: {
         invoiceNumber: number,
-        invoiceDate: new Date(),
-        dueDate: null,
+        invoiceDate,
+        dueDate,
         customerId: src.customerId,
         billingCompanyId: src.billingCompanyId,
         // Carry forward the source invoice's template snapshot — keeps the
